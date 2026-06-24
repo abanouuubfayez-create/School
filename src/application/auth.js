@@ -1167,4 +1167,7 @@
                 }
                 sec.style.display = hasVisible ? '' : 'none';
             });
+
+            navigate('students');
         }
+

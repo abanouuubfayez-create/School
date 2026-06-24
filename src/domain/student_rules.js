@@ -1,8 +1,3 @@
-            });
-
-            navigate('students');
-        }
-
         function applyTeacherMode() {
             document.getElementById('app').style.display = 'block';
             const ta = document.getElementById('teacher-app');
