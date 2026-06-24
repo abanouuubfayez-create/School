@@ -1166,3 +1166,5 @@
                     next = next.nextElementSibling;
                 }
                 sec.style.display = hasVisible ? '' : 'none';
+            });
+        }
