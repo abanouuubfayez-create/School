@@ -35,3 +35,4 @@
             const raw = await storeLoad(TEACHER_CRED_KEY);
             if (raw) { try { return JSON.parse(raw); } catch (e) { } }
             return { username: DEFAULT_TEACHER_USER, password: DEFAULT_TEACHER_PASS };
+        }

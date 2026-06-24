@@ -1,4 +1,3 @@
-        }
         async function doLogin() {
             const u = document.getElementById('login-user').value.trim();
             const p = document.getElementById('login-pass').value;
