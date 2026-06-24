@@ -15,7 +15,7 @@ def build():
         shutil.copyfile(orig, bak)
         print(f"  Backed up original -> {BACKUP}")
 
-    with open(os.path.join(workspace, "index.html"), encoding="utf-8") as f:
+    with open(os.path.join(workspace, "src", "index.html"), encoding="utf-8") as f:
         html = f.read()
 
     # ── Inline CSS ──────────────────────────────────────────────────────────
@@ -75,8 +75,12 @@ def build():
     with open(dest, "w", encoding="utf-8") as f:
         f.write(html)
 
+    dest_index = os.path.join(workspace, "index.html")
+    with open(dest_index, "w", encoding="utf-8") as f:
+        f.write(html)
+
     size_kb = os.path.getsize(dest) // 1024
-    print(f"Build complete -> {OUTPUT}  ({size_kb} KB)")
+    print(f"Build complete -> {OUTPUT} and index.html ({size_kb} KB)")
 
 if __name__ == "__main__":
     build()
