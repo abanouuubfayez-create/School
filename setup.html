@@ -1,0 +1,121 @@
+<!DOCTYPE html>
+<html lang="ar" dir="rtl">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>الإعداد الأول · تيك جو</title>
+<link rel="stylesheet" href="styles.css?v=565893">
+</head>
+<body>
+<div class="tg-login-wrap">
+  <div class="tg-login-card">
+    <div class="tg-login-logo">
+      <div class="lgo"><span>TECH - GO</span><small>تيك – جو</small></div>
+    </div>
+    <div class="tg-login-title" id="setupTitle">إعداد أول تشغيل — إنشاء حساب المدير الأول</div>
+
+    <div class="tg-login-err" id="setupErr"></div>
+    <div class="tg-login-ok" id="setupOk"></div>
+
+    <div id="setupForm">
+      <div class="fg" style="margin-bottom:14px">
+        <label>اسم المدير</label>
+        <input type="text" id="stName" placeholder="مثلاً: أحمد محمد">
+      </div>
+      <div class="fg" style="margin-bottom:14px">
+        <label>البريد الإلكتروني</label>
+        <input type="email" id="stEmail" placeholder="name@techgo.com">
+      </div>
+      <div class="fg" style="margin-bottom:14px">
+        <label>كلمة المرور</label>
+        <input type="password" id="stPass" placeholder="6 أحرف على الأقل">
+      </div>
+      <div class="fg" style="margin-bottom:8px">
+        <label>تأكيد كلمة المرور</label>
+        <input type="password" id="stPass2" placeholder="أعد كتابة كلمة المرور" onkeydown="if(event.key==='Enter')doSetup()">
+      </div>
+
+      <button class="bt bt-p tg-login-btn" id="stBtn" onclick="doSetup()">إنشاء حساب المدير والدخول</button>
+      <div class="tg-setup-hint">هتُستخدم هذه البيانات لتسجيل دخولك كمدير للنظام من الآن فصاعداً.<br>هذه الخطوة تعمل مرة واحدة فقط لأول أدمن في النظام.</div>
+    </div>
+
+    <div id="setupDoneBox" style="display:none">
+      <div class="tg-login-foot" style="margin-top:0">
+        تم إعداد النظام من قبل. سجّل الدخول من الصفحة الرئيسية.
+      </div>
+      <button class="bt bt-p tg-login-btn" onclick="location.href='login.html'">الذهاب لتسجيل الدخول</button>
+    </div>
+  </div>
+</div>
+
+<script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-auth-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore-compat.js"></script>
+<script src="firebase-config.js"></script>
+<script src="auth.js?v=565893"></script>
+<script>
+function showErr(msg){ var e=document.getElementById('setupErr'); e.textContent=msg; e.classList.add('show'); }
+function hideErr(){ document.getElementById('setupErr').classList.remove('show'); }
+function showOk(msg){ var e=document.getElementById('setupOk'); e.textContent=msg; e.classList.add('show'); }
+
+function friendlyErr(code){
+    var map={
+        'auth/invalid-email':'صيغة البريد الإلكتروني غير صحيحة.',
+        'auth/email-already-in-use':'هذا البريد الإلكتروني مستخدم بالفعل.',
+        'auth/weak-password':'كلمة المرور ضعيفة، اكتب 6 أحرف على الأقل.',
+        'auth/network-request-failed':'تعذر الاتصال بالخادم، تحقق من الإنترنت.',
+        'permission-denied':'تم إعداد النظام بالفعل من متصفح آخر. سجّل الدخول مباشرة.'
+    };
+    return map[code] || 'حدث خطأ أثناء الإعداد: ' + code;
+}
+
+function lockToDoneState(){
+    document.getElementById('setupTitle').textContent = 'النظام مُعَد بالفعل';
+    document.getElementById('setupForm').style.display = 'none';
+    document.getElementById('setupDoneBox').style.display = 'block';
+}
+
+function doSetup(){
+    hideErr();
+    var name = (document.getElementById('stName').value || '').trim();
+    var email = (document.getElementById('stEmail').value || '').trim();
+    var pass = document.getElementById('stPass').value || '';
+    var pass2 = document.getElementById('stPass2').value || '';
+
+    if (!name || !email || !pass) { showErr('من فضلك املأ كل الحقول.'); return; }
+    if (pass.length < 6) { showErr('كلمة المرور لازم تكون 6 أحرف على الأقل.'); return; }
+    if (pass !== pass2) { showErr('كلمة المرور وتأكيدها غير متطابقين.'); return; }
+
+    var btn = document.getElementById('stBtn');
+    btn.disabled = true; btn.textContent = 'جارِ الإنشاء...';
+
+    tgCreateFirstAdmin(name, email, pass, function () {
+        showOk('تم إنشاء حساب المدير بنجاح، جارِ تحويلك...');
+        setTimeout(function () { location.href = 'index.html'; }, 900);
+    }, function (err) {
+        btn.disabled = false; btn.textContent = 'إنشاء حساب المدير والدخول';
+        if (err && err.code === 'permission-denied') { lockToDoneState(); return; }
+        showErr(friendlyErr(err && err.code));
+    });
+}
+
+// لو حد داخل بالفعل، رجّعه لصفحته بدل ما يشوف صفحة الإعداد
+auth.onAuthStateChanged(function (user) {
+    if (!user) { checkSetupState(); return; }
+    db.collection('users').doc(user.uid).get().then(function (doc) {
+        if (doc.exists) { location.href = (doc.data().role === 'admin') ? 'index.html' : 'employee.html'; }
+        else { checkSetupState(); }
+    });
+});
+
+function checkSetupState(){
+    tgCheckSetupDone(function (done) {
+        document.documentElement.classList.remove('tg-auth-pending');
+        if (done) lockToDoneState();
+    }, function () {
+        document.documentElement.classList.remove('tg-auth-pending');
+    });
+}
+</script>
+</body>
+</html>

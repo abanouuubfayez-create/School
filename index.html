@@ -1,0 +1,1149 @@
+<!DOCTYPE html>
+<html lang="ar" dir="rtl">
+<head>
+
+<script>
+// ─── AUTOMATIC FORCE CACHE PURGER ─────────────────────────────────────────────
+(function() {
+    var CURRENT_VER = 'v999_final';
+    var savedVer = localStorage.getItem('tg_app_cache_version');
+    if (savedVer !== CURRENT_VER) {
+        localStorage.setItem('tg_app_cache_version', CURRENT_VER);
+        if ('caches' in window) {
+            caches.keys().then(function(names) {
+                for (let name of names) caches.delete(name);
+            });
+        }
+        if ('serviceWorker' in navigator) {
+            navigator.serviceWorker.getRegistrations().then(function(registrations) {
+                for (let reg of registrations) reg.update();
+            });
+        }
+    }
+})();
+</script>
+
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta name="color-scheme" content="light">
+<meta name="theme-color" content="#1b2a4a">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-title" content="Tech Go">
+<title>لوحة التحكم · تيك جو</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Alexandria:wght@300;400;500;600;700;800;900&family=Cairo:wght@400;600;700;800;900&family=Tajawal:wght@400;500;700;800&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="styles.css?v=565893">
+<link rel="manifest" href="manifest.json">
+<link rel="icon" type="image/png" sizes="192x192" href="icon-192.png">
+<link rel="apple-touch-icon" href="icon-192.png">
+<script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-auth-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-storage-compat.js"></script>
+<script src="firebase-config.js?v=1785323857"></script>
+<script src="auth.js?v=565893"></script>
+<script>
+    (function() {
+        const theme = localStorage.getItem('tg-theme') || 'light';
+        document.documentElement.setAttribute('data-theme', theme);
+    })();
+</script>
+
+
+
+</head>
+<body>
+<!-- ═══ شريط حالة الاتصال ═══ -->
+<div id="offlineBanner" style="display:none;position:fixed;top:0;left:0;right:0;z-index:99999;background:#ef4444;color:#fff;text-align:center;padding:10px 16px;font-size:13px;font-weight:700;box-shadow:0 2px 8px rgba(0,0,0,.3);animation:slideDown .3s ease">
+    📵 لا يوجد اتصال بالإنترنت — بعض الوظائف غير متاحة حالياً
+</div>
+<style>
+@keyframes slideDown{from{transform:translateY(-100%)}to{transform:translateY(0)}}
+</style>
+<script>
+(function(){
+    function checkConn(){
+        var b=document.getElementById('offlineBanner');
+        if(!b) return;
+        if(!navigator.onLine){
+            b.style.display='block';
+            document.body.style.marginTop='44px';
+        } else {
+            b.style.display='none';
+            document.body.style.marginTop='';
+        }
+    }
+    window.addEventListener('offline', checkConn);
+    window.addEventListener('online', function(){
+        var b=document.getElementById('offlineBanner');
+        if(b){ b.style.background='#10b981'; b.textContent='✅ عاد الاتصال بالإنترنت'; b.style.display='block'; document.body.style.marginTop='44px'; }
+        setTimeout(function(){ checkConn(); document.body.style.marginTop=''; },2500);
+    });
+    checkConn();
+})();
+</script>
+<iframe id="tgPrintFrame" style="position:fixed;top:-9999px;left:-9999px;width:0;height:0;border:0" title="طباعة"></iframe>
+<button class="mtg" onclick="document.getElementById('sb').classList.toggle('opn')">☰</button>
+
+<!-- ترويسة وتذييل الطباعة (مخفية على الشاشة) -->
+<div class="print-header" aria-hidden="true">
+    <span class="ph-r">TECH GO · شركة تيك جو</span>
+    <span class="ph-l" id="phTitle">نظام الإدارة الشامل</span>
+</div>
+<div class="print-footer" aria-hidden="true">
+    <span class="pf-r">وثيقة سرية · شركة تيك جو</span>
+    <span class="pf-l">TECH GO · نظام الإدارة الشامل</span>
+</div>
+<aside class="S" id="sb">
+<div class="S-h">
+    <div class="logo"><span>TECH - GO</span><small>تيك – جو</small></div>
+    <div class="sub">نظام الإدارة الشامل</div>
+</div>
+<nav class="S-n" id="sidebarNav">
+    <div class="sb-search-wrap">
+      <input type="search" class="sb-search" id="sbSearch" placeholder="ابحث في القائمة..." oninput="sbFilterNav(this.value)" autocomplete="off">
+    </div>
+    <div class="sb-no-results" id="sbNoResults">لا توجد نتائج</div>
+
+    <div class="sb-group open">
+        <div class="S-s" onclick="tgToggleNavGroup(this)">الرئيسية والإدارة <span class="arr">▼</span></div>
+        <div class="sb-items">
+            <div class="S-i a" onclick="go('dash',this)"><span class="ic">🏠</span> لوحة التحكم</div>
+            <div class="S-i" onclick="go('set',this)"><span class="ic">⚙️</span> تخصيص النظام</div>
+            <div class="S-i" onclick="go('account',this)" style="border-right:2px solid var(--gd)"><span class="ic">👤</span> حسابي <span class="S-b">جديد</span></div>
+            <div class="S-i" onclick="go('aiadvisor',this)" style="border-right:2px solid var(--gd)"><span class="ic">🧠</span> المستشار الذكي <span class="S-b" style="background:linear-gradient(135deg, #7c3aed, #6d28d9); color:#fff;">جديد</span></div>
+        </div>
+    </div>
+
+    <div class="sb-group">
+        <div class="S-s" onclick="tgToggleNavGroup(this)">الخطط والتقارير والمشاريع <span class="arr">▼</span></div>
+        <div class="sb-items">
+            <div class="S-i" onclick="go('monthlyplans',this)" style="border-right:2px solid var(--gd)"><span class="ic">🎯</span> الخطط الشهرية (MP) <span class="S-b">تعديل كلي</span></div>
+            <div class="S-i" onclick="go('wkr',this)" style="border-right:2px solid var(--gd)"><span class="ic">📊</span> التقارير (أسبوعية وشهرية) <span class="S-b" style="background:linear-gradient(135deg, #10b981, #059669); color:#fff;">توليد آلي</span></div>
+            <div class="S-i" onclick="go('pmgmt',this)" style="border-right:2px solid var(--gd)"><span class="ic">📁</span> إدارة المشاريع <span class="S-b">جديد</span></div>
+            <div class="S-i" onclick="go('tasksmgmt',this)" style="border-right:2px solid var(--gd)"><span class="ic">🗂</span> توزيع المهام <span class="S-b">جديد</span></div>
+            <div class="S-i" onclick="goLiveTrack(this)" style="border-right:2px solid var(--gd)"><span class="ic">📡</span> متابعة لحظية <span class="S-b" style="background:var(--ok)">مباشر</span></div>
+        </div>
+    </div>
+
+    <div class="sb-group">
+        <div class="S-s" onclick="tgToggleNavGroup(this)">شؤون الموظفين <span class="arr">▼</span></div>
+        <div class="sb-items">
+            <div class="S-i" onclick="go('staff',this);clearAdminBadge('notif-req-badge','notif-req-badge-sb')" style="border-right:2px solid var(--gd)"><span class="ic">👥</span> متابعة الموظفين <span id="notif-req-badge-sb" style="display:none;background:var(--no);color:#fff;border-radius:50%;min-width:18px;height:18px;font-size:10px;font-weight:800;align-items:center;justify-content:center;padding:0 3px;margin-right:4px">0</span></div>
+            <div class="S-i" onclick="go('empdocs',this)" style="border-right:2px solid var(--gd)"><span class="ic">📂</span> ملفات الموظفين</div>
+            <div class="S-i" onclick="go('att_live',this)"><span class="ic">📡</span> الحضور الحي (مباشر)</div>
+            <div class="S-i" onclick="go('att',this)"><span class="ic">⏱</span> تحليل الحضور والانصراف</div>
+            <div class="S-i" onclick="go('cal',this)"><span class="ic">📅</span> التقويم العام</div>
+        </div>
+    </div>
+
+    <div class="sb-group">
+        <div class="S-s" onclick="tgToggleNavGroup(this)">النماذج والسجلات <span class="arr">▼</span></div>
+        <div class="sb-items">
+            <div class="S-i" onclick="go('la',this)"><span class="ic">📅</span> سجل الإجازة السنوية</div>
+            <div class="S-i" onclick="go('lb',this)"><span class="ic">⚡</span> سجل الإجازة العارضة</div>
+            <div class="S-i" onclick="go('lc',this)"><span class="ic">🎉</span> سجل الأعياد</div>
+            <div class="S-i" onclick="go('ld',this)"><span class="ic">❌</span> سجل الغياب بالخصم</div>
+            
+            <div class="S-i" onclick="go('emp',this)"><span class="ic">👤</span> ملف بيانات الموظف</div>
+            <div class="S-i" onclick="go('leave',this)"><span class="ic">🏖</span> طلب إجازة</div>
+            <div class="S-i" onclick="go('perm',this)"><span class="ic">🕐</span> إذن حضور / انصراف</div>
+            <div class="S-i" onclick="go('delay',this)"><span class="ic">⏰</span> التماس تعديل الحضور</div>
+
+            <div class="S-i" onclick="go('gen',this)" style="border-right:2px solid var(--gd)"><span class="ic">✉️</span> خطاب إداري عام</div>
+            <div class="S-i" onclick="go('notice',this)"><span class="ic">👁</span> نموذج لفت نظر</div>
+            <div class="S-i" onclick="go('warn',this)"><span class="ic">⚠️</span> خطاب إنذار</div>
+            <div class="S-i" onclick="go('inv',this)"><span class="ic">🔍</span> محضر تحقيق</div>
+            <div class="S-i" onclick="go('exp',this)"><span class="ic">📜</span> شهادة خبرة</div>
+            <div class="S-i" onclick="go('clr',this)"><span class="ic">✅</span> إخلاء طرف</div>
+            <div class="S-i" onclick="go('res',this)"><span class="ic">🚪</span> طلب استقالة</div>
+            <div class="S-i" onclick="go('promo',this)"><span class="ic">📈</span> قرار ترقية</div>
+            <div class="S-i" onclick="go('raise',this)"><span class="ic">💹</span> زيادة راتب / علاوة</div>
+            <div class="S-i" onclick="go('contract',this)"><span class="ic">📄</span> عقد عمل</div>
+            <div class="S-i" onclick="go('task',this)"><span class="ic">📋</span> تكليف بمهمة</div>
+            <div class="S-i" onclick="go('proj',this)"><span class="ic">📁</span> نموذج إدارة مشروع</div>
+            <div class="S-i" onclick="go('sal',this)"><span class="ic">💰</span> شهادة راتب</div>
+            <div class="S-i" onclick="go('salrec',this)"><span class="ic">💵</span> سند استلام راتب</div>
+            
+            <div class="S-i" onclick="go('archive',this); loadArchive()" style="border-right:2px solid var(--gd)"><span class="ic">🗂</span> أرشيف المستندات</div>
+        </div>
+    </div>
+
+    <div class="sb-group">
+        <div class="S-s" onclick="tgToggleNavGroup(this)">التواصل والتطوير <span class="arr">▼</span></div>
+        <div class="sb-items">
+            <div class="S-i" onclick="go('livemeeting',this)" style="border-right:2px solid var(--gd)"><span class="ic">🎥</span> البث المباشر والاجتماعات <span class="S-b" style="background:var(--ok)">جديد</span></div>
+            <div class="S-i" onclick="go('announcements',this)" style="border-right:2px solid var(--gd)"><span class="ic">📢</span> إدارة الإعلانات</div>
+            <div class="S-i" onclick="go('devres',this)" style="border-right:2px solid var(--gd)"><span class="ic">📚</span> مكتبة التطوير</div>
+            <div class="S-i" onclick="go('comp',this)"><span class="ic">📝</span> الشكاوى والمقترحات</div>
+        </div>
+    </div>
+
+    <div class="sb-group">
+        <div class="S-s" onclick="tgToggleNavGroup(this)">المالية <span class="arr">▼</span></div>
+        <div class="sb-items">
+            <div class="S-i" onclick="go('mexp',this)"><span class="ic">💵</span> شيت المصروفات الشهري</div>
+        </div>
+    </div>
+</nav>
+<button class="sb-scroll-top" id="sbScrollTop" onclick="document.getElementById('sb').scrollTop=0" title="الرجوع لأعلى القائمة">⬆</button>
+<div class="sb-logout-wrap">
+  <button class="sb-logout-btn" onclick="tgLogout()">
+    <span>🚪</span> تسجيل الخروج
+  </button>
+</div>
+<div id="sbUser" style="padding:6px 16px 10px;font-size:10px;color:rgba(255,255,255,.45);border-top:1px solid rgba(255,255,255,.07);text-align:center"></div>
+</aside>
+<div class="M">
+<!-- شريط تثبيت التطبيق (يظهر تلقائياً عند الدعم) -->
+<div class="pwa-install-bar np" id="pwaInstallBar">
+  <span>📲 ثبّت تطبيق Tech Go على جهازك للوصول السريع بدون متصفح</span>
+  <div style="display:flex;gap:8px;align-items:center">
+    <button class="pwa-install-btn" onclick="tgInstallPWA()">📥 تثبيت التطبيق</button>
+    <span class="pwa-install-close" onclick="document.getElementById('pwaInstallBar').style.display='none'">✕</span>
+  </div>
+</div>
+<div class="TB">
+  <div style="display:flex;align-items:center;gap:12px">
+    <button id="tgBackBtn" class="bt bt-o np" style="display:none;padding:5px 12px;font-size:12px;box-shadow:none;border-color:var(--bd)" onclick="tgGoBack()" title="رجوع">🔙 رجوع</button>
+    <div class="t" id="pT">لوحة التحكم</div>
+  </div>
+  <div class="ac np" style="display:flex; align-items:center; gap:6px; flex-wrap:wrap;">
+    
+    <div id="tgTableTools" style="display:none; align-items:center;">
+        <input type="text" id="globalTableFilter" name="tg-global-search-field-admin" class="global-table-filter" placeholder="🔍 تصفية بيانات الجدول..." oninput="if(typeof tgFilterVisibleTables==='function') tgFilterVisibleTables(this.value)" autocomplete="new-password">
+    </div>
+
+    <div id="tgFormTools" style="display:none; align-items:center; gap:6px;">
+        <button class="bt bt-o" onclick="tgClearForm()" style="font-size:11px;padding:4px 10px;">🧹 مسح النموذج</button>
+        <button class="bt bt-o" onclick="tgLoadFormDrafts()" style="font-size:11px;padding:4px 10px;">📂 النماذج المحفوظة</button>
+        <button class="bt bt-p" onclick="tgSaveFormDraft(false)" style="font-size:11px;padding:4px 10px;" title="حفظ التعديلات على نفس النموذج">💾 حفظ</button>
+        <button class="bt bt-p" onclick="tgSaveFormDraft(true)" style="font-size:11px;padding:4px 10px;" title="حفظ نسخة جديدة">💾 حفظ كـ...</button>
+        <select id="tgAutoCompleteEmp" onchange="tgAutoCompleteForm(this.value)" style="padding:4px; font-size:11px; border:1px solid var(--bd); border-radius:4px; background:var(--bg); color:var(--tx)">
+           <option value="">تعبئة بيانات موظف...</option>
+        </select>
+        <button class="bt bt-o" onclick="openPrintPreview()" style="font-size:11px;padding:4px 10px;">🖨 طباعة</button>
+    </div>
+
+    <div style="display:flex; align-items:center; gap:8px;">
+        <button class="bt" onclick="tgJoinCompanyMeeting(false)" style="background:linear-gradient(135deg, #10b981, #059669) !important; color:#fff !important; font-weight:bold; font-size:12px; border:none; padding:6px 15px; border-radius:20px; box-shadow:0 3px 10px rgba(16,185,129,0.3); display:flex; align-items:center; gap:6px; cursor:pointer;" title="الانضمام لغرفة الاجتماعات المباشرة"><span style="font-size:14px;">🎥</span> غرفة الاجتماعات</button>
+        <button class="bt bt-o" id="themeToggle" onclick="tgToggleTheme()" title="تبديل الوضع الليلي" style="font-size:16px;padding:4px 10px;">🌙</button>
+        <div class="notif-wrap np" id="notifWrap">
+          <button class="bt bt-o notif-bell-btn" id="notifBellBtn" onclick="tgToggleNotifPanel(event)" title="الإشعارات" style="font-size:16px;padding:4px 10px;position:relative">
+            🔔<span class="notif-badge" id="notifBadge" style="display:none">0</span>
+          </button>
+          <div class="notif-panel" id="notifPanel" style="display:none">
+            <div class="notif-panel-hd">
+              <span>الإشعارات</span>
+              <span class="notif-mark-all" id="notifMarkAll" onclick="tgMarkAllNotifsRead(TG_USER && TG_USER.uid)">تحديد الكل كمقروء</span>
+            </div>
+            <div class="notif-list" id="notifList">
+              <div class="notif-empty">لا توجد إشعارات بعد</div>
+            </div>
+          </div>
+        </div>
+    </div>
+
+</div></div>
+<div id="tgFormDraftsSidebar" class="form-drafts-sidebar np" style="display:none;">
+  <div class="fds-header">
+    <span>📂 النماذج المحفوظة</span>
+    <button class="bt bt-o np" onclick="tgToggleDraftsSidebar()" style="padding:2px 6px; font-size:10px; border:none; box-shadow:none; background:transparent" title="إخفاء">❌</button>
+  </div>
+  <div class="fds-list" id="fdsList"></div>
+</div>
+<div id="tgFormDraftsSidebarCollapsed" onclick="tgToggleDraftsSidebar()" class="np" style="display:none; position:fixed; top:60px; left:20px; background:var(--bg2); border:1px solid var(--bd); padding:10px; border-radius:8px; cursor:pointer; z-index:90; box-shadow:0 2px 5px rgba(0,0,0,0.1);" title="إظهار النماذج المحفوظة">
+  📂
+</div>
+<div class="CT">
+<div class="pg a" id="pg-dash">
+<div class="DG" id="dashSummary" style="margin-bottom:16px"></div>
+
+<div class="dash-group" style="background:var(--bg2); padding:15px; border-radius:12px; margin-bottom:20px; border:1px solid var(--bd);">
+    <div class="dash-sec-title" style="margin-bottom:10px;"><div class="di">⚡</div> وصول سريع (Quick Links)</div>
+    <div class="DG" style="grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap:10px;">
+        <button class="bt" onclick="go('livemeeting')" style="width:100%; justify-content:center; padding:12px;"><span style="font-size:1.2rem; margin-left:8px;">🎥</span> بدء اجتماع</button>
+        <button class="bt" onclick="go('announcements')" style="width:100%; justify-content:center; padding:12px;"><span style="font-size:1.2rem; margin-left:8px;">📢</span> إرسال إعلان</button>
+        <button class="bt" onclick="go('tasksmgmt')" style="width:100%; justify-content:center; padding:12px;"><span style="font-size:1.2rem; margin-left:8px;">🗂</span> إضافة مهمة</button>
+        <button class="bt" onclick="go('staff')" style="width:100%; justify-content:center; padding:12px;"><span style="font-size:1.2rem; margin-left:8px;">👥</span> الموظفين</button>
+    </div>
+</div>
+
+<div class="dash-wrap">
+
+  <div class="dash-group">
+      <div class="dash-sec-title"><div class="di">🚀</div> الإدارة والمتابعة</div>
+      <div class="DG">
+          <div class="DC" onclick="go('pmgmt')"><div class="di-wrap"><div class="di">📁</div><span class="badge-new">جديد</span></div><div class="dt2">إدارة المشاريع</div><div class="dd">إنشاء مشاريع وتعيين الموظفين المسؤولين عنها</div></div>
+          <div class="DC" onclick="go('tasksmgmt')"><div class="di-wrap"><div class="di">🗂</div><span class="badge-new">جديد</span></div><div class="dt2">توزيع المهام</div><div class="dd">تكليف كل موظف بمهمة يتابعها من بوابته</div></div>
+          <div class="DC" onclick="go('staff')"><div class="di-wrap"><div class="di">👥</div><span class="badge-new">جديد</span></div><div class="dt2">متابعة الموظفين</div><div class="dd">حسابات الدخول، المشاريع، الإنجازات، الطلبات</div></div>
+          <div class="DC" onclick="go('announcements')"><div class="di-wrap"><div class="di">📢</div><span class="badge-new">جديد</span></div><div class="dt2">إدارة الإعلانات</div><div class="dd">نشر وتعديل الإعلانات للموظفين</div></div>
+      </div>
+  </div>
+
+  <div class="dash-group">
+      <div class="dash-sec-title"><div class="di">👥</div> نماذج الموظفين</div>
+      <div class="DG">
+          <div class="DC" onclick="go('emp')"><div class="di-wrap"><div class="di">👤</div></div><div class="dt2">ملف بيانات الموظف</div><div class="dd">البيانات الشخصية · الوظيفية · ساعات العمل</div></div>
+          <div class="DC" onclick="go('leave')"><div class="di-wrap"><div class="di">🏖</div></div><div class="dt2">طلب إجازة</div><div class="dd">سنوية · عارضة · الموافقات والرصيد</div></div>
+          <div class="DC" onclick="go('perm')"><div class="di-wrap"><div class="di">🕐</div></div><div class="dt2">إذن حضور / انصراف</div><div class="dd">تأخير · مغادرة مبكرة · توقيعات</div></div>
+          <div class="DC" onclick="go('delay')"><div class="di-wrap"><div class="di">⏰</div><span class="badge-new">جديد</span></div><div class="dt2">التماس تعديل الحضور</div><div class="dd">طلب تعديل موعد الحضور الرسمي بصفة دائمة</div></div>
+      </div>
+  </div>
+
+  <div class="dash-group">
+      <div class="dash-sec-title"><div class="di">📂</div> السجلات</div>
+      <div class="DG">
+          <div class="DC" onclick="go('la')"><div class="di-wrap"><div class="di">📅</div></div><div class="dt2">سجل الإجازة السنوية</div><div class="dd">ملحق أ — الرصيد والمستخدم</div></div>
+          <div class="DC" onclick="go('lb')"><div class="di-wrap"><div class="di">⚡</div></div><div class="dt2">سجل الإجازة العارضة</div><div class="dd">ملحق ب — حد ٧ أيام</div></div>
+          <div class="DC" onclick="go('lc')"><div class="di-wrap"><div class="di">🎉</div></div><div class="dt2">سجل الأعياد</div><div class="dd">ملحق ج — العطل الرسمية</div></div>
+          <div class="DC" onclick="go('ld')"><div class="di-wrap"><div class="di">❌</div></div><div class="dt2">سجل الغياب بالخصم</div><div class="dd">ملحق د — م.١٣٠</div></div>
+      </div>
+  </div>
+
+  <div class="dash-group">
+      <div class="dash-sec-title"><div class="di">📝</div> نماذج إدارية</div>
+      <div class="DG">
+          <div class="DC" onclick="go('gen')"><div class="di-wrap"><div class="di">✉️</div><span class="badge-new">جديد</span></div><div class="dt2">خطاب إداري عام</div><div class="dd">قالب رسمي قابل للتخصيص لأي موضوع</div></div>
+          <div class="DC" onclick="go('notice')"><div class="di-wrap"><div class="di">👁</div><span class="badge-new">جديد</span></div><div class="dt2">نموذج لفت نظر</div><div class="dd">إنذار رسمي وفق اللائحة التنظيمية</div></div>
+          <div class="DC" onclick="go('warn')"><div class="di-wrap"><div class="di">⚠️</div></div><div class="dt2">خطاب إنذار</div><div class="dd">أول · ثانٍ · نهائي</div></div>
+          <div class="DC" onclick="go('inv')"><div class="di-wrap"><div class="di">🔍</div></div><div class="dt2">محضر تحقيق</div><div class="dd">توثيق ومجريات</div></div>
+          <div class="DC" onclick="go('exp')"><div class="di-wrap"><div class="di">📜</div></div><div class="dt2">شهادة خبرة</div><div class="dd">شهادة رسمية</div></div>
+          <div class="DC" onclick="go('clr')"><div class="di-wrap"><div class="di">✅</div></div><div class="dt2">إخلاء طرف</div><div class="dd">براءة ذمة</div></div>
+          <div class="DC" onclick="go('res')"><div class="di-wrap"><div class="di">🚪</div><span class="badge-new">جديد</span></div><div class="dt2">طلب استقالة</div><div class="dd">إشعار إنهاء الخدمة والإقرار</div></div>
+          <div class="DC" onclick="go('promo')"><div class="di-wrap"><div class="di">📈</div><span class="badge-new">جديد</span></div><div class="dt2">قرار ترقية</div><div class="dd">تعديل المسمى الوظيفي والدرجة</div></div>
+          <div class="DC" onclick="go('raise')"><div class="di-wrap"><div class="di">💹</div><span class="badge-new">جديد</span></div><div class="dt2">زيادة راتب / علاوة</div><div class="dd">دورية · استثنائية · تقديرية</div></div>
+          <div class="DC" onclick="go('contract')"><div class="di-wrap"><div class="di">📄</div><span class="badge-new">جديد</span></div><div class="dt2">عقد عمل</div><div class="dd">اتفاقية توظيف بين الطرفين</div></div>
+          <div class="DC" onclick="go('task')"><div class="di-wrap"><div class="di">📋</div></div><div class="dt2">تكليف بمهمة</div><div class="dd">مهام ومواعيد</div></div>
+          <div class="DC" onclick="go('proj')"><div class="di-wrap"><div class="di">📁</div><span class="badge-new">جديد</span></div><div class="dt2">نموذج إدارة المشروع</div><div class="dd">متابعة المشاريع والمهام والفريق</div></div>
+          <div class="DC" onclick="go('sal')"><div class="di-wrap"><div class="di">💰</div></div><div class="dt2">شهادة راتب</div><div class="dd">مفردات المرتب</div></div>
+          <div class="DC" onclick="go('salrec')"><div class="di-wrap"><div class="di">💵</div><span class="badge-new">جديد</span></div><div class="dt2">سند استلام راتب</div><div class="dd">إقرار استلام الأجر والمستحقات</div></div>
+      </div>
+  </div>
+
+  <div class="dash-group">
+      <div class="dash-sec-title"><div class="di">⚙️</div> المالية والأنظمة</div>
+      <div class="DG">
+          <div class="DC" onclick="go('mexp')"><div class="di-wrap"><div class="di">💵</div><span class="badge-new">جديد</span></div><div class="dt2">شيت المصروفات الشهري</div><div class="dd">مسلسل · صارف · بند · مبلغ · إجمالي تلقائي</div></div>
+          <div class="DC" onclick="go('att')"><div class="di-wrap"><div class="di">⏱</div></div><div class="dt2">الحضور والانصراف</div><div class="dd">نظام متكامل</div></div>
+          <div class="DC" onclick="go('comp')"><div class="di-wrap"><div class="di">📝</div></div><div class="dt2">شكاوى ومقترحات</div><div class="dd">بسرية تامة</div></div>
+      </div>
+  </div>
+
+</div>
+</div>
+<div class="pg" id="pg-emp"></div><div class="pg" id="pg-leave"></div><div class="pg" id="pg-perm"></div><div class="pg" id="pg-delay"></div>
+<div class="pg" id="pg-la"></div><div class="pg" id="pg-lb"></div><div class="pg" id="pg-lc"></div><div class="pg" id="pg-ld"></div>
+<div class="pg" id="pg-notice"></div><div class="pg" id="pg-gen"></div><div class="pg" id="pg-warn"></div><div class="pg" id="pg-inv"></div>
+<div class="pg" id="pg-exp"></div><div class="pg" id="pg-clr"></div><div class="pg" id="pg-task"></div><div class="pg" id="pg-sal"></div><div class="pg" id="pg-salrec"></div>
+<div class="pg" id="pg-res"></div><div class="pg" id="pg-promo"></div><div class="pg" id="pg-raise"></div><div class="pg" id="pg-contract"></div>
+<div class="pg" id="pg-att_live"></div><div class="pg" id="pg-att"></div><div class="pg" id="pg-cal"></div><div class="pg" id="pg-comp"></div><div class="pg" id="pg-set"></div><div class="pg" id="pg-proj"></div><div class="pg" id="pg-mexp"></div><div class="pg" id="pg-devres"></div><div class="pg" id="pg-aiadvisor"></div><div class="pg" id="pg-wkr"></div><div class="pg" id="pg-monthlyreports"></div><div class="pg" id="pg-monthlyplans"></div>
+<div class="pg" id="pg-staff"></div><div class="pg" id="pg-pmgmt"></div><div class="pg" id="pg-tasksmgmt"></div><div class="pg" id="pg-account"></div><div class="pg" id="pg-archive">
+    <div class="set-sec">
+        <div class="set-sec-title">🗂 أرشيف المستندات المطبوعة</div>
+        <div class="set-hint" style="margin-bottom:12px">سجل لجميع المستندات التي تم طباعتها أو إرسالها من النظام.</div>
+        <div class="fr fr2" style="margin-bottom:12px">
+            <div class="fg"><label>اسم الموظف</label><input type="text" id="arcEmpFilter" placeholder="ابحث باسم الموظف..." onkeyup="tgRenderArchive()"></div>
+            <div class="fg"><label>الشهر (سنة-شهر)</label><input type="month" id="arcMonthFilter" onchange="tgRenderArchive()"></div>
+        </div>
+        <div id="arcList"></div>
+    </div>
+</div>
+<div class="pg" id="pg-announcements"></div><div class="pg" id="pg-livetrack"></div><div class="pg" id="pg-sendform"></div><div class="pg" id="pg-empdocs"></div>
+<div class="pg" id="pg-livemeeting">
+    <div class="card p-4" style="background:#0f172a; border-radius:24px; border:1.5px solid rgba(255,255,255,0.15); box-shadow:0 20px 40px rgba(0,0,0,0.4); color:#ffffff;">
+        <div style="text-align:center; padding:35px 25px; background:linear-gradient(180deg, rgba(16,185,129,0.15) 0%, rgba(15,23,42,0.8) 100%); border-radius:20px; border:1.5px solid rgba(16,185,129,0.4); margin-bottom:30px;">
+            <div style="font-size:65px; margin-bottom:15px; animation:bouncePhone 2s infinite alternate;">🎥</div>
+            <span style="background:rgba(16,185,129,0.25); color:#34d399; border:1.5px solid #10b981; padding:6px 20px; border-radius:30px; font-size:13px; font-weight:800; letter-spacing:0.5px; display:inline-block; margin-bottom:15px;">🟢 غرفة مخصصة ودائمة (شغالة طوال اليوم - بدون تسجيل دخول)</span>
+            <h2 style="color:#ffffff; margin-bottom:12px; font-size:28px; font-weight:900; text-shadow:0 2px 10px rgba(0,0,0,0.5);">غرفة الاجتماعات الرئيسية للشركة</h2>
+            <p style="color:#cbd5e1; font-size:15px; max-width:650px; margin:0 auto 28px; line-height:1.7; font-weight:500;">
+                غرفة اجتماعات عامة ومفتوحة لجميع الموظفين والمديرين، ينقلك النظام إليها مباشرةً باسمك الحقيقي دون أي خطوات تسجيل أو قيود زمنية.
+            </p>
+            
+            <div style="display:flex; justify-content:center; gap:18px; flex-wrap:wrap; margin-bottom:25px;">
+                <a href="https://meet.ffmuc.net/techgo-company-main-room-2026" target="_blank" onclick="if(typeof tgOnDirectMeetingJoinClick==='function') tgOnDirectMeetingJoinClick();" style="background:linear-gradient(135deg, #059669, #10b981); color:#ffffff; text-decoration:none; padding:18px 42px; border-radius:50px; font-size:17px; font-weight:900; box-shadow:0 8px 30px rgba(16,185,129,0.5); display:inline-flex; align-items:center; gap:12px; transition:transform 0.2s;">
+                    <span style="font-size:24px;">🎥</span> دخول غرفة الاجتماعات الرئيسية
+                </a>
+                <button type="button" onclick="tgBroadcastCallNotification()" style="background:#1e293b; color:#fbbf24; border:1.5px solid #d97706; padding:18px 34px; border-radius:50px; font-size:16px; font-weight:900; cursor:pointer; display:inline-flex; align-items:center; gap:10px; box-shadow:0 4px 20px rgba(0,0,0,0.3); transition:transform 0.2s;">
+                    <span style="font-size:22px;">🔔</span> رنين وتنبيه الموظفين (جميعاً / محددين)
+                </button>
+            </div>
+
+            <!-- In-Page Video Iframe Container for Admin -->
+            <div id="jitsiAdminContainer" style="display:none; width:100%; margin-top:20px; background:#0f172a; border:2px solid #10b981; border-radius:18px; padding:20px; box-shadow:0 10px 30px rgba(16,185,129,0.2);">
+                <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:12px;">
+                    <div id="callStatusHeaderAdmin" style="font-size:16px; font-weight:900; color:#38bdf8;">🎥 غرفة الاجتماع المباشرة (شغالة الآن)</div>
+                    <a id="openJitsiDirectBtnAdmin" href="#" target="_blank" style="background:#334155; color:#38bdf8; padding:6px 14px; border-radius:8px; font-size:12px; font-weight:800; text-decoration:none;">🔗 فتح في نافذة مستقلة</a>
+                </div>
+                <div id="jitsiAdminInner" style="width:100%; height:600px; border-radius:12px; overflow:hidden; background:#000;"></div>
+            </div>
+        </div>
+
+        <!-- Real-Time Presence Section: Who is currently inside -->
+        <h3 style="margin:25px 0 14px; font-size:17px; color:#ffffff; font-weight:800; display:flex; align-items:center; justify-content:space-between; border-bottom:1px solid #334155; padding-bottom:10px;">
+            <span>🟢 المتواجدون حالياً في غرفة الاجتماعات</span>
+            <span class="badge" style="background:#10b981; color:#ffffff; font-size:13px; font-weight:900; padding:4px 12px; border-radius:20px;"><span class="meeting-presence-count">0</span> متصل</span>
+        </h3>
+        <div id="meetingPresenceContainerAdmin" style="margin-bottom:30px;">
+            <!-- Real-time presence avatars rendered here -->
+        </div>
+
+        <div style="background:#1e293b; border:1.5px solid #334155; border-radius:16px; padding:22px; color:#f8fafc;">
+            <h4 style="margin:0 0 12px; color:#38bdf8; font-size:16px; font-weight:800; display:flex; align-items:center; gap:8px;">
+                <span>💡</span> مميزات نظام الاجتماعات المباشرة:
+            </h4>
+            <ul style="margin:0; padding-right:22px; color:#cbd5e1; font-size:14px; line-height:1.9; font-weight:500;">
+                <li>تم إلغاء مرحلة الـ Log in / Prejoin؛ يتم دخولك وتحديد اسمك كـ (<b>اسم الموظف الحقيقي</b>) تلقائياً 100%.</li>
+                <li>عند الضغط على <b>"انضمام وتنبيه جميع الموظفين"</b>، يُرسل تنبيه فوري لكل الأجهزة بالشركة.</li>
+                <li>القائمة أعلاه توضح بالوقت الفعلي كافة المتواجدين داخل الاجتماع الآن.</li>
+            </ul>
+        </div>
+    </div>
+</div>
+
+<div class="pg" id="pg-wkreports"></div>
+</div>
+</div>
+<datalist id="tgEmpDL"></datalist>
+<script src="auth.js?v=565893"></script>
+
+<!-- FullCalendar -->
+<script src="https://cdn.jsdelivr.net/npm/fullcalendar@6.1.15/index.global.min.js"></script>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
+<script>if(window.pdfjsLib){ pdfjsLib.GlobalWorkerOptions.workerSrc = "https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js"; }</script>
+<script src="app.js?v=565893"></script>
+<script src="livetrack.js?v=1785323857"></script>
+<script src="formsend.js?v=1785323857"></script>
+
+
+<script>
+  // ── مركز الإشعارات (Facebook-style) ──────────────────────────────────────
+  function tgToggleNotifPanel(ev) {
+    if (ev) ev.stopPropagation();
+    var panel = document.getElementById('notifPanel');
+    if (!panel) return;
+    var willOpen = panel.style.display === 'none' || !panel.style.display;
+    panel.style.display = willOpen ? 'block' : 'none';
+  }
+  document.addEventListener('click', function (ev) {
+    var wrap = document.getElementById('notifWrap');
+    var panel = document.getElementById('notifPanel');
+    if (!wrap || !panel || panel.style.display === 'none') return;
+    if (!wrap.contains(ev.target)) panel.style.display = 'none';
+  });
+
+  function tgTimeAgo(d) {
+    if (!d) return 'الآن';
+    var ms = (d && d.toMillis) ? d.toMillis() : new Date(d).getTime();
+    if (!ms || isNaN(ms)) return 'توقيت غير معروف';
+    var now = Date.now();
+    var s = Math.floor(Math.abs(now - ms) / 1000);
+    
+    if (s < 2) return 'الآن';
+    if (s < 60) return 'منذ ' + s + ' ثانية';
+    var m = Math.floor(s / 60);
+    if (m < 60) return (m === 1 ? 'منذ دقيقة' : m === 2 ? 'منذ دقيقتين' : m <= 10 ? 'منذ ' + m + ' دقائق' : 'منذ ' + m + ' دقيقة');
+    var h = Math.floor(m / 60);
+    if (h < 24) return (h === 1 ? 'منذ ساعة' : h === 2 ? 'منذ ساعتين' : h <= 10 ? 'منذ ' + h + ' ساعات' : 'منذ ' + h + ' ساعة');
+    var days = Math.floor(h / 24);
+    if (days < 30) return (days === 1 ? 'منذ يوم' : days === 2 ? 'منذ يومين' : days <= 10 ? 'منذ ' + days + ' أيام' : 'منذ ' + days + ' يوم');
+    return new Date(ms).toLocaleDateString('ar-EG');
+  }
+
+  function tgRenderNotifPanel(list, unreadCount) {
+    var badge = document.getElementById('notifBadge');
+    if (badge) {
+      if (unreadCount > 0) {
+        badge.style.display = 'flex';
+        badge.textContent = unreadCount > 99 ? '99+' : unreadCount;
+      } else {
+        badge.style.display = 'none';
+      }
+    }
+    var bellBtn = document.getElementById('notifBellBtn');
+    if (bellBtn) bellBtn.classList.toggle('has-unread', unreadCount > 0);
+
+    var listEl = document.getElementById('notifList');
+    if (!listEl) return;
+    if (!list || !list.length) {
+      listEl.innerHTML = '<div class="notif-empty">لا توجد إشعارات بعد</div>';
+      return;
+    }
+    var h = '';
+    list.forEach(function (n) {
+      var unread = !n.read;
+      h += '<div class="notif-item' + (unread ? ' unread' : '') + '" onclick="tgNotifItemClick(\'' + n.id + '\', event, \'' + (n.tag || '') + '\')">';
+      h += '<div class="notif-item-dot"></div>';
+      h += '<div class="notif-item-body">';
+      h += '<div class="notif-item-title">' + escH(n.title || 'إشعار') + '</div>';
+      if (n.body) h += '<div class="notif-item-text">' + escH(n.body) + '</div>';
+      h += '<div class="notif-item-time">' + tgTimeAgo(n.createdAt) + '</div>';
+      h += '</div>';
+      h += '<div class="notif-item-del" title="حذف" onclick="tgNotifDelClick(\'' + n.id + '\', event)">✕</div>';
+      h += '</div>';
+    });
+    listEl.innerHTML = h;
+  }
+
+  function tgNotifItemClick(id, ev, tag) {
+    if (ev) ev.stopPropagation();
+    if (typeof tgMarkNotifRead === 'function') tgMarkNotifRead(id);
+    var panel = document.getElementById('notifPanel');
+    if (panel) panel.style.display = 'none';
+
+    if (tag === 'form-submitted') { if (typeof goSendForm === 'function') goSendForm(null); else go('sendform'); }
+    else if (tag === 'form-new') go('gen');
+    else if (tag === 'request-reviewed' || tag === 'request-new' || tag === 'att-check-in' || tag === 'att-check-out' || tag === 'name-change' || tag === 'achievement-new') go('staff');
+    else if (tag === 'project-new' || tag === 'project-update' || tag === 'project-status' || tag === 'project-progress' || tag === 'project-note' || tag === 'project-completed') go('pmgmt');
+    else if (tag === 'task-new' || tag === 'task-update' || tag === 'task-status') go('tasksmgmt');
+    else if (tag === 'weekly-report-new' || tag === 'weekly-report-reminder') go('wkreports');
+    else if (tag === 'emp-doc-personal' || tag === 'emp-doc-direct') go('empdocs');
+    else if (tag === 'announcement-new') go('announcements');
+    else if (tag === 'chat-new') { if (typeof tgChatToggle === 'function') tgChatToggle(); }
+  }
+  function tgNotifDelClick(id, ev) {
+    if (ev) ev.stopPropagation();
+    if (typeof tgDeleteNotif === 'function') tgDeleteNotif(id);
+  }
+
+  // ── معاينة الطباعة المحسّنة ──────────────────
+  function openPrintPreview() {
+    var t = document.getElementById('pT');
+    var ph = document.getElementById('phTitle');
+    if (t && ph) {
+      var label = t.textContent.trim();
+      var activePg = document.querySelector('.pg.a');
+      var numFld = activePg ? activePg.querySelector('.doc-num-fld') : null;
+      if (numFld && numFld.value) label += ' · ' + numFld.value;
+      ph.textContent = label;
+    }
+
+    var bar = document.getElementById('ppBar');
+    if (!bar) {
+      bar = document.createElement('div');
+      bar.id = 'ppBar';
+      bar.className = 'np';
+      bar.style.cssText = 'position:fixed;top:12px;left:12px;z-index:99999;display:flex;gap:8px;background:var(--nv);color:#fff;padding:10px 14px;border-radius:8px;box-shadow:0 8px 24px rgba(0,0,0,.25);font-family:Alexandria,sans-serif;direction:rtl;align-items:center;flex-wrap:wrap';
+      var savedPaper = localStorage.getItem('tg_paper_size') || 'A4';
+      var paperOpts = ['A4', 'Legal', 'Letter'].map(function (sz) {
+        return '<option value="' + sz + '"' + (sz === savedPaper ? ' selected' : '') + '>' + sz + '</option>';
+      }).join('');
+      bar.innerHTML =
+        '<span style="font-weight:800;font-size:13px">🖨 جاهز للطباعة</span>' +
+        '<label style="font-size:11px;display:flex;align-items:center;gap:4px;cursor:pointer"><input type="checkbox" id="ppBw" onchange="toggleBwPrint(this.checked)"> أبيض/أسود</label>' +
+        '<label style="font-size:11px;display:flex;align-items:center;gap:4px;cursor:pointer"><input type="checkbox" id="ppKeepData" onchange="togglePrintKeepData(this.checked)"' + (PRINT_KEEP_DATA ? ' checked' : '') + '> اطبع البيانات المكتوبة</label>' +
+        '<label style="font-size:11px;display:flex;align-items:center;gap:4px;cursor:pointer">حجم الورق <select id="ppPaperSize" onchange="setPaperSize(this.value)" style="font-family:inherit;font-size:11px;border-radius:4px;border:none;padding:2px 4px">' + paperOpts + '</select></label>' +
+        '<button onclick="doPrintNow()" style="background:#c9a227;color:#1b2a4a;border:0;padding:6px 14px;border-radius:4px;font-weight:800;cursor:pointer;font-family:inherit">طباعة / حفظ PDF</button>' +
+        '<button onclick="closePrintPreview()" style="background:transparent;color:#fff;border:1px solid rgba(255,255,255,.4);padding:6px 12px;border-radius:4px;cursor:pointer;font-family:inherit">إغلاق</button>';
+      document.body.appendChild(bar);
+      if (savedPaper !== 'A4') setPaperSize(savedPaper);
+    } else {
+      var kd = document.getElementById('ppKeepData'); if (kd) kd.checked = PRINT_KEEP_DATA;
+    }
+    bar.style.display = 'flex';
+    window.scrollTo({ top: 0, behavior: 'smooth' });
+  }
+  function closePrintPreview() {
+    var b = document.getElementById('ppBar'); if (b) b.style.display = 'none';
+    document.documentElement.classList.remove('bw-print');
+    var cb = document.getElementById('ppBw'); if (cb) cb.checked = false;
+  }
+  function toggleBwPrint(on) {
+    document.documentElement.classList.toggle('bw-print', !!on);
+  }
+
+  // ── اختيار حجم الورق (A4 / Legal / Letter) — يتحكم في @page ديناميكياً ──
+  function setPaperSize(sz) {
+    var st = document.getElementById('paperSizeStyle');
+    if (!st) { st = document.createElement('style'); st.id = 'paperSizeStyle'; document.head.appendChild(st); }
+    st.textContent = (sz && sz !== 'A4') ? ('@page { size: ' + sz + ' portrait; }') : '';
+    localStorage.setItem('tg_paper_size', sz || 'A4');
+  }
+
+  // ── خيار: هل تُطبع البيانات المكتوبة في الحقول أم تُفرَّغ للتعبئة اليدوية؟ ──
+  // هذا الخيار يشمل أيضاً خانات الإجمالي المحسوبة تلقائياً (المصروفات، الراتب، تقرير الحضور)
+  var PRINT_KEEP_DATA = (localStorage.getItem('tg_print_keep_data') === '1');
+  document.documentElement.classList.toggle('print-keep-data', PRINT_KEEP_DATA);
+  function togglePrintKeepData(on) {
+    PRINT_KEEP_DATA = !!on;
+    localStorage.setItem('tg_print_keep_data', PRINT_KEEP_DATA ? '1' : '0');
+    document.documentElement.classList.toggle('print-keep-data', PRINT_KEEP_DATA);
+    var att = document.getElementById('attF');
+    if (att && att.contentWindow && att.contentWindow.syncPrintKeepData) {
+      try { att.contentWindow.syncPrintKeepData(PRINT_KEEP_DATA); } catch (e) {}
+    }
+  }
+  function doPrintNow() {
+    var att = document.getElementById('attF');
+    var attPg = document.getElementById('pg-att');
+    if (att && attPg && attPg.classList.contains('a')) {
+      try { att.contentWindow.focus(); att.contentWindow.print(); return; } catch (e) {}
+    }
+    window.print();
+  }
+
+  // إخفاء شريط المعاينة فعلياً قبل إرسال الطباعة + استعادة حقول التاريخ
+  // الحقول التي تُفرَّغ عند الطباعة لتصبح جاهزة للتعبئة اليدوية بالقلم —
+  // باستثناء رقم المستند (مرجع رسمي من النظام) والحقول القابلة للقراءة فقط (المجاميع المحسوبة)
+  var PRINT_CLEAR_SELECTOR =
+      'input[type="text"]:not(.doc-num-fld), input[type="tel"], input[type="email"], ' +
+      'input[type="number"], input[type="month"], input[type="time"], ' +
+      'textarea';
+
+  window.addEventListener('beforeprint', function () {
+    var b = document.getElementById('ppBar'); if (b) b.style.display = 'none';
+    
+    // --- Save to Archive ---
+    if(window.TG_USER && (TG_USER.role === 'admin' || TG_USER.role === 'tech_admin') && window.db) {
+      var activePg = document.querySelector('.pg.a');
+      // don't archive pages that don't have FL (like pure settings pages)
+      if(activePg && activePg.querySelector('.FL')) {
+        var clone = activePg.cloneNode(true);
+        var origInputs = activePg.querySelectorAll('input, textarea, select');
+        var cloneInputs = clone.querySelectorAll('input, textarea, select');
+        origInputs.forEach(function(el, i) {
+          if(cloneInputs[i]) {
+            if(el.type==='checkbox'||el.type==='radio') { if(el.checked) cloneInputs[i].setAttribute('checked','checked'); }
+            else cloneInputs[i].setAttribute('value', el.value);
+            if(el.tagName==='TEXTAREA') cloneInputs[i].textContent = el.value;
+          }
+        });
+        var docTitle = 'مستند';
+        var titleEl = clone.querySelector('.FL-doctype');
+        if(titleEl) docTitle = titleEl.textContent.trim();
+        var empName = 'غير محدد';
+        var nameEl = clone.querySelector('input[data-fid="name"], input[placeholder*="اسم"]');
+        if(nameEl && nameEl.value) empName = nameEl.value;
+        else {
+            var lineLbls = clone.querySelectorAll('.FL-line-lbl');
+            for(var j=0; j<lineLbls.length; j++){
+                if(lineLbls[j].textContent.indexOf('الاسم') > -1 || lineLbls[j].textContent.indexOf('الموظف') > -1) {
+                    var nVal = lineLbls[j].nextElementSibling;
+                    if(nVal && nVal.textContent) { empName = nVal.textContent.trim(); break; }
+                }
+            }
+        }
+        var fullHtml = '<!DOCTYPE html><html lang="ar" dir="rtl"><head><meta charset="UTF-8"><link rel="stylesheet" href="styles.css?v=565893"></head><body style="background:#fff;padding:20px;">' + clone.innerHTML + '</body></html>';
+        db.collection('docArchive').add({
+          docTitle: docTitle,
+          employeeName: empName,
+          htmlContent: fullHtml,
+          createdAt: new Date(),
+          savedBy: TG_USER.uid
+        }).catch(function(e){ console.error('Archive err:', e); });
+      }
+    }
+    // -----------------------
+    var now = new Date();
+    var stamp = 'طُبع بتاريخ ' + now.toLocaleDateString('ar-EG') + ' — ' + now.toLocaleTimeString('ar-EG', { hour: '2-digit', minute: '2-digit' });
+    document.querySelectorAll('.FL-foot-ts').forEach(function (el) { el.textContent = stamp; });
+
+    // مرجع المستند في التذييل — نفس رقم المستند لتأكيد ترابط صفحات المستند الواحد
+    document.querySelectorAll('.FL').forEach(function (fl) {
+      var numFld = fl.querySelector('.doc-num-fld');
+      var ref = fl.querySelector('.FL-foot-ref');
+      if (ref) ref.textContent = (numFld && numFld.value) ? ('مرجع: ' + numFld.value) : '';
+    });
+
+    // ختم الحالة (موافق/مرفوض/قيد المراجعة) فوق المستندات التي بها حالة طلب
+    // الختم يظهر فقط عند اختيار "طباعة البيانات المكتوبة" — وإلا يُخفى
+    document.querySelectorAll('.stg').forEach(function (stg) {
+      var active = stg.querySelector('.stb.a');
+      var fl = stg.closest('.FL');
+      if (!fl) return;
+      // إزالة أي ختم موجود أولاً
+      var existingSt = fl.querySelector('.print-stamp');
+      if (existingSt) { existingSt.remove(); }
+      // إضافة الختم فقط إذا اختار المستخدم طباعة البيانات المكتوبة
+      if (!PRINT_KEEP_DATA || !active) return;
+      var st = document.createElement('div');
+      st.className = 'print-stamp';
+      fl.appendChild(st);
+      st.classList.remove('st-ok', 'st-no', 'st-pn');
+      if (active.classList.contains('ok')) { st.classList.add('st-ok'); st.textContent = '✓ معتمد'; }
+      else if (active.classList.contains('no')) { st.classList.add('st-no'); st.textContent = '✗ مرفوض'; }
+      else { st.classList.add('st-pn'); st.textContent = '⏳ قيد المراجعة'; }
+    });
+
+    // تمييز صفوف الجداول المكتوب فيها بيانات فعلياً عن الصفوف الفارغة (السجلات والملاحق الطويلة)
+    document.querySelectorAll('.dt tr').forEach(function (tr) {
+      var inputs = tr.querySelectorAll('input');
+      if (!inputs.length) { tr.classList.remove('row-filled'); return; }
+      var hasValue = Array.prototype.some.call(inputs, function (inp) { return (inp.value || '').trim() !== ''; });
+      tr.classList.toggle('row-filled', hasValue);
+    });
+
+    if (PRINT_KEEP_DATA) return; // المستخدم اختار طباعة البيانات المكتوبة كما هي — بدون تفريغ
+    // تفريغ حقول التاريخ العادية (نبحث عن الحقول التي تم تخزين قيمتها أو الحقول العادية)
+    document.querySelectorAll('input[type="date"], input[type="text"]').forEach(function (el) {
+      if (el.type === 'date') {
+        el._pv = el.value;
+        el.type = 'text';
+        el.value = '';
+      }
+    });
+    // تفريغ حقول Flatpickr (لأنها readonly ويتم تخطيها في اللوب التالي)
+    document.querySelectorAll('.flatpickr-input').forEach(function (el) {
+      if (el._flatpickr && el._flatpickr.altInput) {
+        el._flatpickr._altPv = el._flatpickr.altInput.value;
+        el._flatpickr.altInput.value = '';
+      }
+    });
+    // إخفاء النصوص والاختيارات الافتراضية (غير المُدخلة فعلياً من المستخدم) عند الطباعة
+    document.querySelectorAll('input.tpl-default, textarea.tpl-default').forEach(function (el) {
+      el._tpv = el.value;
+      el.value = '';
+    });
+    document.querySelectorAll('input.tpl-default-radio').forEach(function (el) {
+      el._tpc = el.checked;
+      if (el.checked) el.checked = false;
+    });
+    // تفريغ باقي الحقول (الاسم، الملاحظات، أرقام الهواتف...) لتُطبع بيضاء فارغة للكتابة اليدوية
+    document.querySelectorAll(PRINT_CLEAR_SELECTOR).forEach(function (el) {
+      if (el.readOnly || el.disabled) return;
+      if (el._bpv !== undefined) return; // تم التعامل معه بالفعل (tpl-default)
+      el._bpv = el.value;
+      el.value = '';
+    });
+  });
+  window.addEventListener('afterprint', function () {
+    document.querySelectorAll('.FL-foot-ts').forEach(function (el) { el.textContent = ''; });
+    document.querySelectorAll('.FL-foot-ref').forEach(function (el) { el.textContent = ''; });
+    // إزالة الختم بعد الطباعة
+    document.querySelectorAll('.print-stamp').forEach(function (el) { el.remove(); });
+    document.querySelectorAll('input[type="text"]').forEach(function (el) {
+      if (el._pv !== undefined) {
+        el.type = 'date';
+        el.value = el._pv;
+        delete el._pv;
+      }
+    });
+    document.querySelectorAll('.flatpickr-input').forEach(function (el) {
+      if (el._flatpickr && el._flatpickr.altInput && el._flatpickr._altPv !== undefined) {
+        el._flatpickr.altInput.value = el._flatpickr._altPv;
+        delete el._flatpickr._altPv;
+      }
+    });
+    document.querySelectorAll('input.tpl-default, textarea.tpl-default').forEach(function (el) {
+      if (el._tpv !== undefined) el.value = el._tpv;
+    });
+    document.querySelectorAll('input.tpl-default-radio').forEach(function (el) {
+      if (el._tpc) el.checked = true;
+    });
+    document.querySelectorAll(PRINT_CLEAR_SELECTOR).forEach(function (el) {
+      if (el._bpv !== undefined) {
+        el.value = el._bpv;
+        delete el._bpv;
+      }
+    });
+  });
+
+  // ── حماية الصفحة: لازم تسجيل دخول بصلاحية أدمن أو أدمن تقني ──────────────────
+  tgRequireAuth('admin', function (u) {
+    var roleLabel = u.role === 'tech_admin' ? 'أدمن تقني' : 'أدمن';
+    var box = document.getElementById('sbUser');
+    if (box) box.innerHTML = '👤 <strong style="color:#fff">' + (u.name || u.email) + '</strong><br><small style="color:rgba(255,255,255,.5)">' + u.email + '</small><br><small style="color:var(--gd);font-weight:700">' + roleLabel + '</small>';
+
+    if (u.role === 'tech_admin') {
+      // الأدمن التقني: تخطّى لوحة التحكم — اعرض المتابعة اللحظية مباشرةً
+      applyTechAdminRestrictions(u);
+      if (typeof tgListenMyNotifications === 'function') tgListenMyNotifications(u.uid);
+      if (typeof tgListenNotifCenter === 'function') tgListenNotifCenter(u.uid, tgRenderNotifPanel);
+      // goLiveTrack تتولى كل شيء: إخفاء pg-dash، تفعيل pg-livetrack، تحميل المحتوى
+      if (typeof goLiveTrack === 'function') goLiveTrack();
+    } else {
+      // الأدمن الرئيسي: السلوك الطبيعي
+      loadDashboardSummary();
+      tgChatMount();
+      tgChatWatch();
+      applyTechAdminRestrictions(u);
+      if (typeof tgListenMyNotifications === 'function') tgListenMyNotifications(u.uid);
+      if (typeof tgListenNotifCenter === 'function') tgListenNotifCenter(u.uid, tgRenderNotifPanel);
+    }
+  });
+
+  // PWA Service Worker
+  if('serviceWorker' in navigator){
+    navigator.serviceWorker.register('./sw.js').catch(function(){});
+  }
+  // PWA Install prompt
+  var _deferredInstall = null;
+  window.addEventListener('beforeinstallprompt', function(e){
+    e.preventDefault();
+    _deferredInstall = e;
+    var bar = document.getElementById('pwaInstallBar');
+    if(bar) bar.style.display='flex';
+  });
+  function tgInstallPWA(){
+    if(!_deferredInstall) return;
+    _deferredInstall.prompt();
+    _deferredInstall.userChoice.then(function(){ _deferredInstall=null; var bar=document.getElementById('pwaInstallBar'); if(bar) bar.style.display='none'; });
+  }
+</script>
+<div style="position:fixed;bottom:4px;left:50%;transform:translateX(-50%);font-size:9px;color:rgba(255,255,255,0.25);z-index:9999;pointer-events:none;white-space:nowrap;font-family:inherit">تطوير وتصميم: أبانوب فايز</div>
+<script src="https://cdn.jsdelivr.net/npm/canvas-confetti@1.6.0/dist/confetti.browser.min.js"></script>
+<script src="theme.js?v=565893"></script>
+
+<!-- Incoming Meeting Call Modal -->
+<div id="incomingMeetingModal" style="display:none; position:fixed; top:0; left:0; right:0; bottom:0; background:radial-gradient(circle at center, rgba(16,185,129,0.2) 0%, rgba(15,23,42,0.98) 100%); z-index:9999999; flex-direction:column; justify-content:center; align-items:center; backdrop-filter:blur(16px); font-family:inherit;">
+    <div style="text-align:center; margin-bottom:35px;">
+        <div style="position:relative; width:130px; height:130px; margin:0 auto 25px; display:flex; justify-content:center; align-items:center;">
+            <div style="position:absolute; width:100%; height:100%; border-radius:50%; background:#10b981; opacity:0.3; animation:pulseCallRipple 1.5s infinite;"></div>
+            <div style="position:absolute; width:85%; height:85%; border-radius:50%; background:#10b981; opacity:0.6; animation:pulseCallRipple 1.5s infinite 0.4s;"></div>
+            <div style="width:110px; height:110px; background:linear-gradient(135deg, #10b981, #059669); border-radius:50%; display:flex; justify-content:center; align-items:center; z-index:2; box-shadow:0 0 40px rgba(16,185,129,0.8);">
+                <span style="font-size:55px; animation:bouncePhone 1s infinite alternate;">📞</span>
+            </div>
+        </div>
+        <span style="display:inline-block; background:rgba(16,185,129,0.2); color:#10b981; border:1px solid rgba(16,185,129,0.4); padding:6px 18px; border-radius:30px; font-size:13px; font-weight:bold; margin-bottom:15px; letter-spacing:0.5px;">📞 مكالمة واردة الآن (صوت وفيديو)</span>
+        <h2 style="color:#fff; margin-bottom:8px; font-size:24px; font-weight:bold;">اتصال مباشر من:</h2>
+        <p id="incomingCallerNameText" style="color:#f59e0b; font-size:32px; font-weight:900; margin-bottom:10px; text-shadow:0 2px 10px rgba(245,158,11,0.3);">جاري الاتصال...</p>
+        <p style="color:rgba(255,255,255,0.7); font-size:13px; margin:0;">🔔 الهاتف يرن الآن... انقر للرد فوراً والتحدث عبر الفيديو</p>
+    </div>
+    <div style="display:flex; gap:20px; flex-wrap:wrap; justify-content:center;">
+        <button type="button" onclick="acceptMeetingCall()" style="background:linear-gradient(135deg, #10b981, #059669); color:#fff; border:none; border-radius:50px; padding:16px 45px; font-size:20px; font-weight:bold; cursor:pointer; box-shadow:0 8px 30px rgba(16,185,129,0.6); display:flex; align-items:center; gap:12px; transition:all 0.2s; transform:scale(1.05);">
+            <span style="font-size:24px;">📞</span> قبول وانضمام للمكالمة
+        </button>
+        <button type="button" onclick="declineMeetingCall()" style="background:linear-gradient(135deg, #ef4444, #dc2626); color:#fff; border:none; border-radius:50px; padding:16px 45px; font-size:20px; font-weight:bold; cursor:pointer; box-shadow:0 8px 30px rgba(239,68,68,0.6); display:flex; align-items:center; gap:12px; transition:all 0.2s;">
+            <span style="font-size:22px;">✖</span> رفض المكالمة
+        </button>
+    </div>
+    
+    <audio id="meetingRingtoneAudio" loop preload="auto">
+        <source src="https://assets.mixkit.co/active_storage/sfx/1359/1359-preview.mp3" type="audio/mpeg">
+    </audio>
+    <style>
+        @keyframes pulseCallRipple {
+            0% { transform: scale(1); opacity: 0.8; }
+            100% { transform: scale(1.6); opacity: 0; }
+        }
+        @keyframes bouncePhone {
+            0% { transform: rotate(-10deg) scale(1); }
+            100% { transform: rotate(10deg) scale(1.1); }
+        }
+    </style>
+    <script>
+        window._nativeCallNotif = null;
+        window._incomingCallData = null;
+        window._declinedMeetingsSet = window._declinedMeetingsSet || new Set();
+        
+        // Web Audio Context Variables for Receiver Ringtone
+        window._incomingAudioCtx = null;
+        window._incomingOsc1 = null;
+        window._incomingOsc2 = null;
+        window._incomingGainNode = null;
+        window._incomingInterval = null;
+
+        // Service Worker Call Actions Listener for Windows Notification Clicks
+        if ('serviceWorker' in navigator) {
+            navigator.serviceWorker.addEventListener('message', function(event) {
+                if (!event.data) return;
+                var data = event.data;
+                if (data.action === 'ACCEPT_CALL' && data.meetingId) {
+                    window._incomingCallData = { meetingId: data.meetingId, roomName: data.roomName, topic: data.topic };
+                    if (typeof stopMeetingRinging === 'function') stopMeetingRinging();
+                    if (typeof acceptMeetingCall === 'function') acceptMeetingCall();
+                } else if (data.action === 'DECLINE_CALL' && data.meetingId) {
+                    if (typeof stopMeetingRinging === 'function') stopMeetingRinging();
+                    if (typeof declineMeetingCall === 'function') declineMeetingCall();
+                }
+            });
+        }
+
+        // Request notification permission
+        if ("Notification" in window && Notification.permission === "default") {
+            Notification.requestPermission();
+        }
+
+        function stopMeetingRingingAudioCtx() {
+            if (window._incomingInterval) {
+                clearInterval(window._incomingInterval);
+                window._incomingInterval = null;
+            }
+            try {
+                if (window._incomingOsc1) { window._incomingOsc1.stop(); window._incomingOsc1.disconnect(); window._incomingOsc1 = null; }
+                if (window._incomingOsc2) { window._incomingOsc2.stop(); window._incomingOsc2.disconnect(); window._incomingOsc2 = null; }
+                if (window._incomingAudioCtx) { window._incomingAudioCtx.close(); window._incomingAudioCtx = null; }
+            } catch(e) {}
+        }
+
+        function playMeetingRinging(callerName, meetingId, roomName, topic) {
+            if (window._declinedMeetingsSet && window._declinedMeetingsSet.has(meetingId)) return;
+            
+            window._incomingCallData = { meetingId: meetingId, roomName: roomName, topic: topic };
+            var modal = document.getElementById('incomingMeetingModal');
+            if (modal) {
+                modal.setAttribute('data-meeting-id', meetingId || '');
+                modal.setAttribute('data-room-name', roomName || '');
+                modal.setAttribute('data-topic', topic || '');
+                modal.dataset.meetingId = meetingId || '';
+                modal.dataset.roomName = roomName || '';
+                modal.dataset.topic = topic || '';
+                modal.style.cssText = 'display:flex !important; position:fixed; top:0; left:0; right:0; bottom:0; background:radial-gradient(circle at center, rgba(16,185,129,0.2) 0%, rgba(15,23,42,0.98) 100%); z-index:9999999; flex-direction:column; justify-content:center; align-items:center; backdrop-filter:blur(16px); font-family:inherit;';
+            }
+            
+            var nameEl = document.getElementById('incomingCallerNameText');
+            if(nameEl) nameEl.textContent = callerName;
+
+            // Pure Clean Web Audio Telephone Ringing Tone ("تووووت... تووووت...")
+            stopMeetingRingingAudioCtx();
+            try {
+                var AudioCtx = window.AudioContext || window.webkitAudioContext;
+                if (AudioCtx) {
+                    window._incomingAudioCtx = new AudioCtx();
+                    var ctx = window._incomingAudioCtx;
+                    
+                    window._incomingOsc1 = ctx.createOscillator();
+                    window._incomingOsc2 = ctx.createOscillator();
+                    window._incomingOsc1.type = 'sine';
+                    window._incomingOsc2.type = 'sine';
+                    window._incomingOsc1.frequency.setValueAtTime(440, ctx.currentTime);
+                    window._incomingOsc2.frequency.setValueAtTime(480, ctx.currentTime);
+                    
+                    window._incomingGainNode = ctx.createGain();
+                    window._incomingGainNode.gain.setValueAtTime(0, ctx.currentTime);
+                    
+                    window._incomingOsc1.connect(window._incomingGainNode);
+                    window._incomingOsc2.connect(window._incomingGainNode);
+                    window._incomingGainNode.connect(ctx.destination);
+                    
+                    window._incomingOsc1.start();
+                    window._incomingOsc2.start();
+                    
+                    function ringPulse() {
+                        if (!window._incomingAudioCtx || !window._incomingGainNode) return;
+                        var now = window._incomingAudioCtx.currentTime;
+                        window._incomingGainNode.gain.cancelScheduledValues(now);
+                        window._incomingGainNode.gain.setValueAtTime(0, now);
+                        window._incomingGainNode.gain.linearRampToValueAtTime(0.12, now + 0.05);
+                        window._incomingGainNode.gain.setValueAtTime(0.12, now + 1.5);
+                        window._incomingGainNode.gain.linearRampToValueAtTime(0, now + 1.6);
+                    }
+                    
+                    ringPulse();
+                    window._incomingInterval = setInterval(ringPulse, 3500);
+                }
+            } catch(e){}
+            
+            if ("Notification" in window) {
+                if (Notification.permission === "default") {
+                    Notification.requestPermission();
+                }
+                if (Notification.permission === "granted") {
+                    if (typeof tgShowNotification === 'function') {
+                        tgShowNotification("📞 مكالمة / اجتماع جديد وارد 🔔", "اتصال مباشر من: " + callerName + ". اضغط للانضمام فوراً! 🚀", {
+                            isCall: true,
+                            tag: 'meeting-call-' + (meetingId || Date.now()),
+                            requireInteraction: true,
+                            renotify: true,
+                            meetingId: meetingId || '',
+                            roomName: roomName || '',
+                            topic: topic || ''
+                        });
+                    } else if (!window._nativeCallNotif) {
+                        try {
+                            window._nativeCallNotif = new Notification("📞 مكالمة / اجتماع جديد وارد 🔔", {
+                                body: "اتصال مباشر من: " + callerName + ". اضغط للانضمام فوراً! 🚀",
+                                icon: "icon-192.png",
+                                requireInteraction: true,
+                                renotify: true,
+                                tag: 'meeting-call-' + (meetingId || Date.now())
+                            });
+                            window._nativeCallNotif.onclick = function() {
+                                window.focus();
+                                if (typeof acceptMeetingCall === 'function') acceptMeetingCall();
+                                this.close();
+                            };
+                        } catch(e){}
+                    }
+                }
+            }
+        }
+
+        function stopMeetingRinging() {
+            stopMeetingRingingAudioCtx();
+            if(window._nativeCallNotif) {
+                window._nativeCallNotif.close();
+                window._nativeCallNotif = null;
+            }
+        }
+
+        function acceptMeetingCall(btnEl) {
+            if (typeof window.acceptMeetingCall === 'function') {
+                window.acceptMeetingCall(btnEl);
+            }
+        }
+
+        function declineMeetingCall(btnEl) {
+            if (typeof window.declineMeetingCall === 'function') {
+                window.declineMeetingCall(btnEl);
+            }
+        }
+    </script>
+</div>
+
+<!-- Modal for selecting specific employees for a targeted meeting -->
+<div id="selectEmpMeetingModal" style="display:none; position:fixed; top:0; left:0; right:0; bottom:0; background:rgba(15,23,42,0.8); z-index:99999; flex-direction:column; justify-content:center; align-items:center; backdrop-filter:blur(12px); font-family:inherit;">
+    <div style="background:var(--bg2); border:1px solid rgba(255,255,255,0.15); border-radius:20px; width:92%; max-width:580px; padding:28px; box-shadow:0 25px 50px -12px rgba(0,0,0,0.5); max-height:85vh; display:flex; flex-direction:column;">
+        <!-- Modal Header -->
+        <div style="display:flex; justify-content:space-between; align-items:flex-start; margin-bottom:20px; border-bottom:1px solid var(--bd); padding-bottom:15px;">
+            <div>
+                <h3 style="margin:0; font-size:18px; font-weight:bold; color:var(--tx); display:flex; align-items:center; gap:8px;">
+                    <span style="display:inline-flex; justify-content:center; align-items:center; width:32px; height:32px; border-radius:8px; background:rgba(16,185,129,0.15); color:#10b981;">👥</span>
+                    تحديد الموظفين المشاركين في الاجتماع
+                </h3>
+                <p style="margin:4px 0 0; font-size:12px; color:var(--tx2);">اختر الموظفين المطلوب دعوة هواتفهم ورنينها فوراً لحضور اجتماع خاص</p>
+            </div>
+            <button type="button" onclick="closeSelectEmpMeetingModal()" style="background:var(--bg); border:1px solid var(--bd); color:var(--tx2); width:32px; height:32px; border-radius:50%; display:flex; justify-content:center; align-items:center; cursor:pointer; font-size:16px; transition:all 0.2s;">✕</button>
+        </div>
+        
+        <!-- Topic Input -->
+        <div style="margin-bottom:18px;">
+            <label style="font-size:13px; font-weight:bold; color:var(--tx); display:flex; align-items:center; gap:6px; margin-bottom:8px;">
+                <span>📝</span> موضوع أو عنوان الاجتماع:
+            </label>
+            <input type="text" id="targetMeetingTopicInput" placeholder="مثال: اجتماع فريق المبيعات والتسويق" style="width:100%; padding:12px 15px; border-radius:10px; border:1px solid var(--bd); background:var(--bg); color:var(--tx); font-family:inherit; font-size:14px; outline:none; transition:border 0.2s;">
+        </div>
+
+        <!-- Selection Bar -->
+        <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:12px; background:var(--bg); padding:10px 14px; border-radius:10px; border:1px solid var(--bd);">
+            <span style="font-size:13px; font-weight:bold; color:var(--tx);">قائمة الموظفين:</span>
+            <div style="display:flex; gap:8px;">
+                <button type="button" onclick="selectAllMeetingEmps(true)" style="background:rgba(16,185,129,0.12); border:1px solid rgba(16,185,129,0.3); color:#10b981; padding:4px 12px; border-radius:20px; font-size:12px; cursor:pointer; font-weight:bold; transition:all 0.2s;">✓ تحديد الكل</button>
+                <button type="button" onclick="selectAllMeetingEmps(false)" style="background:rgba(239,68,68,0.12); border:1px solid rgba(239,68,68,0.3); color:#ef4444; padding:4px 12px; border-radius:20px; font-size:12px; cursor:pointer; font-weight:bold; transition:all 0.2s;">✕ إلغاء الكل</button>
+            </div>
+        </div>
+
+        <!-- Employee Checkboxes List -->
+        <div id="selectEmpMeetingList" style="flex:1; overflow-y:auto; padding-right:4px; margin-bottom:22px; display:flex; flex-direction:column; gap:10px; max-height:280px;">
+            <!-- Employees with checkboxes rendered dynamically -->
+        </div>
+
+        <!-- Action Footer -->
+        <div style="display:flex; justify-content:flex-end; gap:12px; border-top:1px solid var(--bd); padding-top:16px;">
+            <button type="button" onclick="closeSelectEmpMeetingModal()" style="background:var(--bg); border:1px solid var(--bd); color:var(--tx2); padding:11px 22px; border-radius:10px; cursor:pointer; font-size:14px; font-weight:bold; transition:all 0.2s;">إلغاء</button>
+            <button type="button" onclick="startTargetedGroupMeeting()" style="background:linear-gradient(135deg, #10b981, #059669); color:#fff; border:none; padding:11px 28px; border-radius:10px; cursor:pointer; font-weight:bold; font-size:14px; box-shadow:0 6px 20px rgba(16,185,129,0.35); display:inline-flex; align-items:center; gap:8px; transition:all 0.2s;">
+                <span>🚀</span> بدء الاجتماع ورنين الموظفين
+            </button>
+        </div>
+    </div>
+</div>
+
+<!-- Outgoing Call Modal (For Caller) -->
+<div id="outgoingMeetingModal" style="display:none; position:fixed; top:0; left:0; right:0; bottom:0; background:radial-gradient(circle at center, rgba(59,130,246,0.2) 0%, rgba(15,23,42,0.98) 100%); z-index:9999999; flex-direction:column; justify-content:center; align-items:center; backdrop-filter:blur(16px); font-family:inherit;">
+    <div style="text-align:center; margin-bottom:35px;">
+        <div style="position:relative; width:130px; height:130px; margin:0 auto 25px; display:flex; justify-content:center; align-items:center;">
+            <div style="position:absolute; width:100%; height:100%; border-radius:50%; background:#3b82f6; opacity:0.3; animation:pulseCallRipple 1.5s infinite;"></div>
+            <div style="position:absolute; width:85%; height:85%; border-radius:50%; background:#3b82f6; opacity:0.6; animation:pulseCallRipple 1.5s infinite 0.4s;"></div>
+            <div style="width:110px; height:110px; background:linear-gradient(135deg, #3b82f6, #1d4ed8); border-radius:50%; display:flex; justify-content:center; align-items:center; z-index:2; box-shadow:0 0 40px rgba(59,130,246,0.8);">
+                <span id="outgoingCallIcon" style="font-size:55px; animation:bouncePhone 1s infinite alternate;">📞</span>
+            </div>
+        </div>
+        <span id="outgoingCallTag" style="display:inline-block; background:rgba(59,130,246,0.2); color:#60a5fa; border:1px solid rgba(59,130,246,0.4); padding:6px 18px; border-radius:30px; font-size:13px; font-weight:bold; margin-bottom:15px; letter-spacing:0.5px;">📡 جاري الاتصال المباشر (رنين جارٍ 🔔)</span>
+        <h2 id="outgoingCallStatusText" style="color:#fff; margin-bottom:8px; font-size:26px; font-weight:bold;">جاري الاتصال...</h2>
+        <p id="outgoingTargetNameText" style="color:#f59e0b; font-size:28px; font-weight:900; margin-bottom:10px; text-shadow:0 2px 10px rgba(245,158,11,0.3);">🔔 جاري الرنين الآن...</p>
+        <p style="color:rgba(255,255,255,0.7); font-size:13px; margin:0;">🔔 هاتف الطرف الآخر يرن الآن... يرجى الانتظار لحين الانضمام</p>
+    </div>
+    
+    <div style="display:flex; gap:20px; flex-wrap:wrap; justify-content:center;">
+        <a id="outgoingDirectRoomLink" href="#" target="_blank" style="background:linear-gradient(135deg, #10b981, #059669); color:#fff; text-decoration:none; padding:16px 40px; border-radius:50px; font-size:18px; font-weight:bold; box-shadow:0 8px 30px rgba(16,185,129,0.5); display:inline-flex; align-items:center; gap:10px; transition:all 0.2s;">
+            <span style="font-size:22px;">🎥</span> دخول الغرفة مباشرة ↗
+        </a>
+        <button type="button" onclick="cancelOutgoingCall()" style="background:linear-gradient(135deg, #ef4444, #dc2626); color:#fff; border:none; border-radius:50px; padding:16px 40px; font-size:18px; font-weight:bold; cursor:pointer; box-shadow:0 8px 30px rgba(239,68,68,0.5); display:inline-flex; align-items:center; gap:10px; transition:all 0.2s;">
+            <span style="font-size:20px;">✖</span> إلغاء الاتصال
+        </button>
+    </div>
+
+    <script>
+        window._outgoingAudioCtx = null;
+        window._outgoingOsc1 = null;
+        window._outgoingOsc2 = null;
+        window._outgoingGainNode = null;
+        window._outgoingInterval = null;
+
+        function playOutgoingRinging() {
+            stopOutgoingRinging();
+            
+            // Web Audio API International Dual-Tone Ringback Tone (440Hz + 480Hz - Authentic Telephone Sound "tuuuuoot...")
+            try {
+                var AudioCtx = window.AudioContext || window.webkitAudioContext;
+                if (!AudioCtx) return;
+                
+                window._outgoingAudioCtx = new AudioCtx();
+                var ctx = window._outgoingAudioCtx;
+                
+                window._outgoingOsc1 = ctx.createOscillator();
+                window._outgoingOsc2 = ctx.createOscillator();
+                window._outgoingOsc1.type = 'sine';
+                window._outgoingOsc2.type = 'sine';
+                window._outgoingOsc1.frequency.setValueAtTime(440, ctx.currentTime);
+                window._outgoingOsc2.frequency.setValueAtTime(480, ctx.currentTime);
+                
+                window._outgoingGainNode = ctx.createGain();
+                window._outgoingGainNode.gain.setValueAtTime(0, ctx.currentTime);
+                
+                window._outgoingOsc1.connect(window._outgoingGainNode);
+                window._outgoingOsc2.connect(window._outgoingGainNode);
+                window._outgoingGainNode.connect(ctx.destination);
+                
+                window._outgoingOsc1.start();
+                window._outgoingOsc2.start();
+                
+                function ringPulse() {
+                    if (!window._outgoingAudioCtx || !window._outgoingGainNode) return;
+                    var now = window._outgoingAudioCtx.currentTime;
+                    window._outgoingGainNode.gain.cancelScheduledValues(now);
+                    window._outgoingGainNode.gain.setValueAtTime(0, now);
+                    window._outgoingGainNode.gain.linearRampToValueAtTime(0.12, now + 0.05);
+                    window._outgoingGainNode.gain.setValueAtTime(0.12, now + 1.8);
+                    window._outgoingGainNode.gain.linearRampToValueAtTime(0, now + 1.9);
+                }
+                
+                ringPulse();
+                window._outgoingInterval = setInterval(ringPulse, 4000);
+            } catch(e) {
+                console.warn("Web Audio playOutgoingRinging error:", e);
+            }
+        }
+
+        function stopOutgoingRinging() {
+            if (window._outgoingInterval) {
+                clearInterval(window._outgoingInterval);
+                window._outgoingInterval = null;
+            }
+            try {
+                if (window._outgoingOsc1) { window._outgoingOsc1.stop(); window._outgoingOsc1.disconnect(); window._outgoingOsc1 = null; }
+                if (window._outgoingOsc2) { window._outgoingOsc2.stop(); window._outgoingOsc2.disconnect(); window._outgoingOsc2 = null; }
+                if (window._outgoingAudioCtx) { window._outgoingAudioCtx.close(); window._outgoingAudioCtx = null; }
+            } catch(e) {}
+        }
+    </script>
+</div>
+
+<!-- Full-Screen Active Call Overlay Modal -->
+<div id="liveCallOverlayModal" style="display:none; position:fixed; top:0; left:0; right:0; bottom:0; background:#0f172a; z-index:99999999; flex-direction:column; font-family:inherit;">
+    <div style="background:#1e293b; padding:12px 20px; display:flex; justify-content:space-between; align-items:center; border-bottom:1px solid rgba(255,255,255,0.15);">
+        <div style="display:flex; align-items:center; gap:10px;">
+            <span style="font-size:24px;">📞</span>
+            <div>
+                <div id="liveCallOverlayTitle" style="color:#fff; font-weight:bold; font-size:16px;">🟢 مكالمة نشطة (مباشر)</div>
+                <div id="liveCallOverlaySubtitle" style="color:rgba(255,255,255,0.7); font-size:12px;">مكالمة بالصوت والفيديو عالية الدقة (غير محدودة الوقت)</div>
+            </div>
+        </div>
+        <div style="display:flex; gap:12px; align-items:center;">
+            <a id="liveCallExternalBtn" href="#" target="_blank" style="background:rgba(59,130,246,0.2); color:#60a5fa; border:1px solid rgba(59,130,246,0.4); text-decoration:none; padding:8px 16px; border-radius:8px; font-size:13px; font-weight:bold; display:inline-flex; align-items:center; gap:6px;">
+                <span>↗</span> فتح في تبويب مستقل
+            </a>
+            <button type="button" onclick="endCall()" style="background:linear-gradient(135deg, #ef4444, #dc2626); color:#fff; border:none; padding:8px 22px; border-radius:8px; font-weight:bold; font-size:14px; cursor:pointer; box-shadow:0 4px 15px rgba(239,68,68,0.4); display:inline-flex; align-items:center; gap:6px;">
+                <span>✖</span> إنهاء المكالمة
+            </button>
+        </div>
+    </div>
+    <div id="liveCallOverlayBody" style="flex:1; width:100%; height:calc(100vh - 65px); background:#000; position:relative;">
+    </div>
+</div>
+
+</body>
+</html>

@@ -1,0 +1,249 @@
+// -------------------------------------------------------------------
+// قواعد أمان Firestore
+// انسخ من سطر rules_version لآخر الملف والصقه في Firebase Console
+// -------------------------------------------------------------------
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    function isSignedIn() { return request.auth != null; }
+    function myUid() { return request.auth.uid; }
+    
+    function myRole() {
+      return get(/databases/$(database)/documents/users/$(myUid())).data.role;
+    }
+    
+    function isAdmin() { 
+      return isSignedIn() && myRole() == 'admin'; 
+    }
+    
+    function isAnyAdmin() {
+      return isSignedIn() && (myRole() == 'admin' || myRole() == 'tech_admin');
+    }
+
+    // هل تم إعداد أول أدمن للنظام بالفعل؟ (يُسند في صفحة setup.html)
+    function setupDone() {
+      return exists(/databases/$(database)/documents/system/meta) &&
+             get(/databases/$(database)/documents/system/meta).data.setupDone == true;
+    }
+
+    // مستند حالة النظام
+    match /system/meta {
+      allow read: if true;
+      allow create: if isSignedIn() && request.resource.data.setupDone == true;
+      allow update: if isSignedIn() && resource.data.setupDone != true
+                    && request.resource.data.setupDone == true;
+      allow delete: if isAdmin();
+    }
+
+    match /system/appSettings {
+      allow read: if isSignedIn();
+      allow write: if isAdmin();
+    }
+
+    // ملفات المستخدمين
+    match /settings/{docId} {
+      allow read: if isSignedIn();
+      allow write: if isAnyAdmin();
+    }
+
+    match /users/{uid} {
+      allow read: if isSignedIn();
+      // يسمح للأدمن الرئيسي بإنشاء حساب موظف أو أدمن تقني جديد
+      allow create: if isSignedIn() && (
+                      (isAdmin() && (request.resource.data.role == 'employee' || request.resource.data.role == 'tech_admin')) ||
+                      (myUid() == uid && request.resource.data.role == 'admin' && !setupDone())
+                    );
+      // يسمح للأدمن بتعديل أي مستخدم، أو الموظف بتعديل اسمه أو آخر نشاط له
+      allow update: if isAdmin() || (
+                      isSignedIn() && myUid() == uid &&
+                      request.resource.data.diff(resource.data).affectedKeys().hasOnly(['name', 'lastActive', 'pushToken', 'notificationsEnabled', 'fcmToken'])
+                    );
+      allow delete: if isAdmin();
+    }
+
+    // سجل الحضور والانصراف
+    match /attendance_logs/{logId} {
+      allow read: if isAnyAdmin() || (isSignedIn() && myUid() == resource.data.uid);
+      allow create: if isSignedIn() && myUid() == request.resource.data.uid;
+      allow update: if isAnyAdmin() || (
+                      isSignedIn() && myUid() == resource.data.uid &&
+                      request.resource.data.diff(resource.data).affectedKeys().hasOnly(['checkOut'])
+                    );
+      allow delete: if isAdmin();
+    }
+
+    // المشاريع: الأدمن أو الأدمن التقني يملك التحكم الكامل.
+    // الموظف يقرأ فقط المشاريع المسندة إليه، ولا يملك صلاحية الإنشاء أو الحذف، ويعدّل فقط تقدّمه (progressMap)
+    match /projects/{projectId} {
+      allow read: if isAnyAdmin() || (isSignedIn() && myUid() in resource.data.assignees);
+      allow create: if isAnyAdmin();
+      allow update: if isAnyAdmin() || (
+        isSignedIn() && myUid() in resource.data.assignees &&
+        request.resource.data.diff(resource.data).affectedKeys().hasOnly(['progressMap'])
+      );
+      allow delete: if isAnyAdmin();
+    }
+
+    // نقاش/تعليقات كل مشروع
+    match /projectComments/{commentId} {
+      allow read: if isAnyAdmin() || (
+        isSignedIn() &&
+        myUid() in get(/databases/$(database)/documents/projects/$(resource.data.projectId)).data.assignees
+      );
+      allow create: if isSignedIn() && request.resource.data.uid == myUid() && (
+        isAnyAdmin() ||
+        myUid() in get(/databases/$(database)/documents/projects/$(request.resource.data.projectId)).data.assignees
+      );
+      allow update: if false;
+      allow delete: if isAnyAdmin() || (isSignedIn() && resource.data.uid == myUid());
+    }
+
+    // الشات العام
+    match /chatMessages/{msgId} {
+      allow read: if isSignedIn();
+      allow create: if isSignedIn() && request.resource.data.uid == myUid()
+                    && request.resource.data.text is string
+                    && request.resource.data.text.size() > 0
+                    && request.resource.data.text.size() <= 2000;
+      allow update: if false;
+      allow delete: if isAnyAdmin() || (isSignedIn() && resource.data.uid == myUid());
+    }
+
+    // المهام: السماح لجميع المستخدمين المسجلين بقراءة وتحديث المهام لضمان حفظ الحالة وسلاسة التحويل
+    match /tasks/{taskId} {
+      allow read: if isSignedIn();
+      allow create: if isSignedIn();
+      allow update: if isSignedIn();
+      allow delete: if isAnyAdmin();
+    }
+
+    // الإنجازات
+    match /achievements/{achId} {
+      allow read: if isSignedIn();
+      allow create: if isSignedIn();
+      allow update: if isSignedIn();
+      allow delete: if isAnyAdmin() || (isSignedIn() && resource.data.uid == myUid());
+    }
+
+    // ملفات الموظفين (مستندات يرفعها الموظف لنفسه أو يرفعها الأدمن لملفه)
+    match /employeeDocuments/{docId} {
+      allow read: if isAnyAdmin() || (isSignedIn() && resource.data.uid == myUid());
+      allow create: if isAnyAdmin() || (isSignedIn() && request.resource.data.uid == myUid());
+      allow update: if isAnyAdmin();
+      allow delete: if isAnyAdmin() || (isSignedIn() && resource.data.uid == myUid());
+    }
+
+    // الطلبات: الأدمن الرئيسي فقط يعدّل الحالة
+    match /requests/{reqId} {
+      allow read: if isAnyAdmin() || (isSignedIn() && resource.data.uid == myUid());
+      allow create: if isSignedIn() && request.resource.data.uid == myUid()
+                    && request.resource.data.status == 'pending';
+      allow update: if isAnyAdmin();
+      allow delete: if isAnyAdmin();
+    }
+
+    // التقارير الأسبوعية
+    match /weeklyReports/{repId} {
+      allow read: if isAnyAdmin() || (isSignedIn() && resource.data.uid == myUid());
+      allow create: if isSignedIn() && request.resource.data.uid == myUid();
+      allow update, delete: if isAnyAdmin() || (isSignedIn() && resource.data.uid == myUid());
+    }
+
+    // الإشعارات (Push Notifications عبر Firestore)
+    match /notifications/{notifId} {
+      // المستلم يقرأ إشعاراته فقط
+      allow read: if isSignedIn() && resource.data.toUid == myUid();
+      // أي مستخدم مسجّل يبعت إشعار
+      allow create: if isSignedIn();
+      // المستلم بس يقدر يعلمها مقروءة/معروضة أو يعدل فيها
+      allow update: if isSignedIn() && resource.data.toUid == myUid();
+      // الأدمن أو المستلم يحذف
+      allow delete: if isAnyAdmin() || (isSignedIn() && resource.data.toUid == myUid());
+    }
+
+    // الإعلانات: الأدمن أو الأدمن التقني يكتب ويعدّل ويحذف
+    match /announcements/{annId} {
+      allow read: if isSignedIn();
+      allow create: if isAnyAdmin();
+      allow update: if isAnyAdmin();
+      allow delete: if isAnyAdmin();
+    }
+
+    // النماذج المحفوظة (المسودات) للأدمن
+    match /savedForms/{formId} {
+      allow read, write: if isAnyAdmin();
+    }
+
+    // نماذج تُرسل لموظف مُحدَّد ليملأها ويعيدها للأدمن (📨 إرسال نموذج للموظف)
+    match /formRequests/{reqId} {
+      allow read: if isAnyAdmin() || (isSignedIn() && resource.data.targetUid == myUid());
+      allow create: if isAnyAdmin() && request.resource.data.sentByUid == myUid()
+                    && request.resource.data.status == 'pending';
+      // الموظف يملأ ويرسل (status + values + submittedAt فقط)، والأدمن يقدر يعدّل أي حقل
+      allow update: if isAnyAdmin() || (
+        isSignedIn() && resource.data.targetUid == myUid() && resource.data.status == 'pending' &&
+        request.resource.data.diff(resource.data).affectedKeys().hasOnly(['status', 'values', 'submittedAt'])
+      );
+      allow delete: if isAnyAdmin();
+    }
+
+    // أرشيف المستندات المطبوعة
+    match /docArchive/{docId} {
+      allow read, write: if isAnyAdmin();
+    }
+
+    // مكتبة التطوير المهني
+    match /dev_resources/{resId} {
+      allow read: if isSignedIn();
+      allow write: if isAnyAdmin();
+    }
+
+    // قاعدة معرفة المستشار الذكي (ملفات PDF محلّلة) - خاصة بالأدمن فقط
+    match /aiKnowledgeDocs/{docId} {
+      allow read: if isAnyAdmin();
+      allow write: if isAnyAdmin();
+    }
+
+    // إدارة الاجتماعات (المكالمات)
+    match /meetings/{meetingId} {
+      allow read: if isSignedIn();
+      allow create: if isSignedIn();
+      allow update: if isAnyAdmin() || (isSignedIn() && (resource.data.createdBy == myUid() || resource.data.targetUid == myUid()));
+      allow delete: if isAnyAdmin() || (isSignedIn() && resource.data.createdBy == myUid());
+    }
+
+    // رنين وتنبيه المكالمات المباشرة الدائمة
+    match /company_meeting_calls/{callId} {
+      allow read: if isSignedIn();
+      allow create, update, delete: if isAnyAdmin();
+    }
+
+    // التقارير الأسبوعية المخصصة (Weekly Reports - WR)
+    match /weekly_reports/{reportId} {
+      allow read: if isAnyAdmin() || (isSignedIn() && resource.data.uid == myUid());
+      allow create: if isSignedIn() && request.resource.data.uid == myUid();
+      allow update, delete: if isAnyAdmin() || (isSignedIn() && resource.data.uid == myUid());
+    }
+
+    // التقارير الشهرية (Monthly Reports - MR)
+    match /monthly_reports/{reportId} {
+      allow read: if isAnyAdmin() || (isSignedIn() && resource.data.uid == myUid());
+      allow create: if isSignedIn() && request.resource.data.uid == myUid();
+      allow update, delete: if isAnyAdmin() || (isSignedIn() && resource.data.uid == myUid());
+    }
+
+    // الخطط الشهرية (Monthly Plans - MP)
+    match /monthly_plans/{planId} {
+      allow read: if isAnyAdmin() || (isSignedIn() && resource.data.uid == myUid());
+      allow create: if isSignedIn() && request.resource.data.uid == myUid();
+      allow update, delete: if isAnyAdmin() || (isSignedIn() && resource.data.uid == myUid());
+    }
+
+    // إشعارات التقارير والخطط الواردة للإدارة
+    match /admin_notifications/{notifId} {
+      allow read, update, delete: if isAnyAdmin();
+      allow create: if isSignedIn();
+    }
+  }
+}

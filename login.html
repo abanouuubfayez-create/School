@@ -1,0 +1,168 @@
+<!DOCTYPE html>
+<html lang="ar" dir="rtl">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta name="theme-color" content="#1b2a4a">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="Tech Go">
+<meta name="description" content="نظام الإدارة الشامل لشركة تيك جو">
+<title>تسجيل الدخول · تيك جو</title>
+<link rel="stylesheet" href="styles.css?v=565893">
+<link rel="manifest" href="manifest.json">
+<link rel="icon" type="image/png" sizes="192x192" href="icon-192.png">
+<link rel="apple-touch-icon" href="icon-192.png">
+<script>
+    (function() {
+        const theme = localStorage.getItem('tg-theme') || 'light';
+        document.documentElement.setAttribute('data-theme', theme);
+    })();
+</script>
+</head>
+<body>
+<div class="tg-login-wrap">
+  <button class="bt bt-o" id="themeToggle" onclick="tgToggleTheme()" title="تبديل الوضع الليلي" style="position:fixed;top:20px;right:20px;font-size:20px;padding:8px 12px;z-index:100;border-radius:50%;width:45px;height:45px;display:flex;align-items:center;justify-content:center;background:var(--w);box-shadow:var(--sh-md)">🌙</button>
+  <div class="tg-login-card">
+    <div class="tg-login-logo">
+      <div class="lgo"><span>TECH - GO</span><small>تيك – جو</small></div>
+    </div>
+    <div class="tg-login-title">تسجيل الدخول إلى نظام الإدارة الشامل</div>
+
+    <div class="tg-login-err" id="loginErr"></div>
+
+    <div class="fg" style="margin-bottom:14px">
+      <label>البريد الإلكتروني</label>
+      <input type="email" id="loginEmail" placeholder="name@techgo.com" autofocus>
+    </div>
+    <div class="fg" style="margin-bottom:8px">
+      <label>كلمة المرور</label>
+      <input type="password" id="loginPass" placeholder="••••••••" onkeydown="if(event.key==='Enter')doLogin()">
+    </div>
+
+    <div style="display:flex;align-items:center;gap:8px;margin-bottom:14px;padding:0 2px">
+      <input type="checkbox" id="rememberMe" style="width:15px;height:15px;accent-color:var(--nv);cursor:pointer;flex-shrink:0">
+      <label for="rememberMe" style="font-size:11px;color:var(--tx2);cursor:pointer;font-weight:600">تذكّرني على هذا الجهاز</label>
+    </div>
+    <button class="bt bt-p tg-login-btn" id="loginBtn" onclick="doLogin()">🔐 دخول</button>
+
+    <div class="tg-login-foot">
+      نسيت كلمة المرور؟ <a onclick="doReset()">إعادة تعيينها بالبريد الإلكتروني</a>
+    </div>
+    <div class="tg-login-foot" id="firstRunLink" style="display:none">
+      أول مرة تستخدم النظام؟ <a href="setup.html">إعداد حساب المدير الأول</a>
+    </div>
+  </div>
+</div>
+
+<script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-auth-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore-compat.js"></script>
+<script src="firebase-config.js"></script>
+<script>
+function showErr(msg){
+    var e=document.getElementById('loginErr');
+    e.textContent=msg; e.classList.add('show');
+}
+function hideErr(){ document.getElementById('loginErr').classList.remove('show'); }
+
+function friendlyErr(code){
+    var map={
+        'auth/invalid-email':'صيغة البريد الإلكتروني غير صحيحة.',
+        'auth/user-not-found':'لا يوجد حساب بهذا البريد الإلكتروني.',
+        'auth/wrong-password':'كلمة المرور غير صحيحة.',
+        'auth/invalid-credential':'البريد الإلكتروني أو كلمة المرور غير صحيحة.',
+        'auth/too-many-requests':'محاولات كثيرة خاطئة، برجاء المحاولة لاحقاً.',
+        'auth/network-request-failed':'تعذر الاتصال بالخادم، تحقق من الإنترنت.'
+    };
+    return map[code] || 'حدث خطأ أثناء تسجيل الدخول.';
+}
+
+function doLogin(){
+    hideErr();
+    var email=(document.getElementById('loginEmail').value||'').trim();
+    var pass=document.getElementById('loginPass').value||'';
+    var remember=document.getElementById('rememberMe').checked;
+    if(!email||!pass){ showErr('من فضلك أدخل البريد الإلكتروني وكلمة المرور.'); return; }
+    var btn=document.getElementById('loginBtn');
+    btn.disabled=true; btn.textContent='⏳ جارٍ التحقق...';
+    auth.signInWithEmailAndPassword(email,pass).then(function(cred){
+        if(remember){
+            localStorage.setItem('tg_saved_email', email);
+            localStorage.setItem('tg_saved_pass', pass);
+            localStorage.setItem('tg_remember','1');
+        } else {
+            localStorage.removeItem('tg_saved_email');
+            localStorage.removeItem('tg_saved_pass');
+            localStorage.removeItem('tg_remember');
+        }
+        return db.collection('users').doc(cred.user.uid).get();
+    }).then(function(doc){
+        if(!doc.exists){
+            showErr('هذا الحساب غير مرتبط بملف مستخدم في النظام. تواصل مع مدير النظام.');
+            auth.signOut();
+            btn.disabled=false; btn.textContent='🔐 دخول';
+            return;
+        }
+        if(doc.data().disabled===true){
+            showErr('تم تعطيل هذا الحساب من قبل الإدارة. تواصل مع مدير النظام.');
+            auth.signOut();
+            btn.disabled=false; btn.textContent='🔐 دخول';
+            return;
+        }
+        var role=doc.data().role;
+        location.href = (role==='admin'||role==='tech_admin') ? 'index.html' : 'employee.html';
+    }).catch(function(err){
+        btn.disabled=false; btn.textContent='🔐 دخول';
+        showErr(friendlyErr(err.code));
+    });
+}
+
+function doReset(){
+    hideErr();
+    var email=(document.getElementById('loginEmail').value||'').trim();
+    if(!email){ showErr('اكتب بريدك الإلكتروني في الحقل أولاً، ثم اضغط على الرابط.'); return; }
+    auth.sendPasswordResetEmail(email).then(function(){
+        alert('تم إرسال رابط إعادة تعيين كلمة المرور إلى بريدك الإلكتروني.');
+    }).catch(function(err){ showErr(friendlyErr(err.code)); });
+}
+
+// لو المستخدم داخل بالفعل، حوّله مباشرة لصفحته
+auth.onAuthStateChanged(function(user){
+    if(!user){ checkFirstRun(); return; }
+    db.collection('users').doc(user.uid).get().then(function(doc){
+        if(!doc.exists){ checkFirstRun(); return; }
+        if(doc.data().disabled===true){ auth.signOut(); return; }
+        location.href = (doc.data().role==='admin') ? 'index.html' : 'employee.html';
+    });
+});
+
+// يظهر رابط "الإعداد الأول" فقط لو مفيش أدمن اتعمل للنظام لسه
+function checkFirstRun(){
+    db.collection('system').doc('meta').get().then(function(doc){
+        var done = !!(doc.exists && doc.data().setupDone === true);
+        if(!done) document.getElementById('firstRunLink').style.display = 'block';
+    }).catch(function(){});
+}
+// تحميل البيانات المحفوظة عند فتح الصفحة
+(function(){
+    if(localStorage.getItem('tg_remember')==='1'){
+        var em=localStorage.getItem('tg_saved_email');
+        var ps=localStorage.getItem('tg_saved_pass');
+        if(em) document.getElementById('loginEmail').value=em;
+        if(ps) document.getElementById('loginPass').value=ps;
+        document.getElementById('rememberMe').checked=true;
+    }
+})();
+
+// PWA Service Worker Registration
+if('serviceWorker' in navigator){
+    navigator.serviceWorker.register('./sw.js').catch(function(e){
+        console.log('SW registration failed:', e);
+    });
+}
+</script>
+<script src="theme.js?v=565893"></script>
+</body>
+</html>

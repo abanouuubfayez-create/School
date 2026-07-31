@@ -1,0 +1,59 @@
+// ═══════════════════════════════════════════════════════════════════════
+// قواعد أمان Firebase Storage — انسخ المحتوى ده كله والصقه في:
+// Firebase Console → Storage → Rules → ثم اضغط "نشر / Publish"
+// ═══════════════════════════════════════════════════════════════════════
+rules_version = '2';
+service firebase.storage {
+  match /b/{bucket}/o {
+
+    // دالة مساعدة: هل المستخدم مسجّل دخول؟
+    function isSignedIn() { return request.auth != null; }
+
+    // مرفقات المهام — يرفعها الأدمن أو الأدمن المساعد
+    match /tasks/{userId}/{allPaths=**} {
+      allow read: if isSignedIn();
+      allow write: if isSignedIn()
+                   && request.resource.size < 20 * 1024 * 1024;  // حد أقصى 20 MB
+    }
+
+    // مرفقات المشاريع
+    match /projects/{projectId}/{uid}/{allPaths=**} {
+      allow read: if isSignedIn();
+      allow write: if isSignedIn() && request.auth.uid == uid
+                   && request.resource.size < 20 * 1024 * 1024;
+    }
+
+    // مرفقات الشات
+    match /chat/{uid}/{allPaths=**} {
+      allow read: if isSignedIn();
+      allow write: if isSignedIn() && request.auth.uid == uid
+                   && request.resource.size < 10 * 1024 * 1024;  // حد أقصى 10 MB
+    }
+
+    // مرفقات تعليقات المشاريع
+    match /projectComments/{allPaths=**} {
+      allow read: if isSignedIn();
+      allow write: if isSignedIn()
+                   && request.resource.size < 20 * 1024 * 1024;
+    }
+
+    // ملفات الموظفين
+    match /employeeDocuments/{uid}/{allPaths=**} {
+      allow read: if isSignedIn();
+      allow write: if isSignedIn()
+                   && request.resource.size < 20 * 1024 * 1024;
+    }
+
+    // مكتبة التطوير المهني
+    match /dev_resources/{allPaths=**} {
+      allow read: if isSignedIn();
+      allow write: if isSignedIn()
+                   && request.resource.size < 100 * 1024 * 1024; // حد أقصى 100 MB للكتب والفيديوهات
+    }
+
+    // أي ملفات أخرى — منع بشكل افتراضي
+    match /{allPaths=**} {
+      allow read, write: if false;
+    }
+  }
+}

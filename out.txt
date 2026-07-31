@@ -1,0 +1,61 @@
+window.generateCareerPath = async function() {
+    var field = document.getElementById('devResEmpField').value.trim();
+    var btn = document.getElementById('btnGeneratePath');
+    var resultBox = document.getElementById('aiPathResult');
+    
+    if(!field) {
+        alert('يرجى كتابة تخصصك أو مجالك أولاً.');
+        return;
+    }
+
+    var apiKey = window._appSettingsCache && window._appSettingsCache.geminiApiKey;
+    if(!apiKey) {
+        alert('ميزة الذكاء الاصطناعي غير مفعلة حالياً. يرجى التواصل مع الإدارة لإضافة مفتاح API.');
+        return;
+    }
+
+    btn.disabled = true;
+    btn.innerHTML = '⏳ جاري التفكير...';
+    resultBox.style.display = 'block';
+    resultBox.innerHTML = '<div style="text-align:center; color:var(--tx2);">🤖 يقوم الذكاء الاصطناعي الآن بمعالجة طلبك واختيار أفضل المصادر...</div>';
+
+    var resourcesText = (window._allDevRes || []).map(function(r) { return "- " + r.title + " (نوع: " + (r.type === 'video' ? 'فيديو' : 'كتاب') + ", تخصص: " + (r.tags||'عام') + ")"; }).join('\n');
+    
+    var prompt = (await buildCompanyContextForAi(field)) + "أنت مساعد ذكي ومستشار تطوير مهني خبير. هام جداً: إذا كان الموظف يسأل عن معلومات تخص الشركة أو الموظفين أو المشاريع، أجب عليه فوراً وبشكل مباشر من السياق المتاح لك كأنك متحدث باسم الشركة ولا تقترح مسارات مهنية. قام الموظف بإدخال النص التالي: [" + field + "].\n" +
+                 "إذا كان النص عبارة عن تخصص أو مجال (مثل 'مطور ويب' أو 'محاسب')، فاقترح له مساراً تطويرياً قصيراً ومفيداً.\n" +
+                 "أما إذا كان النص عبارة عن سؤال فني أو استفسار عام، فأجب عليه باحترافية وبطريقة تساعده في عمله وتطوير مهاراته.\n" +
+                 "في حالة اقتراح مسارات مهنية أو إجابة أسئلة فنية، لدينا في مكتبة الشركة المصادر التالية حصراً:\n" + resourcesText + "\n\n" +
+                 "يرجى كتابة ردك باللغة العربية. إذا وجدت مصادر ذات صلة في المكتبة أعلاه، اذكر عناوينها ليتمكن الموظف من العثور عليها أدناه. قدم إجابتك بتنسيق Markdown (استخدم العناوين، القوائم المنقطة، والخط العريض). ابدأ مباشرة بالرد المفيد والتحفيز.";
+
+    callGemini(apiKey, prompt, btn, resultBox, '✨ اسأل / اقترح مساراً', false);
+};
+
+// Hook into empGo to load resources when tab is clicked
+var originalEmpGo = window.empGo;
+window.empGo = function(id, nav) {
+    if(originalEmpGo) originalEmpGo(id, nav);
+    if(id === 'devres') {
+        fetchEmpDevRes();
+    }
+};
+
+
+window.adminGenerateSuggestions = async function() {
+    var field = document.getElementById('adminAiSuggestField').value.trim();
+    var btn = document.getElementById('btnAdminSuggest');
+    var resultBox = document.getElementById('adminAiSuggestResult');
+    
+    if(!field) {
+        alert('يرجى إدخال التخصص أو القسم أولاً.');
+        return;
+    }
+
+    var apiKey = window._appSettingsCache && window._appSettingsCache.geminiApiKey;
+    if(!apiKey) {
+        alert('مفتاح الذكاء الاصطناعي غير موجود في إعدادات النظام. يرجى إضافة مفتاح (Gemini أو Groq أو OpenRouter) أولاً.');
+        return;
+    }
+
+    btn.disabled = true;
+    btn.innerHTML = '⏳ جاري التفكير...';
+    resultBox.style.display = 'bloc
