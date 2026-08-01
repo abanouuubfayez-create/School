@@ -7219,11 +7219,11 @@ function loadAiAdvisor(c) {
     h += '</div>';
 
     h += '<div style="background:#faf5ff; border:1px solid #e9d5ff; border-radius:10px; padding:14px 16px; margin-bottom:16px;">';
-    h += '<div style="font-weight:800; color:var(--nv); font-size:13.5px; margin-bottom:4px;">📎 غذّي المستشار بالملفات والمستندات (PDF, TXT, MD, CSV)</div>';
-    h += '<div style="color:var(--tx3); font-size:12px; margin-bottom:10px;">ارفع تقارير أو خطط أو مستندات نصية (PDF أو TXT أو MD أو CSV أو JSON)، والمستشار هيحلل محتواها ويقدر يرد عليك من جواه لما تسأل باسم المستند.</div>';
+    h += '<div style="font-weight:800; color:var(--nv); font-size:13.5px; margin-bottom:4px;">📎 غذّي المستشار بالملفات والمستندات (TXT, PDF, MD, CSV)</div>';
+    h += '<div style="color:var(--tx3); font-size:12px; margin-bottom:10px;">ارفع تقارير أو خطط أو أي ملفات نصية (TXT أو MD أو CSV أو JSON أو PDF)، والمستشار هيحلل محتواها ويقدر يرد عليك من جواه لما تسأل باسم المستند.</div>';
     h += '<div class="fr fr2" style="margin-bottom:10px;">';
     h += '<div class="fg" style="margin:0;"><label>عنوان المستند</label><input type="text" id="aiKbTitle" placeholder="مثال: خطة الربع الأول 2026 أو تقرير الحضور"></div>';
-    h += '<div class="fg" style="margin:0;"><label>اختر الملف (PDF, TXT, MD, CSV, إلخ)</label><input type="file" id="aiKbFile" accept=".pdf,.txt,.md,.markdown,.text,.json,.csv,.log,.html,.xml,application/pdf,text/plain,text/markdown,text/csv,application/json" onchange="if(this.files[0] && !document.getElementById(\'aiKbTitle\').value){ document.getElementById(\'aiKbTitle\').value = this.files[0].name.replace(/\\.[^/.]+$/, \'\'); }"></div>';
+    h += '<div class="fg" style="margin:0;"><label>اختر الملف (TXT, PDF, MD, CSV)</label><input type="file" id="aiKbFile" accept=".txt,.pdf,.md,.markdown,.text,.json,.csv,.log,.html,.xml,text/plain,application/pdf,text/markdown,text/csv,application/json,*/*" onchange="if(this.files[0] && !document.getElementById(\'aiKbTitle\').value){ document.getElementById(\'aiKbTitle\').value = this.files[0].name.replace(/\\.[^/.]+$/, \'\'); }"></div>';
     h += '</div>';
     h += '<button class="bt bt-p" onclick="aiKbUpload()" id="aiKbUploadBtn">⬆️ رفع وتحليل الملف</button>';
     h += '<div id="aiKbUploadStatus" style="margin-top:8px; font-size:12px; font-weight:700; color:var(--nv);"></div>';
@@ -7269,8 +7269,16 @@ async function tgExtractFileText(file) {
     }
     // قراءة الملفات النصية المباشرة (TXT, MD, CSV, JSON, LOG, إلخ)
     try {
-        var text = await file.text();
-        return (text || '').trim();
+        if (file.text) {
+            var txt = await file.text();
+            if (txt) return txt.trim();
+        }
+        return await new Promise(function(resolve, reject) {
+            var reader = new FileReader();
+            reader.onload = function(e) { resolve((e.target.result || '').trim()); };
+            reader.onerror = function() { reject(new Error('تعذرت قراءة الملف النصي')); };
+            reader.readAsText(file, 'utf-8');
+        });
     } catch(err) {
         throw new Error('تعذرت قراءة الملف النصي: ' + ((err && err.message) || err));
     }
