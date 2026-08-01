@@ -1,5 +1,5 @@
 // ─── Service Worker for Tech Go PWA ─────────────────────────────────────────
-const CACHE_NAME = 'techgo-v1001-purge-all';
+const CACHE_NAME = 'techgo-v2000-force-purge-all';
 const STATIC_ASSETS = [
     './login.html',
     './styles.css',
@@ -43,7 +43,7 @@ self.addEventListener('fetch', function(event) {
     }
     
     // Always Network First for HTML and JS code files to guarantee latest version
-    if (event.request.mode === 'navigate' || url.endsWith('app.js') || url.endsWith('index.html') || url.endsWith('employee.html')) {
+    if (event.request.mode === 'navigate' || url.indexOf('app.js') > -1 || url.indexOf('index.html') > -1 || url.indexOf('employee.html') > -1 || url.indexOf('.js') > -1 || url.indexOf('.html') > -1) {
         event.respondWith(
             fetch(event.request).then(function(response) {
                 return response;
