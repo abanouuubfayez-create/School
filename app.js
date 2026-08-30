@@ -2609,15 +2609,14 @@ function tgChatMount(){
              '<div class="tg-chat-reply-preview-text" id="tgChatReplyText"></div>'+
              '<div class="tg-chat-reply-preview-close" onclick="tgChatClearReply()">✕</div>'+
           '</div>'+
-          '<div class="pj-chat-input-row" style="position:relative">'+
+          '<div class="tg-chat-input-row">'+
              '<div id="tgEmojiWrap" style="display:none;position:absolute;bottom:65px;right:10px;z-index:999999;box-shadow:0 8px 24px rgba(0,0,0,0.15);border-radius:12px;overflow:hidden;">'+
                 '<emoji-picker class="light"></emoji-picker>'+
              '</div>'+
              '<div id="tgChatMentions" class="tg-mention-list" style="display:none"></div>'+
-            '<button class="bt bt-d" style="width:36px;height:36px;padding:0;border-radius:50%;display:flex;align-items:center;justify-content:center;flex-shrink:0" onclick="document.getElementById(\'tgChatInput\').value=\'\'; tgChatClearReply();" title="مسح المربع">🧹</button>'+
-            '<button style="font-size:22px;background:transparent;border:none;cursor:pointer;padding:0 4px;opacity:0.7;transition:0.2s" onmouseover="this.style.opacity=1" onmouseout="this.style.opacity=0.7" onclick="var p=document.getElementById(\'tgEmojiWrap\'); p.style.display=p.style.display===\'none\'?\'block\' : \'none\';" title="إضافة إيموجي">😀</button>'+
+            '<button type="button" class="tg-chat-tool-btn" onclick="var p=document.getElementById(\'tgEmojiWrap\'); p.style.display=p.style.display===\'none\'?\'block\' : \'none\';" title="إضافة إيموجي">😀</button>'+
             '<textarea id="tgChatInput" rows="1" placeholder="اكتب رسالتك هنا... (اكتب @ للإشارة)" onkeydown="tgChatKeydown(event)" oninput="tgChatHandleInput(event)"></textarea>'+
-            '<button class="btn-send" onclick="tgChatSend()">➤</button>'+
+            '<button type="button" class="tg-chat-send-btn" onclick="tgChatSend()" title="إرسال">➤</button>'+
           '</div>'+
         '</div>'+
         '<div id="tgChatBubble" class="tg-chat-bubble" onclick="tgChatToggle()" title="الشات العام">'+
