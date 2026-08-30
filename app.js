@@ -3034,10 +3034,39 @@ function _tgTone(ctx, freq, start, dur, vol){
     osc.start(start); osc.stop(start+dur+0.03);
 }
 
+function tgGetAvatarColor(name) {
+    var colors = [
+        'linear-gradient(135deg, #3b82f6, #1d4ed8)',
+        'linear-gradient(135deg, #10b981, #047857)',
+        'linear-gradient(135deg, #8b5cf6, #6d28d9)',
+        'linear-gradient(135deg, #f59e0b, #d97706)',
+        'linear-gradient(135deg, #ec4899, #be185d)',
+        'linear-gradient(135deg, #06b6d4, #0e7490)',
+        'linear-gradient(135deg, #6366f1, #4338ca)'
+    ];
+    var hash = 0;
+    for (var i = 0; i < (name || '').length; i++) hash = name.charCodeAt(i) + ((hash << 5) - hash);
+    return colors[Math.abs(hash) % colors.length];
+}
+
+function tgGetAvatarInitials(name) {
+    if (!name) return '👤';
+    var parts = name.trim().split(/\s+/);
+    if (parts.length >= 2) return (parts[0][0] + (parts[1][0] || '')).toUpperCase();
+    return name.slice(0, 2).toUpperCase();
+}
+
 function renderChatMessages(){
     var log=document.getElementById('tgChatLog');
     if(!log) return;
-    if(!_chatMessages.length){ log.innerHTML='<div class="pj-chat-empty">لا توجد رسائل بعد. ابدأ المحادثة! 👋</div>'; return; }
+    if(!_chatMessages.length){
+        log.innerHTML='<div class="pj-chat-empty">'+
+            '<div style="font-size:38px;margin-bottom:8px">💬</div>'+
+            '<div style="font-size:14px;font-weight:800;color:var(--tx)">الشات العام لفريق العمل</div>'+
+            '<div style="font-size:12px;color:var(--tx2);margin-top:4px">لا توجد رسائل بعد. كن أول من يبدأ المحادثة! 👋</div>'+
+        '</div>';
+        return;
+    }
     
     var h='';
     var lastDate = '';
@@ -3059,25 +3088,62 @@ function renderChatMessages(){
 
         var mine = TG_USER && m.uid===TG_USER.uid;
         var timeStr = t ? t.toLocaleTimeString('ar-EG',{hour:'2-digit',minute:'2-digit'}) : '...';
-        var roleLabel = m.role==='admin' ? 'أدمن' : 'موظف';
-        var canDelete = TG_USER && (mine || TG_USER.role==='admin');
+        var roleLabel = (m.role==='admin'||m.role==='tech_admin') ? 'أدمن' : 'موظف';
+        var canDelete = TG_USER && (mine || TG_USER.role==='admin'||TG_USER.role==='tech_admin');
+        var avatarBg = tgGetAvatarColor(m.name || 'User');
+        var initials = tgGetAvatarInitials(m.name || 'User');
         
-        h+='<div class="pj-chat-msg'+(mine?' mine':'')+'">'+
-           '<div class="pj-chat-actions">'+
-             '<span class="pj-chat-reply-btn" title="رد" onclick="tgChatSetReply(\''+m.id+'\', \''+escH(m.name||'')+'\', \''+escH((m.text||'').replace(/\\/g,'\\\\').replace(/\'/g,"\\'").replace(/\"/g,'&quot;').replace(/\n/g,'\\n'))+'\')">↩️</span>'+
-             (canDelete?('<span class="pj-chat-del" title="حذف الرسالة" onclick="tgChatDelete(\''+m.id+'\')">🗑</span>'):'')+
-           '</div>'+
-           '<div class="pj-chat-bubble">'+
-             '<div class="pj-chat-name">'+escH(m.name||'')+' <span class="pj-chat-role">'+roleLabel+'</span></div>'+
-             (m.replyToId ? ('<div class="pj-chat-quote" dir="auto"><strong>'+escH(m.replyToName||'')+':</strong> '+escH(m.replyToText||'')+'</div>') : '') +
-             '<div class="pj-chat-text" dir="auto">'+
-                escH(m.text||'')
-                .replace(/(@[^\n@]+?)(?=\s|$|@)/g, '<span style="color:var(--gd);font-weight:bold;background:rgba(235,160,0,0.1);padding:1px 4px;border-radius:4px">$1</span>')
-                .replace(/(https?:\/\/[^\s]+)/g, '<a href="$1" target="_blank" style="color:#34b7f1;text-decoration:underline">$1</a>')+
-             '</div>'+
-             '<div class="pj-chat-time">'+timeStr+'</div>'+
-           '</div>'+
-           '</div>';
+        var quoteHtml = '';
+        if (m.replyToId) {
+            quoteHtml = '<div class="pj-chat-quote" dir="auto">' +
+                '<span class="pj-chat-quote-bar"></span>' +
+                '<div class="pj-chat-quote-body">' +
+                    '<div class="pj-chat-quote-name">' + escH(m.replyToName || '') + '</div>' +
+                    '<div class="pj-chat-quote-text">' + escH(m.replyToText || '') + '</div>' +
+                '</div>' +
+            '</div>';
+        }
+
+        var formattedText = escH(m.text || '')
+            .replace(/(@[^\n@]+?)(?=\s|$|@)/g, '<span class="tg-chat-tag">$1</span>')
+            .replace(/(https?:\/\/[^\s]+)/g, '<a href="$1" target="_blank" class="tg-chat-link">$1</a>');
+
+        var actionsHtml = '<div class="pj-chat-actions">'+
+            '<span class="pj-chat-reply-btn" title="رد" onclick="tgChatSetReply(\''+m.id+'\', \''+escH(m.name||'')+'\', \''+escH((m.text||'').replace(/\\/g,'\\\\').replace(/\'/g,"\\'").replace(/\"/g,'&quot;').replace(/\n/g,'\\n'))+'\')">↩️</span>'+
+            (canDelete?('<span class="pj-chat-del" title="حذف الرسالة" onclick="tgChatDelete(\''+m.id+'\')">🗑</span>'):'')+
+        '</div>';
+
+        if (mine) {
+            h += '<div class="pj-chat-msg mine">' +
+                   actionsHtml +
+                   '<div class="pj-chat-bubble mine">' +
+                     quoteHtml +
+                     '<div class="pj-chat-text" dir="auto">' + formattedText + '</div>' +
+                     '<div class="pj-chat-meta mine">' +
+                       '<span class="pj-chat-time">' + timeStr + '</span>' +
+                       '<span class="pj-chat-ticks" title="تم الإرسال">✓✓</span>' +
+                     '</div>' +
+                   '</div>' +
+                 '</div>';
+        } else {
+            h += '<div class="pj-chat-msg other">' +
+                   '<div class="pj-chat-avatar" style="background:' + avatarBg + '" title="' + escH(m.name || '') + '">' + initials + '</div>' +
+                   '<div class="pj-chat-content-wrap">' +
+                     actionsHtml +
+                     '<div class="pj-chat-bubble other">' +
+                       '<div class="pj-chat-name">' +
+                         '<span class="pj-chat-author">' + escH(m.name || '') + '</span>' +
+                         '<span class="pj-chat-role ' + ((m.role==='admin'||m.role==='tech_admin')?'admin':'emp') + '">' + roleLabel + '</span>' +
+                       '</div>' +
+                       quoteHtml +
+                       '<div class="pj-chat-text" dir="auto">' + formattedText + '</div>' +
+                       '<div class="pj-chat-meta other">' +
+                         '<span class="pj-chat-time">' + timeStr + '</span>' +
+                       '</div>' +
+                     '</div>' +
+                   '</div>' +
+                 '</div>';
+        }
     });
     
     log.innerHTML=h;
