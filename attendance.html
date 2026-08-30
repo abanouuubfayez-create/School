@@ -1538,6 +1538,22 @@
             var origText = btn ? btn.innerHTML : '';
             if (btn) btn.innerHTML = '⏳ جارِ الاتصال بالسيرفر...';
 
+            // إذا كان المستخدم يفتح النظام من Vercel (HTTPS)، المتصفح يمنع طلبات HTTP المباشرة (Mixed Content)
+            if (window.location.protocol === 'https:') {
+                if (btn) btn.innerHTML = origText;
+                var shouldOpen = confirm(
+                    '⚡ أنت تفتح النظام عبر رابط سحابي آمن (HTTPS).\n\n' +
+                    'لسحب البصمات من السيرفر المحلي لجهازك:\n' +
+                    '1. اضغط "موافق" لتحميل ملف البصمة المباشر (attlog.dat) من السيرفر.\n' +
+                    '2. اسحب الملف الذي تم تحميله وأفلته هنا في هذه الصفحة لتحليله فوراً.\n\n' +
+                    'هل تريد تحميل أحدث ملف بصمات من السيرفر الآن؟'
+                );
+                if (shouldOpen) {
+                    window.open('http://localhost:8081/download/attlog.dat', '_blank');
+                }
+                return;
+            }
+
             fetch('http://localhost:8081/download/attlog.dat')
                 .then(function(res) {
                     if (!res.ok) throw new Error('السيرفر غير مشتغل');
@@ -2441,7 +2457,7 @@
         updatePolicyLabels();
         initAttendanceArchive();
     </script>
-    <script src="theme.js?v=1788081398"></script>
-    <script src="pwa-install.js?v=1788081398"></script>
+    <script src="theme.js?v=1788086084"></script>
+    <script src="pwa-install.js?v=1788086084"></script>
 </body>
 </html>

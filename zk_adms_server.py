@@ -86,11 +86,15 @@ def sync_to_firestore(pin, dt_str, device_sn, status=0, verify_type=1):
 
 class ZKTecoADMSHandler(BaseHTTPRequestHandler):
     def log_message(self, format, *args):
+        print(f"[*] {self.client_address[0]} - {args[0]}", flush=True)
         return
 
     def _send_plain(self, text, code=200):
         self.send_response(code)
         self.send_header("Content-Type", "text/plain; charset=utf-8")
+        self.send_header("Server", "iClock Server/3.0")
+        self.send_header("Pragma", "no-cache")
+        self.send_header("Cache-Control", "no-cache")
         self.send_header("Content-Length", str(len(text.encode("utf-8"))))
         self.end_headers()
         self.wfile.write(text.encode("utf-8"))
@@ -103,11 +107,12 @@ class ZKTecoADMSHandler(BaseHTTPRequestHandler):
         self.wfile.write(html.encode("utf-8"))
 
     def do_GET(self):
+        print(f"[GET] from {self.client_address[0]}: {self.path}", flush=True)
         parsed = urllib.parse.urlparse(self.path)
-        path = parsed.path
+        path = parsed.path.lower()
         params = urllib.parse.parse_qs(parsed.query)
 
-        sn = params.get("SN", ["UNKNOWN"])[0]
+        sn = params.get("SN", params.get("sn", ["UNKNOWN"]))[0]
 
         if path in ("/", "/dashboard", "/status"):
             html = self._render_dashboard()
@@ -128,12 +133,13 @@ class ZKTecoADMSHandler(BaseHTTPRequestHandler):
                 self._send_plain("لا توجد سجلات بعد.", 404)
             return
 
-        if "/iclock/cdata" in path or "/iclock/ping" in path:
+        # ── ZKTeco Handshake & Push Config (جميع مسارات ZKTeco الممكنة) ──
+        if "cdata" in path or "ping" in path or "registry" in path or "push" in path or "options" in parsed.query.lower():
             connected_devices[sn] = {
                 "last_seen": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
                 "ip": self.client_address[0]
             }
-            print(f"[+] اتصال من ماكينة البصمة: SN={sn} | IP={self.client_address[0]}")
+            print(f"[+] اتصال من ماكينة البصمة: SN={sn} | IP={self.client_address[0]}", flush=True)
             
             config_reply = (
                 f"GET OPTION FROM: {sn}\n"
@@ -152,7 +158,7 @@ class ZKTecoADMSHandler(BaseHTTPRequestHandler):
             self._send_plain(config_reply)
             return
 
-        if "/iclock/getrequest" in path:
+        if "getrequest" in path or "devicecmd" in path or "rtdata" in path or "fdata" in path:
             connected_devices[sn] = {
                 "last_seen": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
                 "ip": self.client_address[0]
@@ -160,29 +166,29 @@ class ZKTecoADMSHandler(BaseHTTPRequestHandler):
             self._send_plain("OK")
             return
 
-        if "/iclock/devicecmd" in path:
-            self._send_plain("OK")
-            return
-
+        # Fallback: All other GET requests from terminal
         self._send_plain("OK")
 
     def do_POST(self):
         parsed = urllib.parse.urlparse(self.path)
-        path = parsed.path
+        path = parsed.path.lower()
         params = urllib.parse.parse_qs(parsed.query)
 
-        sn = params.get("SN", ["UNKNOWN"])[0]
-        table = params.get("table", ["ATTLOG"])[0]
+        sn = params.get("SN", params.get("sn", ["UNKNOWN"]))[0]
+        table = params.get("table", params.get("TABLE", ["ATTLOG"]))[0].upper()
 
         length = int(self.headers.get("Content-Length", 0))
         body = self.rfile.read(length).decode("utf-8", errors="ignore")
+
+        print(f"[POST] from {self.client_address[0]}: {self.path} (Body Length: {length})", flush=True)
 
         connected_devices[sn] = {
             "last_seen": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
             "ip": self.client_address[0]
         }
 
-        if "cdata" in path or table == "ATTLOG":
+        # ── استقبال حركات البصمة (ATTLOG / CDATA) ──
+        if "cdata" in path or table == "ATTLOG" or "rtdata" in path or "fdata" in path:
             lines = [l.strip() for l in body.splitlines() if l.strip()]
             saved_count = 0
 
@@ -213,7 +219,7 @@ class ZKTecoADMSHandler(BaseHTTPRequestHandler):
                     if len(recent_logs) > 50:
                         recent_logs.pop()
 
-                    print(f" [✓ بصمة جديدة] الموظف رقم: {pin} | الوقت: {dt_str} | الماكينة: {sn}")
+                    print(f" [✓ بصمة جديدة] الموظف رقم: {pin} | الوقت: {dt_str} | الماكينة: {sn}", flush=True)
                     saved_count += 1
 
             self._send_plain(f"OK: {saved_count}")
