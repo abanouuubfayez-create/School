@@ -3218,20 +3218,9 @@ body.dark-mode .tg-expand-btn:hover {
 .notif-item-text { font-size: 11.5px !important; line-height: 1.4 !important; opacity: 0.85; }
 .notif-item-time { font-size: 10px !important; opacity: 0.6; margin-top: 6px; }
 
-/* ── Offline Banner ── */
+/* ── Offline Banner (Disabled) ── */
 #tg-offline-banner {
-    position: fixed; top: 0; left: 0; width: 100%; z-index: 999999;
-    background: rgba(220, 53, 69, 0.95); color: #fff; text-align: center;
-    padding: 10px 15px; font-weight: bold; font-size: 14px;
-    box-shadow: 0 4px 12px rgba(0,0,0,0.2); backdrop-filter: blur(8px); -webkit-backdrop-filter: blur(8px);
-    transform: translateY(-100%); transition: transform 0.4s cubic-bezier(0.25, 0.8, 0.25, 1);
-    display: flex; justify-content: center; align-items: center; gap: 8px;
-}
-#tg-offline-banner.show {
-    transform: translateY(0);
-}
-#tg-offline-banner.online {
-    background: rgba(40, 167, 69, 0.95);
+    display: none !important;
 }
 
 /* ── Print Styles for Notifications & Employee Portal ── */

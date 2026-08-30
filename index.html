@@ -34,7 +34,7 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Alexandria:wght@300;400;500;600;700;800;900&family=Cairo:wght@400;600;700;800;900&family=Tajawal:wght@400;500;700;800&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
-<link rel="stylesheet" href="styles.css?v=1785574081">
+<link rel="stylesheet" href="styles.css?v=181818">
 <link rel="manifest" href="manifest.json">
 <link rel="icon" type="image/png" sizes="192x192" href="icon-192.png">
 <link rel="apple-touch-icon" href="icon-192.png">
@@ -42,8 +42,8 @@
 <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-auth-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-storage-compat.js"></script>
-<script src="firebase-config.js?v=1785574081"></script>
-<script src="auth.js?v=1785574081"></script>
+<script src="firebase-config.js?v=181818"></script>
+<script src="auth.js?v=181818"></script>
 <script>
     (function() {
         const theme = localStorage.getItem('tg-theme') || 'light';
@@ -131,8 +131,9 @@
     <div class="sb-group">
         <div class="S-s" onclick="tgToggleNavGroup(this)">شؤون الموظفين <span class="arr">▼</span></div>
         <div class="sb-items">
-            <div class="S-i" onclick="go('staff',this);clearAdminBadge('notif-req-badge','notif-req-badge-sb')" style="border-right:2px solid var(--gd)"><span class="ic">👥</span> متابعة الموظفين <span id="notif-req-badge-sb" style="display:none;background:var(--no);color:#fff;border-radius:50%;min-width:18px;height:18px;font-size:10px;font-weight:800;align-items:center;justify-content:center;padding:0 3px;margin-right:4px">0</span></div>
-            <div class="S-i" onclick="go('empdocs',this)" style="border-right:2px solid var(--gd)"><span class="ic">📂</span> ملفات الموظفين</div>
+            <div class="S-i" onclick="go('emp',this)" style="border-right:2px solid var(--gd)"><span class="ic">👤</span> ملف بيانات الموظفين <span class="S-b" style="background:linear-gradient(135deg, #2563eb, #1d4ed8); color:#fff;">شامل</span></div>
+            <div class="S-i" onclick="go('staff',this);clearAdminBadge('notif-req-badge','notif-req-badge-sb')" style="border-right:2px solid var(--gd)"><span class="ic">👥</span> متابعة حسابات الموظفين <span id="notif-req-badge-sb" style="display:none;background:var(--no);color:#fff;border-radius:50%;min-width:18px;height:18px;font-size:10px;font-weight:800;align-items:center;justify-content:center;padding:0 3px;margin-right:4px">0</span></div>
+            <div class="S-i" onclick="go('empdocs',this)" style="border-right:2px solid var(--gd)"><span class="ic">📂</span> ملفات وأرشيف الموظفين</div>
             <div class="S-i" onclick="go('att_live',this)"><span class="ic">📡</span> الحضور الحي (مباشر)</div>
             <div class="S-i" onclick="go('att',this)"><span class="ic">⏱</span> تحليل الحضور والانصراف</div>
             <div class="S-i" onclick="go('cal',this)"><span class="ic">📅</span> التقويم العام</div>
@@ -407,16 +408,16 @@
 </div>
 </div>
 <datalist id="tgEmpDL"></datalist>
-<script src="auth.js?v=1785574081"></script>
+<script src="auth.js?v=181818"></script>
 
 <!-- FullCalendar -->
 <script src="https://cdn.jsdelivr.net/npm/fullcalendar@6.1.15/index.global.min.js"></script>
 
 <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
 <script>if(window.pdfjsLib){ pdfjsLib.GlobalWorkerOptions.workerSrc = "https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js"; }</script>
-<script src="app.js?v=1785574081"></script>
-<script src="livetrack.js?v=1785574081"></script>
-<script src="formsend.js?v=1785574081"></script>
+<script src="app.js?v=181818"></script>
+<script src="livetrack.js?v=181818"></script>
+<script src="formsend.js?v=181818"></script>
 
 
 <script>
@@ -626,7 +627,7 @@
                 }
             }
         }
-        var fullHtml = '<!DOCTYPE html><html lang="ar" dir="rtl"><head><meta charset="UTF-8"><link rel="stylesheet" href="styles.css?v=1785574081"></head><body style="background:#fff;padding:20px;">' + clone.innerHTML + '</body></html>';
+        var fullHtml = '<!DOCTYPE html><html lang="ar" dir="rtl"><head><meta charset="UTF-8"><link rel="stylesheet" href="styles.css?v=181818"></head><body style="background:#fff;padding:20px;">' + clone.innerHTML + '</body></html>';
         db.collection('docArchive').add({
           docTitle: docTitle,
           employeeName: empName,
@@ -785,7 +786,7 @@
 </script>
 <div style="position:fixed;bottom:4px;left:50%;transform:translateX(-50%);font-size:9px;color:rgba(255,255,255,0.25);z-index:9999;pointer-events:none;white-space:nowrap;font-family:inherit">تطوير وتصميم: أبانوب فايز</div>
 <script src="https://cdn.jsdelivr.net/npm/canvas-confetti@1.6.0/dist/confetti.browser.min.js"></script>
-<script src="theme.js?v=1785574081"></script>
+<script src="theme.js?v=181818"></script>
 
 <!-- Incoming Meeting Call Modal -->
 <div id="incomingMeetingModal" style="display:none; position:fixed; top:0; left:0; right:0; bottom:0; background:radial-gradient(circle at center, rgba(16,185,129,0.2) 0%, rgba(15,23,42,0.98) 100%); z-index:9999999; flex-direction:column; justify-content:center; align-items:center; backdrop-filter:blur(16px); font-family:inherit;">
