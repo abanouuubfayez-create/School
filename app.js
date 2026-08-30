@@ -1,6 +1,327 @@
 
 window._availableUsersForMeeting = [];
 
+window.tgToggleAdminOverride = function(checked) {
+    var noticeBox = document.getElementById('tgAdminNoticeBox');
+    var limitAlert = document.getElementById('tgPermLimitAlert');
+    if (noticeBox) noticeBox.style.display = checked ? 'block' : 'none';
+    if (limitAlert && checked) limitAlert.style.display = 'none';
+};
+
+window.tgOpenPermSheetEmpModal = async function() {
+    var modal = document.getElementById('tgPermSheetEmpModal');
+    if (!modal) {
+        modal = document.createElement('div');
+        modal.id = 'tgPermSheetEmpModal';
+        modal.className = 'modal-backdrop';
+        modal.style.cssText = 'position:fixed; top:0; left:0; right:0; bottom:0; background:rgba(0,0,0,0.6); z-index:99999; display:flex; align-items:center; justify-content:center; padding:16px; backdrop-filter:blur(4px);';
+        document.body.appendChild(modal);
+    }
+    modal.style.display = 'flex';
+
+    var allEmps = [];
+    try {
+        if (window.db) {
+            var snap = await db.collection('users').get();
+            snap.forEach(function(doc) {
+                var d = doc.data();
+                var empName = d.name || d.displayName;
+                var role = (d.role || '').toLowerCase();
+                var jobTitle = (d.jobTitle || '').toLowerCase();
+                var isManager = (role === 'admin' || role === 'exec' || role === 'tech_admin' || jobTitle.indexOf('مدير') !== -1 || jobTitle.indexOf('تنفذ') !== -1);
+                if (empName && !isManager) {
+                    var isTest = (empName.toLowerCase().indexOf('test') > -1 || empName.indexOf('تست') > -1);
+                    allEmps.push({ uid: doc.id, name: empName, defaultChecked: !isTest });
+                }
+            });
+        }
+    } catch(e) { console.warn('Fetch users err:', e); }
+
+    var savedCustom = [];
+    var savedChecked = null;
+    try {
+        var raw = localStorage.getItem('tg_perm_sheet_config');
+        if (raw) {
+            var parsed = JSON.parse(raw);
+            savedCustom = parsed.custom || [];
+            savedChecked = parsed.checked || null;
+        }
+    } catch(e) {}
+
+    var h = '<div style="background:var(--bg); border:1px solid var(--bd); border-radius:14px; width:100%; max-width:540px; max-height:90vh; overflow-y:auto; padding:22px; box-shadow:0 20px 40px rgba(0,0,0,0.4); direction:rtl; font-family:inherit;">';
+    h += '<div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:16px; border-bottom:1px solid var(--bd); padding-bottom:12px;">';
+    h += '  <h3 style="margin:0; font-size:16px; font-weight:800; color:var(--tx); display:flex; align-items:center; gap:8px;">⚙️ تخصيص موظفي كشف المتابعة الورقي</h3>';
+    h += '  <button onclick="document.getElementById(\'tgPermSheetEmpModal\').style.display=\'none\'" style="background:none; border:none; font-size:18px; cursor:pointer; color:var(--tx2);">✕</button>';
+    h += '</div>';
+
+    h += '<div style="font-size:12px; color:var(--tx2); margin-bottom:14px; line-height:1.5;">حدد الموظفين المراد إظهارهم في الكشف الورقي (يمكنك إلغاء تحديد حسابات التست أو إضافة أسماء موظفين غير مسجلين بالنظام):</div>';
+
+    // System Employees Section
+    h += '<div style="font-weight:bold; font-size:13px; color:var(--tx); margin-bottom:8px;">👥 الموظفون المسجلون بالنظام:</div>';
+    h += '<div id="tgPermModalSysEmpsList" style="display:grid; grid-template-columns:1fr 1fr; gap:8px; margin-bottom:16px; max-height:200px; overflow-y:auto; background:var(--bg2); padding:10px; border-radius:8px; border:1px solid var(--bd);">';
+    allEmps.forEach(function(emp) {
+        var isChecked = savedChecked ? (savedChecked.indexOf(emp.name) > -1) : emp.defaultChecked;
+        h += '<label style="display:flex; align-items:center; gap:6px; font-size:12px; cursor:pointer; color:var(--tx); padding:2px 4px;">';
+        h += '  <input type="checkbox" class="tg-perm-emp-chk" value="' + escH(emp.name) + '" ' + (isChecked ? 'checked' : '') + '>';
+        h += '  <span>' + escH(emp.name) + '</span>';
+        h += '</label>';
+    });
+    h += '</div>';
+
+    // External Non-Registered Employees Section
+    h += '<div style="font-weight:bold; font-size:13px; color:var(--tx); margin-bottom:8px;">➕ إضافة موظفين غير مسجلين على السيستم:</div>';
+    h += '<div style="display:flex; gap:8px; margin-bottom:10px;">';
+    h += '  <input type="text" id="tgPermCustomEmpInput" placeholder="اكتب اسم الموظف..." style="flex:1; padding:8px 12px; border-radius:6px; border:1px solid var(--bd); font-size:12px; background:var(--bg2); color:var(--tx);">';
+    h += '  <button onclick="tgAddPermCustomEmpRow()" class="bt bt-p" style="padding:8px 16px; font-size:12px; font-weight:bold; background:linear-gradient(135deg, #0f172a, #1e293b); color:#fff; border-radius:8px;">➕ إضافة</button>';
+    h += '</div>';
+
+    h += '<div id="tgPermCustomEmpsWrap" style="display:flex; flex-wrap:wrap; gap:6px; margin-bottom:20px;">';
+    savedCustom.forEach(function(cName) {
+        h += '<span class="tg-perm-custom-tag" style="background:var(--bg2); border:1px solid var(--bd); padding:4px 10px; border-radius:14px; font-size:12px; color:var(--tx); display:inline-flex; align-items:center; gap:6px;">' +
+             escH(cName) +
+             ' <button onclick="this.parentElement.remove()" style="background:none; border:none; color:#ef4444; cursor:pointer; font-weight:bold;">✕</button>' +
+             '</span>';
+    });
+    h += '</div>';
+
+    // Actions
+    h += '<div style="display:flex; justify-content:flex-end; gap:10px; border-top:1px solid var(--bd); padding-top:14px;">';
+    h += '  <button onclick="document.getElementById(\'tgPermSheetEmpModal\').style.display=\'none\'" class="bt bt-o" style="padding:8px 16px; font-size:12px; font-weight:bold;">إلغاء</button>';
+    h += '  <button onclick="tgSaveAndPrintPermSheet()" class="bt bt-p" style="padding:9px 24px; font-size:13px; font-weight:bold; background:linear-gradient(135deg, #0f172a, #1e293b); color:#fff; border-radius:8px; box-shadow:0 4px 14px rgba(15,23,42,0.3);">🖨️ حفظ وتوليد الطباعة الآن</button>';
+    h += '</div>';
+
+    h += '</div>';
+    modal.innerHTML = h;
+};
+
+window.tgAddPermCustomEmpRow = function() {
+    var inp = document.getElementById('tgPermCustomEmpInput');
+    if (!inp) return;
+    var name = inp.value.trim();
+    if (!name) return;
+
+    var wrap = document.getElementById('tgPermCustomEmpsWrap');
+    if (wrap) {
+        var tag = document.createElement('span');
+        tag.className = 'tg-perm-custom-tag';
+        tag.style.cssText = 'background:var(--bg2); border:1px solid var(--bd); padding:4px 10px; border-radius:14px; font-size:12px; color:var(--tx); display:inline-flex; align-items:center; gap:6px;';
+        tag.innerHTML = escH(name) + ' <button onclick="this.parentElement.remove()" style="background:none; border:none; color:#ef4444; cursor:pointer; font-weight:bold;">✕</button>';
+        wrap.appendChild(tag);
+    }
+    inp.value = '';
+};
+
+window.tgGetPermSheetEmployees = async function() {
+    var rawConfig = localStorage.getItem('tg_perm_sheet_config');
+    var finalEmps = [];
+    if (rawConfig) {
+        try {
+            var cfg = JSON.parse(rawConfig);
+            (cfg.checked || []).forEach(function(n) { finalEmps.push({ name: n }); });
+            (cfg.custom || []).forEach(function(n) { finalEmps.push({ name: n }); });
+        } catch(e) {}
+    }
+
+    if (finalEmps.length === 0) {
+        try {
+            if (window.db) {
+                var snap = await db.collection('users').get();
+                snap.forEach(function(doc) {
+                    var d = doc.data();
+                    var empName = d.name || d.displayName;
+                    var role = (d.role || '').toLowerCase();
+                    var jobTitle = (d.jobTitle || '').toLowerCase();
+                    var isManager = (role === 'admin' || role === 'exec' || role === 'tech_admin' || jobTitle.indexOf('مدير') !== -1 || jobTitle.indexOf('تنفذ') !== -1);
+                    var isTest = (empName && (empName.toLowerCase().indexOf('test') > -1 || empName.indexOf('تست') > -1));
+                    if (empName && !isManager && !isTest) {
+                        finalEmps.push({ name: empName });
+                    }
+                });
+            }
+        } catch(e) {}
+    }
+
+    if (finalEmps.length === 0) {
+        for (var i = 1; i <= 5; i++) {
+            finalEmps.push({ name: 'موظف ' + i });
+        }
+    }
+    return finalEmps;
+};
+
+window.tgSavePermSheetConfig = function(andPrint) {
+    var checked = [];
+    document.querySelectorAll('.tg-perm-emp-chk:checked').forEach(function(chk) {
+        checked.push(chk.value);
+    });
+
+    var custom = [];
+    document.querySelectorAll('.tg-perm-custom-tag').forEach(function(tag) {
+        var t = tag.textContent.replace('✕', '').trim();
+        if (t) custom.push(t);
+    });
+
+    var config = { checked: checked, custom: custom };
+    localStorage.setItem('tg_perm_sheet_config', JSON.stringify(config));
+
+    var modal = document.getElementById('tgPermSheetEmpModal');
+    if (modal) modal.style.display = 'none';
+
+    var c = document.getElementById('pg-permsheet');
+    if (c) {
+        window.loadPermSheetPage(c);
+    }
+
+    if (andPrint) {
+        window.tgPrintMonthlyPermissionSheet(true);
+    }
+};
+
+window.tgSaveAndPrintPermSheet = function() {
+    window.tgSavePermSheetConfig(true);
+};
+
+window.tgGeneratePermSheetHTML = async function(monthDate, forPrint) {
+    var dateObj = monthDate ? new Date(monthDate) : new Date();
+    var currentMonthStr = dateObj.toLocaleDateString('ar-EG', { month: 'long', year: 'numeric' });
+    var finalEmps = await window.tgGetPermSheetEmployees();
+
+    var h = H('سجل متابعة ورقي', 'سجل متابعة إذنات الحضور والانصراف الشهري (31 يوماً)', 'ATTENDANCE PERMISSION TRACKING SHEET', 'perm_sheet');
+    
+    // Section 1: Sheet Info
+    h += SC('١', 'بيانات الكشف وضوابط الاستخدام');
+    h += '<div style="display:flex; justify-content:space-between; align-items:center; background:var(--bg2); padding:10px 14px; border-radius:8px; border:1px solid var(--bd); margin-bottom:14px; font-size:11.5px; font-weight:bold; color:var(--tx); flex-wrap:wrap; gap:10px;">';
+    h += '  <div>📅 <strong>الشهر / السنة:</strong> ' + currentMonthStr + '</div>';
+    h += '  <div>📊 <strong>الحد الأقصى للإذنات:</strong> 5 أيام شهرياً لكل موظف</div>';
+    h += '  <div style="display:flex; align-items:center; gap:10px;">';
+    h += '    <span>📄 <strong>رقم المستند:</strong> TG-HR-PM-31</span>';
+    if (!forPrint) {
+        h += '    <button type="button" onclick="tgOpenPermSheetEmpModal()" class="bt bt-o np" style="font-size:11px; padding:3px 10px; border-radius:6px; font-weight:bold;">⚙️ تخصيص / استبعاد موظفين</button>';
+    }
+    h += '  </div>';
+    h += '</div>';
+
+    // Section 2: Transposed Matrix
+    h += SC('٢', 'سجل التأشير الميداني اليومي (الأيام 1 — 31)');
+    h += '<div style="overflow-x:auto; margin-bottom:14px; border-radius:8px; border:1px solid var(--bd);">';
+    h += '<table class="tg-fin-matrix-table" style="width:100%; border-collapse:collapse; font-size:10.5px; text-align:center; direction:rtl; font-family:inherit;">';
+    
+    // Header Row
+    h += '<thead><tr style="background:var(--nv); color:#ffffff; font-size:11px;">';
+    h += '<th style="padding:10px 6px; width:80px; border:1px solid rgba(255,255,255,0.2);">اليوم / التاريخ</th>';
+    finalEmps.forEach(function(emp) {
+        h += '<th style="padding:10px 6px; border:1px solid rgba(255,255,255,0.2); text-align:center; font-weight:bold;">' + escH(emp.name) + '</th>';
+    });
+    h += '<th style="padding:10px 6px; width:90px; border:1px solid rgba(255,255,255,0.2);">ملاحظات</th>';
+    h += '</tr></thead><tbody>';
+
+    // Rows 1..31
+    for (var day = 1; day <= 31; day++) {
+        var rowBg = (day % 2 === 0) ? 'background:var(--bg2);' : 'background:var(--bg);';
+        h += '<tr style="' + rowBg + ' border-bottom:1px solid var(--bd); height:32px;">';
+        h += '<td style="padding:6px 6px; font-weight:bold; border:1px solid var(--bd); background:var(--bg2); color:var(--tx);">يوم ' + day + '</td>';
+        finalEmps.forEach(function(emp) {
+            h += '<td style="border:1px solid var(--bd); padding:4px 6px; min-width:65px;"></td>';
+        });
+        h += '<td style="border:1px solid var(--bd); padding:4px 6px;"></td>';
+        h += '</tr>';
+    }
+
+    // Summary Rows
+    h += '<tr style="background:rgba(217,119,6,0.1); font-weight:bold; border-top:2px solid var(--bd); height:36px;">';
+    h += '<td style="padding:8px 6px; border:1px solid var(--bd); color:#d97706; font-weight:900;">المستغرق (من 5)</td>';
+    finalEmps.forEach(function(emp) {
+        h += '<td style="border:1px solid var(--bd); padding:8px 6px; color:#d97706; font-weight:bold;">0</td>';
+    });
+    h += '<td style="border:1px solid var(--bd);"></td>';
+    h += '</tr>';
+
+    h += '<tr style="background:rgba(16,185,129,0.1); font-weight:bold; height:36px;">';
+    h += '<td style="padding:8px 6px; border:1px solid var(--bd); color:#10b981; font-weight:900;">الرصيد المتبقي</td>';
+    finalEmps.forEach(function(emp) {
+        h += '<td style="border:1px solid var(--bd); padding:8px 6px; color:#10b981; font-weight:bold;">5</td>';
+    });
+    h += '<td style="border:1px solid var(--bd);"></td>';
+    h += '</tr>';
+
+    h += '</tbody></table></div>';
+
+    // Legend
+    h += '<div style="background:var(--bg2); border:1px solid var(--bd); border-radius:8px; padding:10px 14px; margin-bottom:16px; display:flex; gap:20px; font-size:11px; font-weight:bold; color:var(--tx); flex-wrap:wrap;">';
+    h += '  <span>📌 <strong>رموز التأشير الورقي:</strong></span>';
+    h += '  <span style="color:var(--tx2);">(ح) = حضور متأخر</span>';
+    h += '  <span style="color:var(--tx2);">(ص) = انصراف مبكر</span>';
+    h += '  <span style="color:var(--tx2);">(م) = إذن مؤقت أثناء العمل</span>';
+    h += '</div>';
+
+    // Signatures
+    h += SC('٣', 'التوقيعات واعتمادات الإدارة');
+    h += SG3('مسؤول الموارد البشرية', '', 'المدير الإداري / المشروعات', 'الموافقة', 'المدير التنفيذي / الفرع', 'الاعتماد النهائي', null, 'admin', 'exec');
+    h += FT(['نسخة للموارد البشرية', 'نسخة للمالية والإدارة']);
+
+    return h;
+};
+
+window.loadPermSheetPage = async function(container) {
+    if (!container) container = document.getElementById('pg-permsheet');
+    if (!container) return;
+
+    var now = new Date();
+    var yyyy = now.getFullYear();
+    var mm = ('0' + (now.getMonth() + 1)).slice(-2);
+    var defaultMonthVal = yyyy + '-' + mm;
+
+    var topBar = '<div class="np" style="background:var(--w); border:1px solid var(--bd); border-radius:12px; padding:14px 18px; margin-bottom:18px; display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:12px; box-shadow:var(--sh-sm);">';
+    topBar += '  <div style="display:flex; align-items:center; gap:12px; flex-wrap:wrap;">';
+    topBar += '    <div style="font-size:14px; font-weight:800; color:var(--nv); display:flex; align-items:center; gap:6px;"><span>🖨️</span> كشف متابعة الإذنات الورقي (31 يوماً)</div>';
+    topBar += '    <div style="display:flex; align-items:center; gap:6px;">';
+    topBar += '      <label style="font-size:11.5px; font-weight:700; color:var(--tx2);">تحديد الشهر:</label>';
+    topBar += '      <input type="month" id="tgPermSheetMonthPicker" value="' + defaultMonthVal + '" onchange="tgRefreshPermSheetView()" style="padding:5px 10px; border-radius:6px; border:1px solid var(--bd2); font-size:12px; font-weight:bold; background:var(--bg); color:var(--tx); cursor:pointer;">';
+    topBar += '    </div>';
+    topBar += '  </div>';
+    topBar += '  <div style="display:flex; align-items:center; gap:8px; flex-wrap:wrap;">';
+    topBar += '    <button type="button" onclick="tgOpenPermSheetEmpModal()" class="bt bt-o" style="padding:7px 14px; font-size:12px; font-weight:bold;">⚙️ تخصيص / استبعاد الموظفين</button>';
+    topBar += '    <button type="button" onclick="tgPrintMonthlyPermissionSheet(true)" class="bt bt-p" style="padding:7px 18px; font-size:12px; font-weight:800; background:linear-gradient(135deg, var(--nv), var(--nv2)); color:#fff; box-shadow:0 2px 8px rgba(15,23,42,0.25);">🖨️ طباعة الكشف A4</button>';
+    topBar += '  </div>';
+    topBar += '</div>';
+
+    container.innerHTML = topBar + '<div id="tgPermSheetInnerContainer" style="display:flex; justify-content:center;">' +
+                          '  <div style="width:100%; max-width:960px; background:var(--w); border:1px solid var(--bd); border-radius:12px; padding:20px; box-shadow:var(--sh-sm);">' +
+                          '    <div style="text-align:center; padding:30px; font-size:14px; color:var(--tx3);">⏳ جارٍ تجهيز الكشف...</div>' +
+                          '  </div>' +
+                          '</div>';
+
+    var sheetHtml = await window.tgGeneratePermSheetHTML(defaultMonthVal, false);
+    var inner = document.getElementById('tgPermSheetInnerContainer');
+    if (inner) {
+        inner.innerHTML = '<div style="width:100%; max-width:980px; background:var(--w); border:1px solid var(--bd); border-radius:12px; padding:24px; box-shadow:var(--sh-md);">' + sheetHtml + '</div>';
+    }
+};
+
+window.tgRefreshPermSheetView = async function() {
+    var picker = document.getElementById('tgPermSheetMonthPicker');
+    var monthVal = picker ? picker.value : null;
+    var inner = document.getElementById('tgPermSheetInnerContainer');
+    if (inner) {
+        inner.innerHTML = '<div style="width:100%; max-width:980px; background:var(--w); border:1px solid var(--bd); border-radius:12px; padding:24px; box-shadow:var(--sh-md);">' +
+                          '  <div style="text-align:center; padding:30px; font-size:14px; color:var(--tx3);">⏳ جارٍ تحديث بيانات الكشف...</div>' +
+                          '</div>';
+        var sheetHtml = await window.tgGeneratePermSheetHTML(monthVal, false);
+        inner.innerHTML = '<div style="width:100%; max-width:980px; background:var(--w); border:1px solid var(--bd); border-radius:12px; padding:24px; box-shadow:var(--sh-md);">' + sheetHtml + '</div>';
+    }
+};
+
+window.tgPrintMonthlyPermissionSheet = async function(direct) {
+    var picker = document.getElementById('tgPermSheetMonthPicker');
+    var monthVal = picker ? picker.value : null;
+    var dateObj = monthVal ? new Date(monthVal) : new Date();
+    var currentMonthStr = dateObj.toLocaleDateString('ar-EG', { month: 'long', year: 'numeric' });
+    var docTitle = 'سجل متابعة أذونات الحضور والانصراف الورقي - ' + currentMonthStr;
+
+    var h = await window.tgGeneratePermSheetHTML(monthVal, true);
+    printDoc(h, docTitle);
+};
+
 window.openSelectEmpMeetingModal = function() {
     var modal = document.getElementById('selectEmpMeetingModal');
     var listContainer = document.getElementById('selectEmpMeetingList');
@@ -152,7 +473,7 @@ var T={
     dash:"لوحة التحكم", emp:"ملف بيانات الموظف", leave:"طلب إجازة",
     perm:"إذن حضور / انصراف", delay:"التماس تعديل موعد الحضور", la:"سجل الإجازة السنوية",
     lb:"سجل الإجازة العارضة", lc:"سجل الأعياد والمناسبات",
-    ld:"سجل الغياب بالخصم", notice:"نموذج لفت نظر", warn:"خطاب إنذار",
+    ld:"سجل الغياب بالخصم", notice:"نموذج لفت نظر", warn:"خطاب إنذار", deduction:"إخطار خصم من الراتب", term:"قرار فصل / إنهاء خدمة",
     inv:"محضر تحقيق", exp:"شهادة خبرة", clr:"إخلاء طرف",
     gen:"خطاب إداري عام",
     task:"تكليف بمهمة عمل", sal:"شهادة راتب", salrec:"سند استلام راتب", att:"سجل الحضور اللحظي", cal:"التقويم العام",
@@ -160,14 +481,18 @@ var T={
     mexp:"شيت المصروفات الشهري",
     res:"طلب استقالة", promo:"قرار ترقية", contract:"عقد عمل", raise:"زيادة راتب / علاوة",
     staff:"متابعة الموظفين", pmgmt:"إدارة المشاريع", account:"حسابي",
-    tasksmgmt:"توزيع المهام", announcements:"إدارة الإعلانات", empdocs:"ملفات الموظفين", wkreports:"بريد التقارير الأسبوعية", devres:"مكتبة التطوير المهني",
-    aiadvisor:"المستشار الذكي"
+    tasksmgmt:"توزيع المهام", announcements:"إدارة الإعلانات", empdocs:"ملفات الموظفين", devres:"مكتبة التطوير المهني",
+    allrequests:"مركز طلبات الموظفين",
+    aiadvisor:"المستشار الذكي",
+    wkr:"التقارير الأسبوعية والشهرية",
+    monthlyplans:"المستهدفات والخطط العامة",
+    permsheet:"كشف متابعة الإذنات الورقي"
 };
 
 // ─── DOCUMENT NUMBERING ───────────────────────────────────────────────────
 var DCODES={
     emp:'EMP', leave:'LV', perm:'PM', delay:'DLY', la:'LA', lb:'LB', lc:'LC', ld:'LD',
-    notice:'NTC', warn:'WRN', inv:'INV', exp:'EXP', clr:'CLR', gen:'GEN',
+    notice:'NTC', warn:'WRN', deduction:'DED', term:'TRM', inv:'INV', exp:'EXP', clr:'CLR', gen:'GEN',
     task:'TSK', sal:'SAL', salrec:'REC', comp:'CMP', proj:'PRJ', mexp:'MEXP',
     res:'RES', promo:'PRM', contract:'CTR', raise:'RAI',
     wkr:'WKR', ach:'ACH', req:'REQ'
@@ -305,7 +630,7 @@ function tgCloseModal(){
 
 // ─── NAVIGATION ───────────────────────────────────────────────────────────
 // الصفحات التي يمكن للأدمن التقني الوصول إليها
-var TECH_ALLOWED = ['pmgmt','tasksmgmt','livetrack','account','announcements'];
+var TECH_ALLOWED = ['pmgmt','tasksmgmt','livetrack','account','announcements','wkr','monthlyplans'];
 
 function hasUnsavedText() {
     var p = document.querySelector('.pg.a, .emp-pg.a');
@@ -387,15 +712,38 @@ function go(id, nav, force){
     }
 
     document.getElementById("pT").innerText=T[id]||id;
-    if(window.innerWidth<=900)document.getElementById("sb").classList.remove("opn");
+    if(typeof tgToggleSidebar === 'function') tgToggleSidebar(false);
+    else if(window.innerWidth<=900) { var _s=document.getElementById("sb"); if(_s) _s.classList.remove("opn"); }
+
+    // Sync Admin Bottom Dock Active State
+    var dockDash = document.getElementById('dock-dash');
+    var dockRequests = document.getElementById('dock-requests');
+    var dockTasks = document.getElementById('dock-tasks');
+    var dockMenu = document.getElementById('dock-menu');
+
+    if(dockDash && dockRequests && dockTasks) {
+        dockDash.classList.remove('a');
+        dockRequests.classList.remove('a');
+        dockTasks.classList.remove('a');
+        if(dockMenu) dockMenu.classList.remove('a');
+
+        if(id === 'dash') {
+            dockDash.classList.add('a');
+        } else if(id === 'allrequests' || id === 'staff' || id === 'la' || id === 'permsheet' || id === 'empdocs') {
+            dockRequests.classList.add('a');
+        } else if(id === 'tasksmgmt' || id === 'pmgmt' || id === 'monthlyplans' || id === 'wkr' || id === 'livetrack') {
+            dockTasks.classList.add('a');
+        }
+    }
+
     var c=document.getElementById("pg-"+id);
-    if(id!=="dash"&&c.innerHTML.trim()===""){load(id,c);upCN();setD(c)}
+    if(id!=="dash" && (c.innerHTML.trim()==="" || id==="wkr")){load(id,c);upCN();setD(c)}
     // Reset global table filter
     var gf = document.getElementById("globalTableFilter");
     if(gf) { gf.value = ""; tgFilterVisibleTables(""); }
         // Show/Hide top bar tools
-    var formIds = ['gen','notice','warn','inv','exp','clr','res','promo','raise','contract','task','proj','sal','salrec','emp','leave','perm','delay','sendform','mexp'];
-    var tableIds = ['la','lb','lc','ld','pmgmt','tasksmgmt','staff','wkreports','empdocs','att_live','att','archive','announcements','mexp','devres'];
+    var formIds = ['gen','notice','warn','deduction','term','inv','exp','clr','res','promo','raise','contract','task','proj','sal','salrec','emp','leave','perm','delay','sendform','mexp'];
+    var tableIds = ['la','lb','lc','ld','pmgmt','tasksmgmt','staff','wkr','allrequests','empdocs','att_live','att','archive','announcements','mexp','devres','permsheet'];
 
     var tgTableTools = document.getElementById('tgTableTools');
     var tgFormTools = document.getElementById('tgFormTools');
@@ -486,7 +834,30 @@ function tgFilterByEmployee(empName, rowClass) {
 }
 function ts(b){var p=b.parentNode;p.querySelectorAll(".stb").forEach(function(x){x.classList.remove("a")});b.classList.add("a")}
 function sct(c){c.parentNode.querySelectorAll(".ctc").forEach(function(x){x.classList.remove("sel")});c.classList.add("sel")}
-function spr(p){p.parentNode.querySelectorAll(".ppl").forEach(function(x){x.classList.remove("a")});p.classList.add("a")}
+// ─── Sidebar Drawer & Mobile Navigation ──────────────────────────────────
+window.tgToggleSidebar = function(force) {
+    var sb = document.getElementById('sb');
+    var ov = document.getElementById('sbOverlay');
+    if (!sb) return;
+    var willOpen = force !== undefined ? !!force : !sb.classList.contains('opn');
+    if (willOpen) {
+        sb.classList.add('opn');
+        if (ov) ov.classList.add('opn');
+        if (window.innerWidth <= 900) {
+            document.body.style.overflow = 'hidden';
+        }
+    } else {
+        sb.classList.remove('opn');
+        if (ov) ov.classList.remove('opn');
+        document.body.style.overflow = '';
+    }
+};
+
+document.addEventListener('keydown', function(e) {
+    if (e.key === 'Escape' || e.keyCode === 27) {
+        if (typeof tgToggleSidebar === 'function') tgToggleSidebar(false);
+    }
+});
 
 // ─── Sidebar Search & Quick Nav ──────────────────────────────────────────
 function tgToggleNavGroup(el) {
@@ -593,25 +964,10 @@ function tgToast(msg, type, isPersistent, titleOverride){
     return t;
 }
 
-// ─── تقييد صلاحيات الأدمن التقني ────────────────────────────────────────
+// ─── قيود الأدمن ────────────────────────────────────────
 function applyTechAdminRestrictions(u){
-    if(!u || u.role !== 'tech_admin') return;
-    // أخفِ بنود الشريط الجانبي غير المسموح بها للأدمن التقني
-    var allowed = TECH_ALLOWED;
-    document.querySelectorAll('.sb-group').forEach(function(g){
-        var items = g.querySelectorAll('.S-i');
-        var hasVisible = false;
-        items.forEach(function(el){
-            var onclick = el.getAttribute('onclick') || '';
-            var allowed_item = allowed.some(function(id){ 
-                if(id === 'livetrack' && onclick.indexOf('goLiveTrack') > -1) return true;
-                return onclick.indexOf("'"+id+"'")>-1||onclick.indexOf('"'+id+'"')>-1; 
-            });
-            if(!allowed_item && onclick.indexOf('tgLogout')===-1){ el.style.display='none'; }
-            else { hasVisible = true; }
-        });
-        if(!hasVisible) g.style.display = 'none';
-    });
+    // الأدمن التقني أصبح أدمن عادي بكامل الصلاحيات، لا يتم إخفاء أي عنصر
+    return;
 }
 
 // ─── إعادة ضبط النظام (للأدمن الرئيسي فقط) ───────────────────────────────
@@ -770,7 +1126,7 @@ function loadDashboardSummary(){
     var box=document.getElementById('dashSummary');
     if(!box)return;
     Promise.all([
-        db.collection('users').where('role','in',['employee','tech_admin']).get(),
+        db.collection('users').where('role','==','employee').get(),
         db.collection('projects').get(),
         db.collection('requests').where('status','==','pending').get(),
         db.collection('tasks').get(),
@@ -797,7 +1153,7 @@ function loadDashboardSummary(){
         var empCount=res[0].size, projCount=res[1].size;
         var h = '<div class="DC" onclick="go(\'staff\')" style="cursor:pointer"><div class="di-wrap"><div class="di">👥</div></div><div class="dt2">'+empCount+' موظف</div><div class="dd">إجمالي حسابات الموظفين المسجّلة</div></div>'+
             '<div class="DC" onclick="go(\'pmgmt\')" style="cursor:pointer"><div class="di-wrap"><div class="di">📁</div></div><div class="dt2">'+projCount+' مشروع</div><div class="dd">إجمالي المشاريع الحالية</div></div>'+
-            '<div class="DC" onclick="go(\'staff\')" style="cursor:pointer'+(pendingCount?';border:1px solid var(--no);box-shadow:0 4px 12px rgba(239,68,68,0.15)':'')+'"><div class="di-wrap"><div class="di" '+(pendingCount?'style="background:#fef2f2"':'')+'>⏳</div>'+(pendingCount?'<span class="badge-new" style="background:#fef2f2;color:#ef4444;border-color:rgba(239,68,68,0.2)">عاجل</span>':'')+'</div><div class="dt2" '+(pendingCount?'style="color:#ef4444"':'')+'>'+pendingCount+' طلب معلّق</div><div class="dd">بانتظار موافقة أو رفض الأدمن</div></div>';
+            '<div class="DC" onclick="window._reqHubStatusTab=\'pending\';go(\'allrequests\')" style="cursor:pointer'+(pendingCount?';border:1px solid var(--no);box-shadow:0 4px 12px rgba(239,68,68,0.15)':'')+'"><div class="di-wrap"><div class="di" '+(pendingCount?'style="background:#fef2f2"':'')+'>⏳</div>'+(pendingCount?'<span class="badge-new" style="background:#fef2f2;color:#ef4444;border-color:rgba(239,68,68,0.2)">عاجل</span>':'')+'</div><div class="dt2" '+(pendingCount?'style="color:#ef4444"':'')+'>'+pendingCount+' طلب معلّق</div><div class="dd">بانتظار موافقة أو رفض الأدمن</div></div>';
         
         box.innerHTML = h;
 
@@ -828,6 +1184,8 @@ function loadDashboardSummary(){
         }
 
     }).catch(function(err){ console.error(err); box.innerHTML=''; });
+    // فحص الأعياد والمناسبات القادمة للتنبيه قبلها بـ 4 أيام
+    tgCheckUpcomingHolidays();
     // بدء مراقبة إشعارات الأدمن من الموظفين
     startAdminNotifications();
     // إخفاء عناصر القائمة للأدمن المساعد
@@ -897,7 +1255,7 @@ function applyAssistantAdminRestrictions(){
     });
     // عرض رسالة ترحيب مخصصة
     var subEl = document.querySelector('.S-h .sub');
-    if(subEl) subEl.textContent = 'أدمن تقني — إدارة المشاريع';
+    if(subEl) subEl.textContent = 'أدمن — إدارة المشاريع';
 }
 
 // ─── إشعارات الأدمن اللحظية من الموظفين (طلبات + تقارير + مشاريع جديدة) ───
@@ -1013,21 +1371,36 @@ function clearAdminBadge(badgeId, sbBadgeId){
     });
 }
 
-// ─── متابعة الموظفين (بيانات حية من Firebase Firestore) ──────────────────
+// ─── متابعة الموظفين والأدمنز (بيانات حية من Firebase Firestore) ──────────────────
 function loadStaffOverview(){
     var box=document.getElementById('staffList');
     if(!box)return;
-    db.collection('users').where('role','in',['employee','tech_admin']).get().then(function(snap){
+    db.collection('users').get().then(function(snap){
         if(snap.empty){
-            box.innerHTML='<div class="empty-hint">لا يوجد موظفون مسجّلون بعد. أنشئ أول حساب من الأعلى.</div>';
+            box.innerHTML='<div class="empty-hint">لا يوجد مستخدمون مسجّلون بعد. أنشئ أول حساب من الأعلى.</div>';
             return;
         }
-        var employees=[];
-        snap.forEach(function(doc){employees.push(Object.assign({uid:doc.id},doc.data()));});
-        // مزامنة قائمة أسماء الموظفين الحقيقيين (حسابات الدخول) مع قائمة الأوتوكومبليت في كل النماذج
-        employees.forEach(function(emp){ if(emp.name) addEmployeeName(emp.name); });
+        var allUsers=[];
+        var seenKeys={};
+        snap.forEach(function(doc){
+            var data = doc.data() || {};
+            var uid = doc.id;
+            var emKey = (data.email || '').toLowerCase().trim();
+            if(emKey) {
+                if(seenKeys['email:' + emKey]) return;
+                seenKeys['email:' + emKey] = true;
+            }
+            if(seenKeys['uid:' + uid]) return;
+            seenKeys['uid:' + uid] = true;
+
+            allUsers.push(Object.assign({uid:uid}, data));
+        });
+        
+        // مزامنة قائمة أسماء الموظفين الحقيقيين مع قائمة الأوتوكومبليت
+        allUsers.forEach(function(emp){ if(emp.name) addEmployeeName(emp.name); });
         renderEmpListSec();
-        var proms=employees.map(function(emp){
+
+        var proms=allUsers.map(function(emp){
             return Promise.all([
                 db.collection('projects').where('assignees','array-contains',emp.uid).get(),
                 db.collection('achievements').where('uid','==',emp.uid).get(),
@@ -1055,10 +1428,10 @@ function loadStaffOverview(){
             });
         });
         Promise.all(proms).then(renderStaffList).catch(function(err){
-            box.innerHTML='<div class="empty-hint" style="color:var(--no)">تعذر تحميل بيانات المشاريع/الطلبات: '+escH(err.message)+'</div>';
+            box.innerHTML='<div class="empty-hint" style="color:var(--no)">تعذر تحميل البيانات: '+escH(err.message)+'</div>';
         });
     }).catch(function(err){
-        box.innerHTML='<div class="empty-hint" style="color:var(--no)">تعذر تحميل بيانات الموظفين: '+escH(err.message)+'</div>';
+        box.innerHTML='<div class="empty-hint" style="color:var(--no)">تعذر تحميل بيانات الحسابات: '+escH(err.message)+'</div>';
     });
 }
 function badgeClassForStatus(s){
@@ -1080,161 +1453,182 @@ function renderStaffList(list){
     var box=document.getElementById('staffList');
     if(!box)return;
     window._staffEmpCache=list;
-    var countEl=document.getElementById('staffCount');
-    if(countEl)countEl.textContent=list.length+' موظف';
-    var h='';
-    list.forEach(function(emp,idx){
-        var pending=emp.requests.filter(function(r){return r.status==='pending';}).length;
-        var avgProg=emp.projects.length?Math.round(emp.projects.reduce(function(s,p){
-            var pm=(p.progressMap&&p.progressMap[emp.uid])?p.progressMap[emp.uid].progress:0;
-            return s+(pm||0);
-        },0)/emp.projects.length):0;
-        var searchKey=((emp.name||'')+' '+(emp.email||'')).toLowerCase();
-        h+='<div class="staff-card'+(emp.disabled?' is-disabled':'')+'" id="staffCard'+idx+'" data-search="'+escH(searchKey)+'">';
-        h+='<div class="staff-card-h" onclick="toggleStaffCard('+idx+')">'+
-           '<div><div class="staff-name-row"><span class="staff-name">'+escH(emp.name||emp.email)+'</span>'+
-           (emp.jobTitle?'<span class="badge" style="background:var(--gd);color:#1b2a4a">'+escH(emp.jobTitle)+'</span>':'')+
-           (emp.disabled?'<span class="badge badge-disabled">🚫 معطّل</span>':'<span class="badge badge-active">✅ نشط</span>')+
-           '<span class="perf-score" title="تقييم الأداء العام">🏆 '+emp.perf.total+'%</span>'+
-           '</div><div class="staff-email">'+escH(emp.email||'')+'</div>'+
-           '<div class="perf-stars">'+renderStars(emp.perf.stars)+'</div>'+
-           '</div>'+
-           '<div class="staff-stats">'+
-           '<span class="staff-stat">📁 '+emp.projects.length+' مشروع</span>'+
-           '<span class="staff-stat">📊 متوسط تقدم '+avgProg+'%</span>'+
-           (emp.role === 'tech_admin' ? '' :
-               '<span class="staff-stat">📆 '+emp.weeklyReports.length+' تقرير أسبوعي</span>'+
-               '<span class="staff-stat">🏆 '+emp.achievements.length+' إنجاز</span>'+
-               (pending?('<span class="staff-stat pending">⏳ '+pending+' طلب معلّق</span>'):'<span class="staff-stat">✅ لا طلبات معلّقة</span>')
-           )+
-           '</div></div>';
-        h+='<div class="staff-card-body">';
 
-        h+='<div class="staff-actions-row">'+
-           '<button class="bt bt-g" onclick="event.stopPropagation();tgOpenEmployeeProfile(\''+emp.uid+'\')">👤 عرض البروفايل</button>'+
-           '<button class="bt bt-o" onclick="event.stopPropagation();toggleEmpNameEdit('+idx+')">✏️ تعديل الاسم</button>'+
-           '<button class="bt bt-o" onclick="event.stopPropagation();toggleEmpJobEdit('+idx+')">🏷 تعديل المسمى الوظيفي</button>'+
-           '<button class="bt bt-o" onclick="event.stopPropagation();toggleEmpDeptPhoneEdit('+idx+')">☎️ الإدارة والهاتف</button>'+
-           '<button class="bt '+(emp.chatAccess===false?'bt-p':'bt-o')+'" onclick="event.stopPropagation();tgToggleEmpChatAccess(\''+emp.uid+'\','+(emp.chatAccess!==false)+')">'+
-           (emp.chatAccess===false?'💬 السماح بالشات':'💬 منع الشات')+'</button>'+
-           '<button class="bt '+(emp.disabled?'bt-p':'bt-o')+'" onclick="event.stopPropagation();toggleEmpDisabled(\''+emp.uid+'\','+(!!emp.disabled)+')">'+
-           (emp.disabled?'✅ إعادة تفعيل الحساب':'🚫 تعطيل الحساب')+'</button>'+
-           '<button class="bt bt-d" onclick="event.stopPropagation();openDeleteEmpModal(\''+emp.uid+'\','+idx+')">🗑 حذف الموظف</button>'+
-           '</div>'+
-           '<div class="emp-inline-edit" id="empNameEdit'+idx+'" style="display:none">'+
-           '<input type="text" id="empNameInput\'+idx+\'" value="\'+escH(emp.baseName||emp.name||\'\')+\'">'+
-           '<button class="bt bt-p" onclick="saveEmpName(\''+emp.uid+'\','+idx+')">💾 حفظ</button>'+
-           '<span id="empNameMsg'+idx+'" style="font-size:10.5px"></span>'+
-           '</div>'+
-           '<div class="emp-inline-edit" id="empJobEdit'+idx+'" style="display:none">'+
-           '<input type="text" id="empJobInput'+idx+'" value="'+escH(emp.jobTitle||'')+'" placeholder="مثلاً: مصمم جرافيك">'+
-           '<button class="bt bt-p" onclick="saveEmpJob(\''+emp.uid+'\','+idx+')">💾 حفظ</button>'+
-           '<span id="empJobMsg'+idx+'" style="font-size:10.5px"></span>'+
-           '</div>';
+    var rawEmployees = list.filter(function(u){ return u.role === 'employee' && !u.disabled; });
+    var rawAdmins = list.filter(function(u){ return u.role === 'admin' || u.role === 'tech_admin'; });
+    var rawDisabled = list.filter(function(u){ return u.role === 'employee' && u.disabled; });
 
-        h+='<div class="staff-sub-title">📁 المشاريع</div>';
-        if(emp.projects.length){
-            emp.projects.forEach(function(p){
-                var pm=(p.progressMap&&p.progressMap[emp.uid])||{progress:0,status:'لم يبدأ',note:''};
-                h+='<div class="pj-row"><div class="pj-t">'+escH(p.title||'بدون عنوان')+'</div>'+
-                   (p.description?'<div class="pj-meta">'+tgMakeExpandable(p.description, 120)+'</div>':'')+
-                   '<div class="pj-bar"><div class="pj-bar-in" style="width:'+(pm.progress||0)+'%"></div></div>'+
-                   '<div class="pj-meta">الحالة: <span class="badge '+badgeClassForStatus(pm.status)+'">'+escH(pm.status||'لم يبدأ')+'</span> · التقدم: '+(pm.progress||0)+'%'+(pm.note?(' · ملاحظة: '+escH(pm.note)):'')+'</div>'+
-                   '</div>';
-            });
-        }else h+='<div class="empty-hint">لا توجد مشاريع مُسندة حالياً.</div>';
-
-        if(emp.role !== 'tech_admin'){
-            h+='<div style="display:flex;justify-content:space-between;align-items:center;margin-top:16px">';
-            h+='<div class="staff-sub-title" style="margin:0;border:none">📆 التقارير الأسبوعية</div>';
-            if(emp.weeklyReports.length) h+='<button class="bt bt-d" style="padding:4px 10px;font-size:10px" onclick="event.stopPropagation();tgDeleteAllRecords(\'weeklyReports\', \'تقارير الموظف\', \'uid\', \''+emp.uid+'\', loadStaffOverview)">🗑 حذف الكل</button>';
-            h+='</div>';
-            if(emp.weeklyReports.length){
-                window._staffWkrCache=window._staffWkrCache||{};
-                window._staffWkrCache[idx]=emp.weeklyReports;
-                emp.weeklyReports.forEach(function(r,ri){
-                    var waMsg = encodeURIComponent(
-                        'التقرير الأسبوعي - ' + (emp.name||emp.email||'') + '\n' +
-                        'الأسبوع: ' + (r.weekStart||'') + '\n' +
-                        '---\n' + (r.content||'')
-                    );
-                    h+='<div class="ac-row"><div class="ac-t">أسبوع '+escH(r.weekStart||'')+
-                       ' <button class="bt bt-o" style="padding:2px 8px;font-size:10px;margin-right:8px" onclick="printWeeklyReportDoc(window._staffEmpCache['+idx+'],window._staffWkrCache['+idx+']['+ri+'])">🖨 طباعة</button>'+
-                       ' <a href="https://wa.me/?text='+waMsg+'" target="_blank" class="bt bt-g" style="padding:2px 8px;font-size:10px;margin-right:8px;display:inline-flex;align-items:center;gap:4px;text-decoration:none">📲 واتساب</a></div>'+
-                       (r.content?'<div class="ac-meta">'+tgMakeExpandable(r.content, 120)+'</div>':'')+'</div>';
-                });
-            }else h+='<div class="empty-hint">لم يُرسل الموظف أي تقرير أسبوعي بعد.</div>';
-
-            h+='<div style="display:flex;justify-content:space-between;align-items:center;margin-top:16px">';
-            h+='<div class="staff-sub-title" style="margin:0;border:none">🏆 الإنجازات</div>';
-            if(emp.achievements.length) h+='<button class="bt bt-d" style="padding:4px 10px;font-size:10px" onclick="event.stopPropagation();tgDeleteAllRecords(\'achievements\', \'إنجازات الموظف\', \'uid\', \''+emp.uid+'\', loadStaffOverview)">🗑 حذف الكل</button>';
-            h+='</div>';
-            if(emp.achievements.length){
-                window._staffAchCache=window._staffAchCache||{};
-                window._staffAchCache[idx]=emp.achievements;
-                emp.achievements.forEach(function(a,ai){
-                    h+='<div class="ac-row"><div class="ac-t">'+escH(a.title||'')+
-                       ' <button class="bt bt-o" style="padding:2px 8px;font-size:10px;margin-right:8px" onclick="printAchievementDoc(window._staffEmpCache['+idx+'],window._staffAchCache['+idx+']['+ai+'])">🖨 طباعة</button></div>'+
-                       (a.description?'<div class="ac-meta">'+tgMakeExpandable(a.description, 120)+'</div>':'')+
-                       (a.date?'<div class="ac-meta">📅 '+escH(a.date)+'</div>':'')+'</div>';
-                });
-            }else h+='<div class="empty-hint">لا توجد إنجازات مسجّلة بعد.</div>';
-
-            h+='<div style="display:flex;justify-content:space-between;align-items:center;margin-top:16px">';
-            h+='<div class="staff-sub-title" style="margin:0;border:none">📨 الطلبات</div>';
-            if(emp.requests.length) h+='<button class="bt bt-d" style="padding:4px 10px;font-size:10px" onclick="event.stopPropagation();tgDeleteAllRecords(\'requests\', \'طلبات الموظف\', \'uid\', \''+emp.uid+'\', loadStaffOverview)">🗑 حذف الكل</button>';
-            h+='</div>';
-            if(emp.requests.length){
-                window._staffReqCache=window._staffReqCache||{};
-                window._staffReqCache[idx]=emp.requests;
-                emp.requests.forEach(function(r,qi){
-                    var attachHtml = '';
-                    if(r.fileUrl && r.fileType){
-                        if(r.fileType.indexOf('image/')===0){
-                            attachHtml = '<div style="margin-top:6px"><a href="'+r.fileUrl+'" target="_blank"><img src="'+r.fileUrl+'" style="max-width:140px;max-height:100px;border-radius:6px;display:block"></a></div>';
-                        } else if(r.fileType.indexOf('video/')===0){
-                            attachHtml = '<div style="margin-top:6px"><video src="'+r.fileUrl+'" controls style="max-width:180px;border-radius:6px"></video></div>';
-                        } else {
-                            attachHtml = '<div style="margin-top:6px"><a href="'+r.fileUrl+'" target="_blank" style="color:var(--tx);font-weight:700;text-decoration:underline">📎 '+escH(r.fileName||'ملف مرفق')+'</a></div>';
-                        }
-                    }
-                    h+='<div class="rq-row"><div class="rq-t">'+escH(r.type||'طلب')+' <span class="badge '+badgeClassForReq(r.status)+'">'+reqStatusLabel(r.status)+'</span>'+
-                       (r.type !== 'طلب نموذج' ? ' <button class="bt bt-o" style="padding:2px 8px;font-size:10px;margin-right:8px" onclick="printRequestDoc(window._staffEmpCache['+idx+'],window._staffReqCache['+idx+']['+qi+'])">🖨 طباعة</button>' : '') + '</div>'+
-                       (r.details?'<div class="pj-meta">'+tgMakeExpandable(r.details, 120)+'</div>':'')+
-                       (r.fromDate?('<div class="pj-meta">من '+escH(r.fromDate)+(r.toDate?(' إلى '+escH(r.toDate)):'')+'</div>'):'')+
-                       (r.reviewedBy?('<div class="pj-meta">تمت المراجعة بواسطة: '+escH(r.reviewedBy)+'</div>'):'')+
-                       (function(){
-                           if(!r.dynamicData) return '';
-                           var dh = '<div style="margin-top:10px;padding:10px;background:rgba(0,0,0,0.03);border-radius:6px;font-size:12px;">';
-                           var tpl = window.FS_TEMPLATES && r.formTemplateId ? window.FS_TEMPLATES[r.formTemplateId] : null;
-                           var fieldLabels = {};
-                           if(tpl && tpl.fields) { tpl.fields.forEach(function(f){ fieldLabels[f.id] = f.label; }); }
-                           for(var k in r.dynamicData){
-                               var v = r.dynamicData[k];
-                               if(v === true) v = 'نعم / تم';
-                               if(v === false) v = 'لا';
-                               var lbl = fieldLabels[k] || k;
-                               if(lbl === 'chk1') lbl = 'تسليم العهدة المالية';
-                               if(lbl === 'chk2') lbl = 'تسليم العهدة العينية';
-                               if(lbl === 'chk3') lbl = 'تسليم المستندات والملفات';
-                               if(lbl === 'chk4') lbl = 'إنهاء المهام المعلقة';
-                               dh += '<div style="margin-bottom:4px;display:flex;"><span style="color:var(--tx3);min-width:120px;padding-left:10px;">' + escH(lbl) + ':</span> <b style="white-space:pre-wrap;">' + escH(v) + '</b></div>';
-                           }
-                           dh += '</div>';
-                           return dh;
-                       })()+
-                       attachHtml+
-                       (r.status==='pending'?('<div class="rq-actions" style="margin-top:8px">'+
-                           (r.type==='طلب نموذج'?'<button class="bt bt-o" style="border-color:var(--pr);color:var(--pr);margin-left:8px" onclick="goSendForm(document.querySelector(\'[onclick*=\\\'goSendForm\\\']\'), \''+emp.uid+'\', window._staffReqCache['+idx+']['+qi+'].details)">📨 إرسال نموذج للموظف</button>':'')+
-                           '<button class="bt bt-p" onclick="reviewRequest(\''+r.id+'\',\'approved\')">✔ موافقة</button><button class="bt bt-d" onclick="reviewRequest(\''+r.id+'\',\'rejected\')">✕ رفض</button></div>'):'')+
-                       '</div>';
-                });
-            }else h+='<div class="empty-hint">لا توجد طلبات بعد.</div>';
+    // فلتر قوي يمنع تكرار أي حساب بالبريد الإلكتروني أو الاسم أو الـ UID
+    var adminsList = [];
+    var seenAdminMap = {};
+    rawAdmins.forEach(function(u){
+        var key = (u.email || u.name || u.uid || '').toLowerCase().trim();
+        if(key && !seenAdminMap[key]){
+            seenAdminMap[key] = true;
+            adminsList.push(u);
         }
-
-        h+='</div></div>';
     });
+
+    var employeesList = [];
+    var seenEmpMap = {};
+    rawEmployees.forEach(function(u){
+        var key = (u.email || u.name || u.uid || '').toLowerCase().trim();
+        if(key && !seenEmpMap[key]){
+            seenEmpMap[key] = true;
+            employeesList.push(u);
+        }
+    });
+
+    var disabledList = [];
+    var seenDisMap = {};
+    rawDisabled.forEach(function(u){
+        var key = (u.email || u.name || u.uid || '').toLowerCase().trim();
+        if(key && !seenDisMap[key]){
+            seenDisMap[key] = true;
+            disabledList.push(u);
+        }
+    });
+
+    var countEl=document.getElementById('staffCount');
+    if(countEl)countEl.textContent=employeesList.length+' موظف (' + adminsList.length + ' أدمن)';
+
+    var h='';
+
+    // ── 👔 قسم فريق الإدارة والمسؤولين ──
+    if(adminsList.length) {
+        h += '<div style="margin-bottom:24px; padding:16px; background:rgba(27,42,74,0.04); border:1.5px solid rgba(27,42,74,0.15); border-radius:16px;">';
+        h += '<div style="font-size:15px; font-weight:900; color:var(--nv); margin-bottom:12px; display:flex; align-items:center; gap:8px;">';
+        h += '<span>👑 فريق الإدارة والمسؤولين</span>';
+        h += '<span style="background:var(--nv); color:#fff; padding:2px 10px; border-radius:20px; font-size:11px; font-weight:800;">' + adminsList.length + '</span>';
+        h += '</div>';
+
+        adminsList.forEach(function(emp){
+            var idx = list.indexOf(emp);
+            var searchKey=((emp.name||'')+' '+(emp.email||'')).toLowerCase();
+            var initials = (emp.name || emp.email || 'A').split(' ').map(function(n){return n[0];}).join('').toUpperCase().substring(0,2);
+            
+            h+='<div class="staff-card is-admin-card'+(emp.disabled?' is-disabled':'')+'" id="staffCard'+idx+'" data-search="'+escH(searchKey)+'" style="cursor:pointer; margin-bottom:10px;" onclick="tgOpenEmployeeProfile(\''+emp.uid+'\')">';
+            h+='<div class="staff-card-h" style="padding:14px 18px; display:flex; align-items:center; justify-content:space-between; flex-wrap:wrap; gap:12px; border-radius:14px; background:var(--w); border-right:5px solid var(--nv);">';
+            h+='<div style="display:flex; align-items:center; gap:14px; flex:1; min-width:240px;">';
+            h+='  <div class="profile-avatar-sm" style="width:44px; height:44px; border-radius:12px; background:linear-gradient(135deg,#1b2a4a,#2c3e6b); color:#fff; font-weight:900; font-size:18px; display:flex; align-items:center; justify-content:center; flex-shrink:0;">';
+            h+=initials;
+            h+='  </div>';
+            h+='  <div>';
+            h+='    <div class="staff-name-row" style="display:flex; align-items:center; gap:8px; flex-wrap:wrap;">';
+            h+='      <span class="staff-name" style="font-size:15px; font-weight:800; color:var(--nv);">'+escH(emp.name||emp.email)+'</span>';
+            h+='      <span class="badge" style="background:var(--nv);color:#fff;font-weight:800">👑 أدمن</span>';
+            if(emp.jobTitle) h+='<span class="badge" style="background:var(--gd);color:#1b2a4a;font-weight:700">'+escH(emp.jobTitle)+'</span>';
+            if(emp.disabled) h+='<span class="badge badge-disabled">🚫 معطّل</span>';
+            h+='    </div>';
+            h+='    <div class="staff-email" style="font-size:12px; color:var(--tx3); margin-top:2px;">'+escH(emp.email||'')+'</div>';
+            h+='  </div>';
+            h+='</div>';
+            h+='<div class="staff-stats" style="display:flex; align-items:center; gap:8px;">';
+            h+='  <button class="bt bt-p" style="padding:6px 14px; font-weight:800; font-size:11px; border-radius:16px;" onclick="event.stopPropagation();tgOpenEmployeeProfile(\''+emp.uid+'\')">⚙️ إدارة الحساب</button>';
+            h+='</div>';
+            h+='</div>';
+            h+='</div>';
+        });
+        h += '</div>';
+    }
+
+    // ── 👥 قسم فريق العمل والموظفين ──
+    h += '<div style="font-size:15px; font-weight:900; color:var(--nv); margin:16px 0 12px; display:flex; align-items:center; gap:8px;">';
+    h += '<span>👥 فريق العمل والموظفين</span>';
+    h += '<span style="background:var(--gd); color:#1b2a4a; padding:2px 10px; border-radius:20px; font-size:11px; font-weight:800;">' + employeesList.length + '</span>';
+    h += '</div>';
+
+    if(!employeesList.length) {
+        h += '<div class="empty-hint">لا يوجد موظفون مسجّلون حالياً في هذا القسم.</div>';
+    } else {
+        employeesList.forEach(function(emp){
+            var idx = list.indexOf(emp);
+            var pending=emp.requests.filter(function(r){return r.status==='pending';}).length;
+            var avgProg=emp.projects.length?Math.round(emp.projects.reduce(function(s,p){
+                var pm=(p.progressMap&&p.progressMap[emp.uid])?p.progressMap[emp.uid].progress:0;
+                return s+(pm||0);
+            },0)/emp.projects.length):0;
+            var searchKey=((emp.name||'')+' '+(emp.email||'')).toLowerCase();
+            var initials = (emp.name || emp.email || 'U').split(' ').map(function(n){return n[0];}).join('').toUpperCase().substring(0,2);
+            
+            h+='<div class="staff-card'+(emp.disabled?' is-disabled':'')+'" id="staffCard'+idx+'" data-search="'+escH(searchKey)+'" style="cursor:pointer; margin-bottom:14px;" onclick="tgOpenEmployeeProfile(\''+emp.uid+'\')">';
+            h+='<div class="staff-card-h" style="padding:18px 22px; display:flex; align-items:center; justify-content:space-between; flex-wrap:wrap; gap:16px; border-radius:16px;">'+
+               '<div style="display:flex; align-items:center; gap:16px; flex:1; min-width:260px;">'+
+               '  <div class="profile-avatar-sm" style="width:50px; height:50px; border-radius:16px; background:linear-gradient(135deg,var(--gd),var(--gd2)); color:var(--nv); font-weight:900; font-size:20px; display:flex; align-items:center; justify-content:center; flex-shrink:0; box-shadow:0 4px 12px rgba(0,0,0,0.15);">'+
+               initials+
+               '  </div>'+
+               '  <div>'+
+               '    <div class="staff-name-row" style="display:flex; align-items:center; gap:8px; flex-wrap:wrap;">'+
+               '      <span class="staff-name" style="font-size:16px; font-weight:800; color:var(--nv);">'+escH(emp.name||emp.email)+'</span>'+
+                      (emp.jobTitle?'<span class="badge" style="background:var(--gd);color:#1b2a4a;font-weight:700">'+escH(emp.jobTitle)+'</span>':'')+
+                      (emp.disabled?'<span class="badge badge-disabled">🚫 معطّل</span>':'<span class="badge badge-active">✅ نشط</span>')+
+               '      <span class="perf-score" title="تقييم الأداء العام">🏆 '+emp.perf.total+'%</span>'+
+               '    </div>'+
+               '    <div class="staff-email" style="font-size:12px; color:var(--tx3); margin-top:2px;">'+escH(emp.email||'')+'</div>'+
+               '    <div class="perf-stars" style="margin-top:4px;">'+renderStars(emp.perf.stars)+'</div>'+
+               '  </div>'+
+               '</div>'+
+               
+               '<div class="staff-stats" style="display:flex; align-items:center; gap:8px; flex-wrap:wrap;">'+
+               '  <span class="staff-stat">📁 '+emp.projects.length+' مشروع</span>'+
+               '  <span class="staff-stat">📊 تقدم '+avgProg+'%</span>'+
+               '  <span class="staff-stat">📆 '+emp.weeklyReports.length+' تقرير</span>'+
+               '  <span class="staff-stat">🏆 '+emp.achievements.length+' إنجاز</span>'+
+               (pending?('<span class="staff-stat pending" onclick="event.stopPropagation();window._reqHubStatusTab=\'pending\';go(\'allrequests\')">⏳ '+pending+' طلب معلّق</span>'):'<span class="staff-stat">✅ لا طلبات معلّقة</span>')+
+               '  <button class="bt bt-p" style="margin-right:8px; padding:8px 18px; font-weight:800; font-size:12px; border-radius:20px; box-shadow:0 4px 12px rgba(201,162,39,0.3);" onclick="event.stopPropagation();tgOpenEmployeeProfile(\''+emp.uid+'\')">👤 صفحة الموظف 🚀</button>'+
+               '</div>'+
+               '</div>'+
+               '</div>';
+        });
+    }
+
+    // ── 🚫 قسم الموظفين المعطّلين ──
+    if(disabledList.length) {
+        h += '<div id="disabledSection" style="margin-top:28px;">';
+        h += '<div onclick="toggleDisabledSection()" style="cursor:pointer; font-size:15px; font-weight:900; color:#8b3a3a; margin-bottom:0; display:flex; align-items:center; gap:8px; padding:14px 18px; background:rgba(220,53,69,0.07); border:1.5px solid rgba(220,53,69,0.2); border-radius:14px; user-select:none; transition:background 0.2s;" onmouseover="this.style.background=\'rgba(220,53,69,0.12)\'" onmouseout="this.style.background=\'rgba(220,53,69,0.07)\'">';
+        h += '<span>🚫 الموظفون المعطّلون</span>';
+        h += '<span style="background:rgba(220,53,69,0.15); color:#8b3a3a; padding:2px 10px; border-radius:20px; font-size:11px; font-weight:800; border:1px solid rgba(220,53,69,0.3);">' + disabledList.length + '</span>';
+        h += '<span id="disabledToggleIcon" style="margin-right:auto; font-size:13px; color:#8b3a3a; opacity:0.7;">▼ اضغط للعرض</span>';
+        h += '</div>';
+        h += '<div id="disabledListBody" style="display:none; margin-top:10px;">';
+        disabledList.forEach(function(emp){
+            var idx = list.indexOf(emp);
+            var searchKey=((emp.name||'')+' '+(emp.email||'')).toLowerCase();
+            var initials = (emp.name || emp.email || 'U').split(' ').map(function(n){return n[0];}).join('').toUpperCase().substring(0,2);
+            h += '<div class="staff-card is-disabled" data-search="'+escH(searchKey)+'" style="cursor:pointer; margin-bottom:10px; opacity:0.72;" onclick="tgOpenEmployeeProfile(\''+emp.uid+'\')">';
+            h += '<div class="staff-card-h" style="padding:14px 18px; display:flex; align-items:center; justify-content:space-between; flex-wrap:wrap; gap:12px; border-radius:14px; background:rgba(220,53,69,0.05); border:1.5px solid rgba(220,53,69,0.15); border-right:5px solid #dc3545;">';
+            h += '<div style="display:flex; align-items:center; gap:14px; flex:1; min-width:240px;">';
+            h += '  <div style="width:46px; height:46px; border-radius:14px; background:linear-gradient(135deg,#6c2020,#a33030); color:#fff; font-weight:900; font-size:18px; display:flex; align-items:center; justify-content:center; flex-shrink:0; filter:grayscale(0.3);">';
+            h += initials;
+            h += '  </div>';
+            h += '  <div>';
+            h += '    <div style="display:flex; align-items:center; gap:8px; flex-wrap:wrap;">';
+            h += '      <span style="font-size:15px; font-weight:800; color:#6c2020; text-decoration:line-through; opacity:0.8;">'+escH(emp.name||emp.email)+'</span>';
+            if(emp.jobTitle) h += '<span class="badge" style="background:rgba(220,53,69,0.12);color:#8b3a3a;font-weight:700;border:1px solid rgba(220,53,69,0.25);">'+escH(emp.jobTitle)+'</span>';
+            h += '<span class="badge badge-disabled">🚫 معطّل</span>';
+            h += '    </div>';
+            h += '    <div style="font-size:12px; color:var(--tx3); margin-top:2px;">'+escH(emp.email||'')+'</div>';
+            h += '  </div>';
+            h += '</div>';
+            h += '<div style="display:flex; align-items:center; gap:8px;">';
+            h += '  <button class="bt" style="padding:6px 14px; font-weight:800; font-size:11px; border-radius:16px; background:rgba(220,53,69,0.1); color:#8b3a3a; border:1px solid rgba(220,53,69,0.2);" onclick="event.stopPropagation();tgOpenEmployeeProfile(\''+emp.uid+'\')">👤 عرض الملف</button>';
+            h += '</div>';
+            h += '</div>';
+            h += '</div>';
+        });
+        h += '</div>';
+        h += '</div>';
+    }
+
     box.innerHTML=h;
+}
+function toggleDisabledSection(){
+    var body = document.getElementById('disabledListBody');
+    var icon = document.getElementById('disabledToggleIcon');
+    if(!body) return;
+    var isOpen = body.style.display !== 'none';
+    body.style.display = isOpen ? 'none' : 'block';
+    if(icon) icon.textContent = isOpen ? '▼ اضغط للعرض' : '▲ إخفاء';
 }
 function toggleStaffCard(idx){
     var c=document.getElementById('staffCard'+idx);
@@ -1498,7 +1892,7 @@ function createStaffAccount(){
     msg.style.color='var(--tx3)'; msg.textContent='⏳ جارٍ إنشاء الحساب...';
     tgCreateEmployeeAccount(name,email,pass,'',jobTitle,role,workMode,dept,phone,function(){
         if(role==='employee') addEmployeeName(name);
-        var roleAr = role==='tech_admin' ? 'أدمن تقني' : 'موظف';
+        var roleAr = role==='tech_admin' ? 'أدمن' : 'موظف';
         msg.style.color='var(--ok)'; msg.textContent='✅ تم إنشاء حساب '+roleAr+' بنجاح.';
         document.getElementById('newAccName').value='';
         document.getElementById('newAccEmail').value='';
@@ -1569,7 +1963,7 @@ function createProject(){
     if(!title){ msg.style.color='var(--no)'; msg.textContent='من فضلك اكتب عنوان المشروع.'; return; }
     msg.style.color='var(--tx3)'; msg.textContent='⏳ جارٍ إنشاء المشروع...';
 
-    var createdByRole = (TG_USER && TG_USER.role === 'tech_admin') ? 'أدمن تقني' : 'أدمن إداري';
+    var createdByRole = (TG_USER && TG_USER.role === 'tech_admin') ? 'أدمن' : 'أدمن';
     var projectData = {
         title:title, description:desc, assignees:checked, progressMap:{},
         priority:priority, status:status, deadline:deadline,
@@ -2062,7 +2456,7 @@ function createTask(){
     if(!title){ msg.style.color='var(--no)'; msg.textContent='من فضلك اكتب عنوان المهمة.'; return; }
     msg.style.color='var(--tx3)'; msg.textContent='⏳ جارٍ التكليف...';
 
-    var createdByRole = (TG_USER && TG_USER.role === 'tech_admin') ? 'أدمن تقني' : 'أدمن إداري';
+    var createdByRole = (TG_USER && TG_USER.role === 'tech_admin') ? 'أدمن' : 'أدمن';
     var taskData = {
         title:title, description:desc, assignedTo:uid, assignedToName:name||'',
         priority:priority, deadline:deadline, status:'لم يبدأ',
@@ -2192,13 +2586,22 @@ function tgChatMount(){
     var wrap=document.createElement('div');
     wrap.id='tgChatWidgetWrap';
     wrap.innerHTML =
-        '<div id="tgChatPanel" class="tg-chat-panel">'+
+        '<div id="tgChatBackdrop" class="tg-chat-backdrop" onclick="tgChatToggle(false)"></div>'+
+        '<div id="tgChatPanel" class="tg-chat-panel tg-messenger-popup">'+
+          '<div class="tg-chat-pull-handle" onclick="tgChatToggle(false)" title="اسحب أو اضغط للتصغير"><span></span></div>'+
           '<div class="tg-chat-panel-h">'+
-            '<span>💬 الشات العام</span>'+
-            '<span class="tg-chat-panel-h-r">'+
-              '<span class="tg-chat-panel-mute" id="tgChatMuteBtn" onclick="tgChatToggleMute()" title="كتم/تشغيل صوت الإشعارات">🔔</span>'+
-              '<span class="tg-chat-panel-close" onclick="tgChatToggle(false)">✕</span>'+
-            '</span>'+
+            '<div class="tg-chat-avatar-status">'+
+              '<div class="tg-chat-head-avatar">💬</div>'+
+              '<div class="tg-chat-h-info">'+
+                '<div class="tg-chat-h-title">الشات العام</div>'+
+                '<div class="tg-chat-h-sub"><span class="tg-online-dot"></span> نشط الآن</div>'+
+              '</div>'+
+            '</div>'+
+            '<div class="tg-chat-panel-h-r">'+
+              '<button type="button" class="tg-chat-h-btn" id="tgChatMuteBtn" onclick="tgChatToggleMute()" title="كتم/تشغيل صوت الإشعارات">🔔</button>'+
+              '<button type="button" class="tg-chat-h-btn" onclick="tgChatToggle(false)" title="تصغير">➖</button>'+
+              '<button type="button" class="tg-chat-h-btn tg-chat-h-close" onclick="tgChatToggle(false)" title="إغلاق">✕</button>'+
+            '</div>'+
           '</div>'+
           '<div class="pj-chat-log" id="tgChatLog"><div class="pj-chat-empty">جارِ تحميل الرسائل...</div></div>'+
           '<div id="tgChatReplyPreview" class="tg-chat-reply-preview" style="display:none">'+
@@ -2217,6 +2620,7 @@ function tgChatMount(){
           '</div>'+
         '</div>'+
         '<div id="tgChatBubble" class="tg-chat-bubble" onclick="tgChatToggle()" title="الشات العام">'+
+          '<div class="tg-chat-bubble-ripple"></div>'+
           '<span class="tg-chat-bubble-ic">💬</span>'+
           '<span class="tgChatBadge tg-chat-bubble-badge" id="tgChatBubbleBadge" style="display:none"></span>'+
         '</div>';
@@ -2232,6 +2636,7 @@ function tgChatMount(){
         var panel = document.getElementById('tgChatPanel');
         var bubble = document.getElementById('tgChatBubble');
         var emoji = document.getElementById('tgEmojiWrap');
+        var backdrop = document.getElementById('tgChatBackdrop');
         if (_chatWidgetOpen && panel && bubble && !panel.contains(e.target) && !bubble.contains(e.target)) {
             if (emoji && emoji.contains(e.target)) return;
             tgChatToggle(false);
@@ -2265,6 +2670,7 @@ function tgChatToggleMute(){
 function tgChatToggle(force){
     var panel=document.getElementById('tgChatPanel');
     var bubble=document.getElementById('tgChatBubble');
+    var backdrop=document.getElementById('tgChatBackdrop');
     if(!panel) return;
     
     var willClose = (typeof force === 'boolean') ? !force : _chatWidgetOpen;
@@ -2278,7 +2684,8 @@ function tgChatToggle(force){
                 inp.value = '';
                 _chatWidgetOpen = false;
                 panel.classList.remove('open');
-                if(bubble) bubble.classList.toggle('hide', window.innerWidth<=560);
+                if(backdrop) backdrop.classList.remove('open');
+                if(bubble) bubble.classList.remove('open');
             }}
         ]);
         return;
@@ -2286,7 +2693,8 @@ function tgChatToggle(force){
 
     _chatWidgetOpen = (typeof force==='boolean') ? force : !_chatWidgetOpen;
     panel.classList.toggle('open', _chatWidgetOpen);
-    if(bubble) bubble.classList.toggle('hide', _chatWidgetOpen && window.innerWidth<=560);
+    if(backdrop) backdrop.classList.toggle('open', _chatWidgetOpen);
+    if(bubble) bubble.classList.toggle('open', _chatWidgetOpen);
     if(_chatWidgetOpen){
         renderChatMessages();
         tgChatMarkRead();
@@ -2711,14 +3119,15 @@ function renderProjectsList(list){
         var sVal = p.status === 'مكتمل' ? 3 : (p.status === 'متوقف' ? 1 : 2); // default 2
         var pVal = p.priority === 'عالية' ? 3 : (p.priority === 'متوسطة' ? 2 : 1);
         var dlVal = p.deadline ? new Date(p.deadline).getTime() : 9999999999999;
-        var empVal = p.assignees && p.assignees.length > 0 ? escH(PMGMT_EMPLOYEES.find(function(e){return e.uid===p.assignees[0];})?.name || '') : '';
+        var _empObj = PMGMT_EMPLOYEES.find(function(e){return e.uid===p.assignees[0];});
+        var empVal = p.assignees && p.assignees.length > 0 ? escH((_empObj && _empObj.name) || '') : '';
 
         h+='<div class="staff-card" id="pmCard'+idx+'" data-date="'+dVal+'" data-status="'+sVal+'" data-prio="'+pVal+'" data-deadline="'+dlVal+'" data-emp="'+empVal+'">';
         h+='<div class="staff-card-h" onclick="toggleProjCard('+idx+')">'+
            '<div><div class="staff-name">'+escH(p.title||'بدون عنوان')+'</div>'+
            (p.description?'<div class="staff-email">'+tgMakeExpandable(p.description, 100)+'</div>':'')+
            projectTagsHtml(p)+
-           '<div class="pj-meta" style="margin-top:4px;font-size:10px;color:var(--tx3)">بواسطة: '+escH(p.createdBy||'الإدارة')+' ('+escH(p.createdByRole||'أدمن إداري')+')</div>'+
+           '<div class="pj-meta" style="margin-top:4px;font-size:10px;color:var(--tx3)">بواسطة: '+escH(p.createdBy||'الإدارة')+' ('+escH(p.createdByRole||'أدمن')+')</div>'+
            '</div>'+
            '<div class="staff-stats">'+
            '<span class="staff-stat">👥 '+assignees.length+' موظف</span>'+
@@ -2846,7 +3255,7 @@ function quickCompleteProject(id){
                 content: content,
                 createdAt: new Date(),
                 createdBy: TG_USER ? (TG_USER.name || TG_USER.email) : 'الإدارة',
-                createdByRole: (TG_USER && TG_USER.role === 'tech_admin') ? 'أدمن تقني' : 'أدمن إداري'
+                createdByRole: (TG_USER && TG_USER.role === 'tech_admin') ? 'أدمن' : 'أدمن'
             }).then(function(){
                 if(typeof tgBroadcastPush === 'function'){
                     tgBroadcastPush('🎊 إنجاز جديد!', 'تم الانتهاء من مشروع: ' + p.title, 'project-completed', TG_USER ? TG_USER.uid : '');
@@ -2923,11 +3332,11 @@ function _sig(title,name,sub,id){
         '</div>';
 }
 
-function tgNotifyAdmins(title, body, tag) {
+function tgNotifyAdmins(title, body, tag, extraData) {
     if (typeof tgSendPushToUser !== 'function') return;
     db.collection('users').where('role', 'in', ['admin', 'tech_admin']).get().then(function(snap) {
         snap.forEach(function(d) {
-            tgSendPushToUser(d.id, title, body, tag);
+            tgSendPushToUser(d.id, title, body, tag, extraData || {});
         });
     }).catch(function(err) { console.error('Notification Error:', err); });
 }
@@ -3041,23 +3450,181 @@ function printWeeklyReportDoc(u,r){
     printDoc(h, docTitle);
 }
 
+// ─── العارض الشامل للتقارير الحقيقية من الإشعارات والقوائم ───────────────────────
+window.tgOpenReportDetailsModal = async function(reportId, collectionName, rawData) {
+    var modal = document.getElementById('tgReportDetailsModalOverlay');
+    if (!modal) {
+        modal = document.createElement('div');
+        modal.id = 'tgReportDetailsModalOverlay';
+        modal.className = 'modal-backdrop';
+        modal.style.cssText = 'position:fixed; top:0; left:0; right:0; bottom:0; background:rgba(0,0,0,0.75); z-index:999999; display:flex; align-items:center; justify-content:center; padding:16px; backdrop-filter:blur(6px);';
+        document.body.appendChild(modal);
+    }
+    modal.style.display = 'flex';
+
+    modal.innerHTML = '<div style="background:var(--bg); border:1px solid var(--bd); border-radius:16px; width:100%; max-width:680px; padding:32px; text-align:center; direction:rtl; font-family:inherit; color:var(--tx); box-shadow:0 20px 40px rgba(0,0,0,0.4);">' +
+        '  <div style="font-size:32px; margin-bottom:12px;">⌛</div>' +
+        '  <div style="font-size:15px; font-weight:bold;">جارٍ جلب تفاصيل التقرير الحقيقي من قاعدة البيانات...</div>' +
+        '</div>';
+
+    var reportDoc = rawData || null;
+    var targetDb = window.db || (typeof db !== 'undefined' ? db : (window.firebase ? firebase.firestore() : null));
+
+    if (reportId && targetDb) {
+        var cols = [];
+        if (collectionName) cols.push(collectionName);
+        cols.push('weekly_reports', 'weeklyReports', 'monthly_reports', 'monthly_plans', 'requests');
+
+        for (var i = 0; i < cols.length; i++) {
+            var col = cols[i];
+            try {
+                var snap = await targetDb.collection(col).doc(reportId).get();
+                if (snap.exists) {
+                    reportDoc = Object.assign({ id: snap.id, _collection: col }, snap.data());
+                    break;
+                }
+            } catch(e) {}
+        }
+    }
+
+    if (!reportDoc && rawData && (rawData.empName || rawData.body) && targetDb) {
+        try {
+            var snap2 = await targetDb.collection('weekly_reports').orderBy('createdAt', 'desc').limit(25).get();
+            snap2.forEach(function(doc) {
+                var d = doc.data();
+                if (!reportDoc && (d.empName === rawData.empName || d.userName === rawData.empName)) {
+                    reportDoc = Object.assign({ id: doc.id, _collection: 'weekly_reports' }, d);
+                }
+            });
+        } catch(e) {}
+    }
+
+    if (!reportDoc) {
+        reportDoc = rawData || {
+            title: 'تقرير جديد',
+            content: 'تقرير مُقدم من الموظف.',
+            empName: 'موظف'
+        };
+    }
+
+    var empName = reportDoc.empName || reportDoc.userName || (rawData && rawData.empName) || 'الموظف';
+    var empEmail = reportDoc.empEmail || reportDoc.userEmail || '';
+    var dateStr = reportDoc.weekStart || reportDoc.monthYear || reportDoc.date || reportDoc.month || '';
+    var contentText = reportDoc.content || reportDoc.summary || reportDoc.details || reportDoc.notes || reportDoc.body || '';
+    var achievementsText = reportDoc.achievements || reportDoc.kpis || '';
+    var challengesText = reportDoc.challenges || reportDoc.blockers || '';
+    var nextPlanText = reportDoc.nextPlan || reportDoc.nextPeriodPlan || reportDoc.tasks || '';
+    var fileUrl = reportDoc.fileUrl || reportDoc.attachment || '';
+    var createdAtStr = '';
+    if (reportDoc.createdAt) {
+        var t = reportDoc.createdAt.toMillis ? reportDoc.createdAt.toMillis() : new Date(reportDoc.createdAt).getTime();
+        if (!isNaN(t)) createdAtStr = new Date(t).toLocaleString('ar-EG');
+    }
+
+    var reportTitle = '📊 تقرير أداء رسمي (WR)';
+    if (reportDoc._collection === 'monthly_reports' || (rawData && rawData.type === 'monthly-report-new')) {
+        reportTitle = '📄 تقرير شهري رسمي (MR)';
+    } else if (reportDoc._collection === 'monthly_plans' || (rawData && rawData.type === 'monthly-plan-new')) {
+        reportTitle = '🎯 خطة شهرية رسمية (MP)';
+    }
+
+    var h = '<div style="background:var(--bg); border:1px solid var(--bd); border-radius:16px; width:100%; max-width:680px; max-height:90vh; overflow-y:auto; padding:24px; box-shadow:0 25px 50px rgba(0,0,0,0.5); direction:rtl; font-family:inherit; color:var(--tx); position:relative;">';
+    
+    // Header
+    h += '<div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:18px; border-bottom:1.5px solid var(--bd); padding-bottom:14px;">';
+    h += '  <div>';
+    h += '    <h3 style="margin:0; font-size:17px; font-weight:900; color:var(--tx); display:flex; align-items:center; gap:8px;">' + escH(reportTitle) + '</h3>';
+    if (createdAtStr) {
+        h += '    <div style="font-size:11px; color:var(--tx2); margin-top:4px;">📅 تاريخ التقديم الفعلي: ' + escH(createdAtStr) + '</div>';
+    }
+    h += '  </div>';
+    h += '  <button onclick="document.getElementById(\'tgReportDetailsModalOverlay\').style.display=\'none\'" style="background:none; border:none; font-size:20px; cursor:pointer; color:var(--tx2); font-weight:bold; padding:4px 8px;">✕</button>';
+    h += '</div>';
+
+    // Employee Info Box
+    h += '<div style="background:var(--bg2); border:1px solid var(--bd); border-radius:10px; padding:12px 16px; margin-bottom:16px; display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:10px; font-size:12px;">';
+    h += '  <div>👤 <strong>الموظف:</strong> <span style="color:var(--tx); font-weight:bold;">' + escH(empName) + '</span> ' + (empEmail ? '<small style="color:var(--tx2);">(' + escH(empEmail) + ')</small>' : '') + '</div>';
+    if (dateStr) {
+        h += '  <div>🗓️ <strong>الفترة:</strong> <span style="color:#d97706; font-weight:bold;">' + escH(dateStr) + '</span></div>';
+    }
+    h += '</div>';
+
+    // Content Section
+    h += '<div style="margin-bottom:16px;">';
+    h += '  <div style="font-weight:bold; font-size:13px; color:var(--tx); margin-bottom:6px; display:flex; align-items:center; gap:6px;">📝 التفاصيل والمحتوى الفعلي للتقرير:</div>';
+    h += '  <div style="background:var(--bg2); border:1px solid var(--bd); border-radius:10px; padding:14px; font-size:12.5px; line-height:1.7; color:var(--tx); white-space:pre-wrap; max-height:240px; overflow-y:auto;">' + escH(contentText || 'لا توجد التفاصيل النصية.') + '</div>';
+    h += '</div>';
+
+    if (achievementsText) {
+        h += '<div style="margin-bottom:16px;">';
+        h += '  <div style="font-weight:bold; font-size:13px; color:#10b981; margin-bottom:6px;">🏆 الإنجازات والنتائج المحققة:</div>';
+        h += '  <div style="background:rgba(16,185,129,0.08); border:1px solid rgba(16,185,129,0.3); border-radius:10px; padding:12px; font-size:12px; line-height:1.6; color:var(--tx); white-space:pre-wrap;">' + escH(achievementsText) + '</div>';
+        h += '</div>';
+    }
+
+    if (challengesText) {
+        h += '<div style="margin-bottom:16px;">';
+        h += '  <div style="font-weight:bold; font-size:13px; color:#ef4444; margin-bottom:6px;">⚠️ التحديات والملاحظات:</div>';
+        h += '  <div style="background:rgba(239,68,68,0.08); border:1px solid rgba(239,68,68,0.3); border-radius:10px; padding:12px; font-size:12px; line-height:1.6; color:var(--tx); white-space:pre-wrap;">' + escH(challengesText) + '</div>';
+        h += '</div>';
+    }
+
+    if (nextPlanText) {
+        h += '<div style="margin-bottom:16px;">';
+        h += '  <div style="font-weight:bold; font-size:13px; color:#0284c7; margin-bottom:6px;">🎯 خطة وتكليفات الفترة القادمة:</div>';
+        h += '  <div style="background:rgba(2,132,199,0.08); border:1px solid rgba(2,132,199,0.3); border-radius:10px; padding:12px; font-size:12px; line-height:1.6; color:var(--tx); white-space:pre-wrap;">' + escH(nextPlanText) + '</div>';
+        h += '</div>';
+    }
+
+    if (fileUrl) {
+        h += '<div style="margin-bottom:16px;">';
+        h += '  <a href="' + escH(fileUrl) + '" target="_blank" class="bt bt-o" style="display:inline-flex; align-items:center; gap:6px; font-size:12px; text-decoration:none;">📎 فتح الملف المرفق مع التقرير</a>';
+        h += '</div>';
+    }
+
+    // Actions Footer
+    h += '<div style="display:flex; justify-content:space-between; align-items:center; border-top:1.5px solid var(--bd); padding-top:14px; margin-top:20px; flex-wrap:wrap; gap:10px;">';
+    h += '  <button type="button" onclick="printWeeklyReportDoc({name:\'' + escH(empName).replace(/'/g, "\\'") + '\', email:\'' + escH(empEmail).replace(/'/g, "\\'") + '\'}, {weekStart:\'' + escH(dateStr).replace(/'/g, "\\'") + '\', content:\'' + escH(contentText).replace(/'/g, "\\'").replace(/\n/g, "\\n") + '\'})" class="bt bt-o" style="font-weight:bold; font-size:12px; padding:8px 16px;">🖨️ طباعة التقرير الورقي (A4 PDF)</button>';
+    h += '  <button type="button" onclick="document.getElementById(\'tgReportDetailsModalOverlay\').style.display=\'none\'" class="bt bt-p" style="padding:8px 22px; font-size:12px; font-weight:bold; background:linear-gradient(135deg, #0f172a, #1e293b); color:#fff; border-radius:8px;">✕ إغلاق</button>';
+    h += '</div>';
+
+    h += '</div>';
+    modal.innerHTML = h;
+};
+
+window.tgOpenWeeklyReportById = function(rId, targetCol, rawData) {
+    window.tgOpenReportDetailsModal(rId, targetCol, rawData);
+};
+
 // ─── بريد التقارير الأسبوعية (Inbox) ───────────────────────────────────────
 function loadWeeklyReportsInbox(){
     var listEl = document.getElementById('wkrInboxList');
     Promise.all([
-        db.collection('weeklyReports').orderBy('createdAt','desc').get(),
-        db.collection('users').where('role','in',['employee','tech_admin']).get()
+        db.collection('weekly_reports').orderBy('createdAt','desc').get().catch(function(){ return {docs:[]}; }),
+        db.collection('weeklyReports').orderBy('createdAt','desc').get().catch(function(){ return {docs:[]}; }),
+        db.collection('users').get().catch(function(){ return {docs:[]}; })
     ]).then(function(res){
-        var reports = res[0].docs.map(function(d){ return Object.assign({id:d.id}, d.data()); });
+        var reports = [];
+        var reportIds = {};
+        var processDoc = function(d, colName) {
+            if (!reportIds[d.id]) {
+                reportIds[d.id] = true;
+                reports.push(Object.assign({id: d.id, _collection: colName}, d.data()));
+            }
+        };
+        res[0].docs.forEach(function(d){ processDoc(d, 'weekly_reports'); });
+        res[1].docs.forEach(function(d){ processDoc(d, 'weeklyReports'); });
+
         var users = {};
         var empList = [];
-        res[1].forEach(function(d){ var u=d.data(); u.uid=d.id; users[d.id]=u; empList.push(u); });
+        res[2].forEach(function(d){ var u=d.data(); u.uid=d.id; users[d.id]=u; empList.push(u); });
         empList.sort(function(a,b){ return (a.name||a.email||'').localeCompare(b.name||b.email||''); });
         window._wkrInboxData = reports;
         window._wkrInboxUsers = users;
 
         var empSel = document.getElementById('wkrInboxEmpFilter');
         if(empSel){
+            empSel.innerHTML = '<option value="all">جميع الموظفين</option>';
             empList.forEach(function(u){
                 var opt = document.createElement('option');
                 opt.value = u.uid; opt.textContent = u.name || u.email;
@@ -3067,6 +3634,7 @@ function loadWeeklyReportsInbox(){
 
         var weekSel = document.getElementById('wkrInboxWeekFilter');
         if(weekSel){
+            weekSel.innerHTML = '<option value="all">جميع الأسابيع</option>';
             var weeks = [];
             reports.forEach(function(r){ if(r.weekStart && weeks.indexOf(r.weekStart)===-1) weeks.push(r.weekStart); });
             weeks.sort().reverse();
@@ -3085,11 +3653,10 @@ function loadWeeklyReportsInbox(){
 function renderWeeklyReportsInbox(){
     var reports = window._wkrInboxData || [];
     
-    // إزالة التكرار: نحتفظ بأحدث تقرير لكل موظف لكل أسبوع (التقارير مرتبة مسبقاً بالأحدث)
     var uniqueReports = [];
     var seen = {};
     reports.forEach(function(r){
-        var key = r.uid + '_' + r.weekStart;
+        var key = (r.uid || r.empName) + '_' + (r.weekStart || r.date || r.createdAt);
         if(!seen[key]){
             seen[key] = true;
             uniqueReports.push(r);
@@ -3125,18 +3692,19 @@ function renderWeeklyReportsInbox(){
 
     var h='';
     filtered.forEach(function(r,i){
-        var u = users[r.uid] || {name:r.name, email:r.email};
+        var u = users[r.uid] || {name: r.empName || r.name, email: r.empEmail || r.email};
         var waMsg = encodeURIComponent('التقرير الأسبوعي - '+(u.name||r.name||'')+'\n'+'الأسبوع: '+(r.weekStart||'')+'\n---\n'+(r.content||''));
-        h+='<div class="ac-row" style="border-right:3px solid '+(r.reviewedByAdmin?'var(--ok)':'var(--no)')+'">'+
+        h+='<div class="ac-row" data-report-id="'+r.id+'" style="border-right:3px solid '+(r.reviewedByAdmin?'var(--ok)':'var(--no)')+'">'+
            '<div class="ac-t" style="display:flex;justify-content:space-between;flex-wrap:wrap;gap:8px;align-items:center">'+
            '<span>👤 '+escH(u.name||u.email||'موظف')+' — أسبوع '+escH(r.weekStart||'')+'</span>'+
            '<span style="display:flex;gap:6px;flex-wrap:wrap">'+
+           '<button class="bt bt-p" style="padding:2px 10px;font-size:10px;background:linear-gradient(135deg,#0f172a,#1e293b);color:#fff" onclick="tgOpenReportDetailsModal(\''+r.id+'\', \''+(r._collection||'weekly_reports')+'\', _wkrInboxFiltered['+i+'])">👁️ عرض التقرير الحقيقي</button>'+
            (r.reviewedByAdmin ? '<span class="badge" style="background:var(--ok);color:#fff">✅ تمت المراجعة</span>' :
               '<button class="bt bt-g" style="padding:2px 10px;font-size:10px" onclick="markWeeklyReportReviewed(\''+r.id+'\',this)">✔ تحديد كمراجَع</button>')+
            ' <button class="bt bt-o" style="padding:2px 8px;font-size:10px" onclick="printWeeklyReportInboxItem('+i+')">🖨 طباعة</button>'+
            ' <a href="https://wa.me/?text='+waMsg+'" target="_blank" class="bt bt-g" style="padding:2px 8px;font-size:10px;text-decoration:none">📲 واتساب</a>'+
            '</span></div>'+
-           (r.content?'<div class="ac-meta">'+tgMakeExpandable(escH(r.content),160)+'</div>':'')+
+           '<div style="font-size:12px;margin-top:6px;color:var(--tx);max-height:60px;overflow:hidden;text-overflow:ellipsis;">'+escH((r.content||r.summary||'').substring(0,180))+'...</div>'+
            '</div>';
     });
     listEl.innerHTML = h;
@@ -3173,10 +3741,11 @@ function printAchievementDoc(u,a){
     printDoc(h, docTitle);
 }
 function printRequestDoc(u,r){
+    var tplTitle = (window.FS_TEMPLATES && r.formTemplateId && window.FS_TEMPLATES[r.formTemplateId] && window.FS_TEMPLATES[r.formTemplateId].title) ? window.FS_TEMPLATES[r.formTemplateId].title : (r.type || 'طلب موظف');
     if (r.dynamicData && r.formTemplateId && window.FS_OFFICIAL && window.FS_OFFICIAL[r.formTemplateId] && typeof window.FS_OFFICIAL[r.formTemplateId].print === 'function') {
-        var dh = H('نموذج موظف', window.FS_TEMPLATES[r.formTemplateId].title, 'EMPLOYEE FORM', 'req');
+        var dh = H('نموذج موظف', tplTitle, 'EMPLOYEE FORM', 'req');
         dh += window.FS_OFFICIAL[r.formTemplateId].print(r.dynamicData);
-        var dTitle = (window.FS_TEMPLATES[r.formTemplateId].title) + (u.name ? ' - ' + u.name : '');
+        var dTitle = tplTitle + (u.name ? ' - ' + u.name : '');
         printDoc(dh, dTitle);
         return;
     }
@@ -3334,6 +3903,248 @@ function saveMyPassword(){
     });
 }
 
+// ─── سجل وأرصدة الإجازات السنوية للموظفين (Admin HR Leaves Overview) ───────────
+window.tgPrintAdminLeavesReport = function () {
+    var baseline = [
+        { empId: '3',  name: 'ابتهال', job: 'UI/UX Designer', entitlement: 15, usedAnnual: 0, usedCasual: 1, usedOfficial: 1 },
+        { empId: '8',  name: 'م/ مرقس مدحت', job: 'Senior Backend Developer', entitlement: 15, usedAnnual: 1, usedCasual: 0, usedOfficial: 0 },
+        { empId: '7',  name: 'باسل', job: 'Frontend Developer', entitlement: 15, usedAnnual: 4, usedCasual: 1, usedOfficial: 0 },
+        { empId: '4',  name: 'أبانوب فايز', job: 'Tech Lead / Admin', entitlement: 15, usedAnnual: 0, usedCasual: 0, usedOfficial: 0 },
+        { empId: '5',  name: 'إبراهيم', job: 'Mobile App Developer', entitlement: 15, usedAnnual: 1, usedCasual: 2, usedOfficial: 0 },
+        { empId: '6',  name: 'يوستينا', job: 'Graphic Designer', entitlement: 15, usedAnnual: 6, usedCasual: 4, usedOfficial: 0 },
+        { empId: '10', name: 'كيرلس', job: 'Software Developer', entitlement: 15, usedAnnual: 0, usedCasual: 0, usedOfficial: 0 }
+    ];
+
+    var leavesStore = null;
+    try {
+        var raw = localStorage.getItem('attendance_sys_techgo_employee_leaves') || localStorage.getItem('techgo_employee_leaves');
+        if (raw) leavesStore = JSON.parse(raw);
+    } catch (e) { }
+
+    var totalEnt = 0, totalUsedAll = 0, totalRemAll = 0;
+    var rowsHtml = '';
+
+    baseline.forEach(function (emp, idx) {
+        var usedAnn = emp.usedAnnual;
+        var usedCas = emp.usedCasual;
+
+        if (leavesStore && leavesStore[emp.empId]) {
+            var cYr = String(new Date().getFullYear());
+            var yrData = leavesStore[emp.empId][cYr];
+            if (yrData) {
+                var dAnn = (yrData.annual || []).reduce(function (s, r) { return s + (r.days || 0); }, 0);
+                var dCas = (yrData.casual || []).reduce(function (s, r) { return s + (r.days || 0); }, 0);
+                usedAnn = Math.max(usedAnn, dAnn);
+                usedCas = Math.max(usedCas, dCas);
+            }
+        }
+
+        var usedTotal = usedAnn + usedCas;
+        var remAnn = Math.max(0, emp.entitlement - usedTotal);
+        var pct = Math.min(100, Math.round((usedTotal / emp.entitlement) * 100));
+
+        totalEnt += emp.entitlement;
+        totalUsedAll += usedTotal;
+        totalRemAll += remAnn;
+
+        rowsHtml += '<tr style="border-bottom:1px solid #cbd5e1; height:32px;">' +
+            '<td style="text-align:center; font-weight:bold; padding:6px 8px;">' + (idx + 1) + '</td>' +
+            '<td style="font-weight:bold; color:#0f172a; padding:6px 8px;">' + escH(emp.name) + ' <span style="font-size:10px; color:#64748b; font-weight:normal;">(' + escH(emp.job) + ')</span></td>' +
+            '<td style="text-align:center; font-weight:bold; color:#0284c7; padding:6px 8px;">' + emp.empId + '</td>' +
+            '<td style="text-align:center; font-weight:bold; padding:6px 8px;">' + emp.entitlement + ' يوم</td>' +
+            '<td style="text-align:center; color:#0284c7; font-weight:bold; padding:6px 8px;">' + usedAnn + ' يوم</td>' +
+            '<td style="text-align:center; color:#d97706; font-weight:bold; padding:6px 8px;">' + usedCas + ' يوم</td>' +
+            '<td style="text-align:center; font-weight:bold; color:#d97706; padding:6px 8px;">' + usedTotal + ' يوم</td>' +
+            '<td style="text-align:center; font-weight:900; font-size:13px; color:#10b981; padding:6px 8px;">' + remAnn + ' يوم</td>' +
+            '<td style="text-align:center; font-weight:bold; color:#64748b; padding:6px 8px;">' + pct + '%</td>' +
+            '</tr>';
+    });
+
+    var todayStr = new Date().toLocaleDateString('ar-EG', { day: 'numeric', month: 'long', year: 'numeric' });
+    var curYr = new Date().getFullYear();
+
+    var h = '<div style="direction:rtl; font-family:Cairo, sans-serif; color:#0f172a; padding:15px 20px;">' +
+        '<div style="display:flex; justify-content:space-between; align-items:center; border-bottom:2px solid #0f172a; padding-bottom:12px; margin-bottom:16px;">' +
+        '  <div>' +
+        '    <h2 style="margin:0; font-size:18px; font-weight:900; color:#0f172a;">🏢 شركة تيك - جو للأنظمة البرمجية (Tech Go System)</h2>' +
+        '    <div style="font-size:12px; color:#475569; margin-top:3px;">كشف وسجل أرصدة الإجازات السنوية لعام ' + curYr + ' (المادة ١٢٤ من اللائحة التنظيمية)</div>' +
+        '  </div>' +
+        '  <div style="text-align:left; font-size:11px; color:#64748b;">' +
+        '    <div>📅 تاريخ الاستخراج: <strong>' + todayStr + '</strong></div>' +
+        '    <div>📋 تصنيف الوثيقة: <strong>تقرير إداري معتمد</strong></div>' +
+        '  </div>' +
+        '</div>' +
+
+        '<div style="display:grid; grid-template-columns:repeat(4, 1fr); gap:10px; margin-bottom:16px; text-align:center;">' +
+        '  <div style="background:#f8fafc; border:1px solid #cbd5e1; border-radius:8px; padding:8px 10px;"><div style="font-size:11px; color:#64748b; font-weight:bold;">👥 إجمالي الموظفين</div><div style="font-size:18px; font-weight:900; color:#0f172a; margin-top:2px;">' + baseline.length + ' موظف</div></div>' +
+        '  <div style="background:#f0f9ff; border:1px solid #bae6fd; border-radius:8px; padding:8px 10px;"><div style="font-size:11px; color:#0369a1; font-weight:bold;">🏖️ الاستحقاق السنوي</div><div style="font-size:18px; font-weight:900; color:#0284c7; margin-top:2px;">' + totalEnt + ' يوم</div></div>' +
+        '  <div style="background:#fffbeb; border:1px solid #fde68a; border-radius:8px; padding:8px 10px;"><div style="font-size:11px; color:#b45309; font-weight:bold;">⏳ الإجازات المستهلكة</div><div style="font-size:18px; font-weight:900; color:#d97706; margin-top:2px;">' + totalUsedAll + ' يوم</div></div>' +
+        '  <div style="background:#f0fdf4; border:1px solid #bbf7d0; border-radius:8px; padding:8px 10px;"><div style="font-size:11px; color:#15803d; font-weight:bold;">🟢 الأرصدة المتبقية</div><div style="font-size:18px; font-weight:900; color:#16a34a; margin-top:2px;">' + totalRemAll + ' يوم</div></div>' +
+        '</div>' +
+
+        '<table style="width:100%; border-collapse:collapse; font-size:11px; margin-bottom:20px;">' +
+        '  <thead>' +
+        '    <tr style="background:#0f172a; color:#fff;">' +
+        '      <th style="padding:7px 8px; text-align:center; width:30px;">م</th>' +
+        '      <th style="padding:7px 8px; text-align:right;">اسم الموظف</th>' +
+        '      <th style="padding:7px 8px; text-align:center; width:55px;">الكود</th>' +
+        '      <th style="padding:7px 8px; text-align:center; width:75px;">الاستحقاق</th>' +
+        '      <th style="padding:7px 8px; text-align:center; width:70px;">سنوية</th>' +
+        '      <th style="padding:7px 8px; text-align:center; width:70px;">عارضة</th>' +
+        '      <th style="padding:7px 8px; text-align:center; width:75px;">المستهلك</th>' +
+        '      <th style="padding:7px 8px; text-align:center; width:75px;">المتبقي</th>' +
+        '      <th style="padding:7px 8px; text-align:center; width:65px;">الاستهلاك</th>' +
+        '    </tr>' +
+        '  </thead>' +
+        '  <tbody>' + rowsHtml + '</tbody>' +
+        '</table>' +
+
+        '<div style="border-top:1px dashed #94a3b8; padding-top:10px; font-size:10.5px; color:#475569; margin-bottom:30px;">' +
+        '  <strong>ملاحظة تنظيمية:</strong> الإجازة السنوية استحقاق قانوني (م.١٢٤) تُخصم منها الإجازات العارضة (م.١٢٨ بحد أقصى ٧ أيام سنوياً). في حالة انتهاء عقد العمل يُصرف للموظف مقابل رصيد إجازاته المتبقية نقداً وفقاً للأجر الأساسي.' +
+        '</div>' +
+
+        '<div style="display:grid; grid-template-columns:1fr 1fr 1fr; gap:20px; text-align:center; margin-top:20px;">' +
+        '  <div><div style="font-weight:bold; font-size:12px; margin-bottom:35px;">إعداد وتدقيق الموارد البشرية (HR):</div><div style="border-top:1px solid #000; width:80%; margin:0 auto; padding-top:4px; font-size:11px;">التوقيع: .....................</div></div>' +
+        '  <div><div style="font-weight:bold; font-size:12px; margin-bottom:35px;">المدير الإداري:</div><div style="border-top:1px solid #000; width:80%; margin:0 auto; padding-top:4px; font-size:11px;">التوقيع: .....................</div></div>' +
+        '  <div><div style="font-weight:bold; font-size:12px; margin-bottom:35px;">اعتماد المدير التنفيذي:</div><div style="border-top:1px solid #000; width:80%; margin:0 auto; padding-top:4px; font-size:11px;">التوقيع والخاتم: .....................</div></div>' +
+        '</div>' +
+        '</div>';
+
+    var docTitle = 'كشف وسجل أرصدة الإجازات السنوية لعام ' + curYr;
+    printDoc(h, docTitle);
+};
+
+function renderAdminLeavesRecordPage(c) {
+    if (!c) c = document.getElementById('pg-la');
+    if (!c) return;
+
+    var baseline = [
+        { empId: '3',  name: 'ابتهال', job: 'UI/UX Designer', entitlement: 15, usedAnnual: 0, usedCasual: 1, usedOfficial: 1 },
+        { empId: '8',  name: 'م/ مرقس مدحت', job: 'Senior Backend Developer', entitlement: 15, usedAnnual: 1, usedCasual: 0, usedOfficial: 0 },
+        { empId: '7',  name: 'باسل', job: 'Frontend Developer', entitlement: 15, usedAnnual: 4, usedCasual: 1, usedOfficial: 0 },
+        { empId: '4',  name: 'أبانوب فايز', job: 'Tech Lead / Admin', entitlement: 15, usedAnnual: 0, usedCasual: 0, usedOfficial: 0 },
+        { empId: '5',  name: 'إبراهيم', job: 'Mobile App Developer', entitlement: 15, usedAnnual: 1, usedCasual: 2, usedOfficial: 0 },
+        { empId: '6',  name: 'يوستينا', job: 'Graphic Designer', entitlement: 15, usedAnnual: 6, usedCasual: 4, usedOfficial: 0 },
+        { empId: '10', name: 'كيرلس', job: 'Software Developer', entitlement: 15, usedAnnual: 0, usedCasual: 0, usedOfficial: 0 }
+    ];
+
+    // Check attendance.html leavesStore
+    var leavesStore = null;
+    try {
+        var raw = localStorage.getItem('attendance_sys_techgo_employee_leaves') || localStorage.getItem('techgo_employee_leaves');
+        if (raw) leavesStore = JSON.parse(raw);
+    } catch(e){}
+
+    var totalEnt = 0, totalUsedAll = 0, totalRemAll = 0;
+    var rowsHtml = '';
+
+    baseline.forEach(function(emp, idx) {
+        var usedAnn = emp.usedAnnual;
+        var usedCas = emp.usedCasual;
+        var usedOff = emp.usedOfficial;
+
+        if (leavesStore && leavesStore[emp.empId]) {
+            var cYr = String(new Date().getFullYear());
+            var yrData = leavesStore[emp.empId][cYr];
+            if (yrData) {
+                var dAnn = (yrData.annual || []).reduce(function (s, r) { return s + (r.days || 0); }, 0);
+                var dCas = (yrData.casual || []).reduce(function (s, r) { return s + (r.days || 0); }, 0);
+                var dOff = (yrData.official || []).reduce(function (s, r) { return s + (r.days || 0); }, 0);
+                usedAnn = Math.max(usedAnn, dAnn);
+                usedCas = Math.max(usedCas, dCas);
+                usedOff = Math.max(usedOff, dOff);
+            }
+        }
+
+        var usedTotal = usedAnn + usedCas;
+        var remAnn = Math.max(0, emp.entitlement - usedTotal);
+        var pct = Math.min(100, Math.round((usedTotal / emp.entitlement) * 100));
+        var remColor = remAnn <= 3 ? '#ef4444' : (remAnn <= 7 ? '#d97706' : '#10b981');
+        var barColor = remAnn <= 3 ? '#ef4444' : (remAnn <= 7 ? '#d97706' : '#0284c7');
+
+        totalEnt += emp.entitlement;
+        totalUsedAll += usedTotal;
+        totalRemAll += remAnn;
+
+        rowsHtml += '<tr>' +
+            '<td style="font-weight:bold;text-align:center;">' + (idx + 1) + '</td>' +
+            '<td style="font-weight:bold;color:var(--tx);">' + escH(emp.name) + '<div style="font-size:10px;color:var(--tx3);font-weight:normal;">' + escH(emp.job) + '</div></td>' +
+            '<td style="text-align:center;font-weight:bold;color:#0284c7;">' + emp.empId + '</td>' +
+            '<td style="text-align:center;font-weight:bold;">' + emp.entitlement + ' يوم</td>' +
+            '<td style="text-align:center;color:#0284c7;font-weight:bold;">' + usedAnn + ' يوم</td>' +
+            '<td style="text-align:center;color:#d97706;font-weight:bold;">' + usedCas + ' / 7 يوم</td>' +
+            '<td style="text-align:center;font-weight:bold;color:#d97706;">' + usedTotal + ' يوم</td>' +
+            '<td style="text-align:center;font-weight:900;font-size:13px;color:' + remColor + ';">' + remAnn + ' يوم</td>' +
+            '<td>' +
+                '<div style="background:var(--bg3,#e2e8f0);height:8px;border-radius:4px;overflow:hidden;margin-bottom:2px;">' +
+                '<div style="background:' + barColor + ';width:' + pct + '%;height:100%;border-radius:4px;"></div>' +
+                '</div>' +
+                '<div style="font-size:9.5px;color:var(--tx3);text-align:center;">استهلاك ' + pct + '%</div>' +
+            '</td>' +
+            '<td style="text-align:center;" class="np">' +
+                '<button type="button" class="bt bt-o" style="padding:3px 8px;font-size:10px;" onclick="go(\'att\')">⏱ تفاصيل البصمة</button>' +
+            '</td>' +
+            '</tr>';
+    });
+
+    var h = '<div class="SP"><h3>🏖️ سجل وأرصدة الإجازات السنوية لعام ' + new Date().getFullYear() + '</h3>';
+    h += '<div class="set-hint">استناداً للمادة (١٢٤) من اللائحة التنظيمية — كشف مركزي يوضح الاستحقاق السنوي، الأيام المستهلكة، والرصيد المتبقي لجميع الموظفين.</div>';
+
+    // Top KPI Cards
+    h += '<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:12px;margin:16px 0;">' +
+        '<div style="background:var(--bg2);border:1px solid var(--bd);border-radius:12px;padding:12px 16px;text-align:center;">' +
+        '  <div style="font-size:11px;color:var(--tx3);font-weight:bold;">👥 إجمالي الموظفين</div>' +
+        '  <div style="font-size:22px;font-weight:900;color:var(--tx);margin-top:2px;">' + baseline.length + ' موظف</div>' +
+        '</div>' +
+        '<div style="background:var(--bg2);border:1px solid var(--bd);border-radius:12px;padding:12px 16px;text-align:center;">' +
+        '  <div style="font-size:11px;color:var(--tx3);font-weight:bold;">🏖️ إجمالي الاستحقاق السنوي</div>' +
+        '  <div style="font-size:22px;font-weight:900;color:#0284c7;margin-top:2px;">' + totalEnt + ' يوم</div>' +
+        '</div>' +
+        '<div style="background:var(--bg2);border:1px solid var(--bd);border-radius:12px;padding:12px 16px;text-align:center;">' +
+        '  <div style="font-size:11px;color:var(--tx3);font-weight:bold;">⏳ إجمالي الإجازات المستهلكة</div>' +
+        '  <div style="font-size:22px;font-weight:900;color:#d97706;margin-top:2px;">' + totalUsedAll + ' يوم</div>' +
+        '</div>' +
+        '<div style="background:var(--bg2);border:1px solid var(--bd);border-radius:12px;padding:12px 16px;text-align:center;">' +
+        '  <div style="font-size:11px;color:var(--tx3);font-weight:bold;">🟢 إجمالي الأرصدة المتبقية</div>' +
+        '  <div style="font-size:22px;font-weight:900;color:#10b981;margin-top:2px;">' + totalRemAll + ' يوم</div>' +
+        '</div>' +
+        '</div>';
+
+    // Explanatory Banner
+    h += '<div style="background:rgba(2,132,199,0.08);border:1px solid rgba(2,132,199,0.3);border-radius:10px;padding:12px 16px;margin-bottom:16px;display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:10px;">' +
+        '<div>' +
+        '  <div style="font-size:12.5px;font-weight:bold;color:#0284c7;">💡 التزامن اللحظي مع نظام الحضور وبوابة الموظف:</div>' +
+        '  <div style="font-size:11.5px;color:var(--tx2);margin-top:2px;">يتم خصم الإجازات واحتساب الأرصدة تلقائياً بمجرد رفع ملف البصمة الشهري في شاشة <strong>«⏱ الحضور والانصراف»</strong> أو اعتماد طلبات الإجازات الإلكترونية.</div>' +
+        '</div>' +
+        '<div style="display:flex;gap:8px;">' +
+        '  <button type="button" class="bt bt-p" style="font-size:11.5px;padding:6px 14px;" onclick="go(\'att\')">⏱ فتح نظام الحضور والبصمة</button>' +
+        '  <button type="button" class="bt bt-o" style="font-size:11.5px;padding:6px 14px;" onclick="tgPrintAdminLeavesReport()">🖨️ طباعة الكشف</button>' +
+        '</div>' +
+        '</div>';
+
+    // Table
+    h += '<div style="overflow-x:auto;">' +
+        '<table class="dt" style="width:100%;border-collapse:collapse;">' +
+        '<thead><tr>' +
+        '<th style="width:36px;text-align:center;">م</th>' +
+        '<th style="width:22%;">اسم الموظف</th>' +
+        '<th style="width:70px;text-align:center;">الكود</th>' +
+        '<th style="width:90px;text-align:center;">الاستحقاق</th>' +
+        '<th style="width:85px;text-align:center;">سنوية</th>' +
+        '<th style="width:85px;text-align:center;">عارضة</th>' +
+        '<th style="width:95px;text-align:center;">إجمالي المستهلك</th>' +
+        '<th style="width:100px;text-align:center;">الرصيد المتبقي</th>' +
+        '<th style="width:120px;text-align:center;">نسبة الاستهلاك</th>' +
+        '<th class="np" style="width:110px;text-align:center;">إجراء</th>' +
+        '</tr></thead>' +
+        '<tbody>' + rowsHtml + '</tbody>' +
+        '</table>' +
+        '</div>';
+
+    h += '</div>';
+    c.innerHTML = h;
+}
+
 function logTbl(title,app,ref,cols,rows,docId){
     var h=H(title+' — ملحق '+app,ref,'',docId);
     h+=SC('١','بيانات الموظف');
@@ -3389,16 +4200,36 @@ function mexpAddRow(row){
     var tbody = document.getElementById('mexp-tbody');
     if(!tbody) return;
     var tr = document.createElement('tr');
+    tr.style.height = '32px';
+    var priceVal = (row && row.price !== undefined && row.price !== null) ? String(row.price) : '';
     var amtVal = (row && row.amt !== undefined && row.amt !== null && row.amt !== '') ? String(row.amt) : '';
+    
     tr.innerHTML =
-        '<td class="mexp-idx">' + (tbody.children.length + 1) + '</td>' +
+        '<td class="mexp-idx" style="font-weight:bold; font-size:11px; text-align:center;">' + (tbody.children.length + 1) + '</td>' +
         '<td><input type="text" class="mexp-spender" value="' + escH(row && row.spender || '') + '"></td>' +
         '<td><input type="text" class="mexp-cat" value="' + escH(row && row.cat || '') + '"></td>' +
-        '<td><input type="number" step="0.01" class="mexp-amt" value="' + escH(amtVal) + '" oninput="mexpCalc()"></td>' +
-        '<td><input type="date" class="mexp-date" value="' + escH(row && row.date || '') + '"></td>' +
+        '<td><input type="number" step="0.01" min="0" class="mexp-price" style="text-align:center;" value="' + escH(priceVal) + '" oninput="mexpRowCalc(this)"></td>' +
+        '<td><input type="number" step="0.01" min="0" class="mexp-amt" style="font-weight:bold; color:var(--nv); text-align:center;" value="' + escH(amtVal) + '" oninput="mexpCalc()"></td>' +
+        '<td><input type="date" class="mexp-date" style="font-weight:bold; text-align:center;" value="' + escH(row && row.date || '') + '"></td>' +
         '<td><input type="text" class="mexp-notes" value="' + escH(row && row.notes || '') + '"></td>' +
-        '<td class="np" style="text-align:center"><button class="bt bt-d" style="padding:3px 8px;font-size:10px" onclick="mexpDelRow(this)">✕</button></td>';
+        '<td class="np" style="text-align:center"><button class="bt bt-d" style="padding:2px 6px;font-size:10px;border-radius:4px;" onclick="mexpDelRow(this)">✕</button></td>';
     tbody.appendChild(tr);
+}
+function mexpRowCalc(el) {
+    var tr = el.closest('tr');
+    if(!tr) return;
+    var qInp = tr.querySelector('.mexp-qty');
+    var pInp = tr.querySelector('.mexp-price');
+    var aInp = tr.querySelector('.mexp-amt');
+    
+    var q = parseFloat(qInp.value);
+    var p = parseFloat(pInp.value);
+    
+    if(!isNaN(p)) {
+        var count = (!isNaN(q) && q > 0) ? q : 1;
+        aInp.value = (count * p).toFixed(2);
+    }
+    mexpCalc();
 }
 function mexpDelRow(btn){
     var tr = btn.closest('tr');
@@ -3427,11 +4258,13 @@ function mexpSave(){
     document.querySelectorAll('#mexp-tbody tr').forEach(function(tr){
         var spender = tr.querySelector('.mexp-spender').value;
         var cat = tr.querySelector('.mexp-cat').value;
+        var qty = tr.querySelector('.mexp-qty').value;
+        var price = tr.querySelector('.mexp-price').value;
         var amt = tr.querySelector('.mexp-amt').value;
         var date = tr.querySelector('.mexp-date').value;
         var notes = tr.querySelector('.mexp-notes').value;
-        if(spender || cat || amt || date || notes){
-            rows.push({spender: spender, cat: cat, amt: amt, date: date, notes: notes});
+        if(spender || cat || qty || price || amt || date || notes){
+            rows.push({spender: spender, cat: cat, qty: qty, price: price, amt: amt, date: date, notes: notes});
         }
     });
     localStorage.setItem(mexpKey(), JSON.stringify(rows));
@@ -3500,6 +4333,10 @@ function load(id,c){
     }
     else if(id==="monthlyplans"){
         loadMonthlyPlansAdmin(c);
+        return;
+    }
+    else if(id==="permsheet" || id==="perm_sheet"){
+        loadPermSheetPage(c);
         return;
     }
     else if(id==="notice"){
@@ -3647,7 +4484,7 @@ function load(id,c){
         h+=F2(FG('الاسم بالكامل'),FG('القسم / الإدارة'));
         h+=F2(FG('المسمى الوظيفي'),FG('رقم التواصل أثناء الإجازة','tel'));
         h+=SC('٢','نوع الإجازة');
-        h+='<div class="chk-grid" style="grid-template-columns:1fr 1fr"><label><input type="radio" name="lt"> <strong>إجازة سنوية</strong> (م.١٢٤)</label><label><input type="radio" name="lt"> <strong>إجازة عارضة</strong> (م.١٢٨)</label></div>';
+        h+='<div class="chk-grid"><label><input type="radio" name="lt"> <span><strong>إجازة سنوية</strong> <span class="fs-law-code">(م.١٢٤)</span></span></label><label><input type="radio" name="lt"> <span><strong>إجازة عارضة</strong> <span class="fs-law-code">(م.١٢٨)</span></span></label></div>';
         h+=SC('٣','مدة الإجازة');
         h+=F3(FG('تاريخ البدء','date'),FG('تاريخ الانتهاء','date'),FG('عدد الأيام','number'));
         h+=SC('٤','سبب الإجازة والرصيد');
@@ -3664,6 +4501,30 @@ function load(id,c){
     // ── إذن حضور / انصراف ─────────────────────────────────────────────
     else if(id==="perm"){
         h=H('إذن حضور / انصراف','اللائحة التنظيمية — المادة الثالثة','ATTENDANCE PERMISSION','perm');
+        
+        // ── 📊 العداد الشهري ووضع الإدارة للإدخال اليدوي وطباعة الكشف الورقي ───
+        h += '<div style="background:var(--bg2); border:1px solid var(--bd); border-radius:10px; padding:12px 16px; margin-bottom:14px; display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:10px;">';
+        h += '  <div>';
+        h += '    <div style="font-size:12px; font-weight:bold; color:var(--tx)">📊 رصيد إذنات الشهر الحالي (الحد الأقصى 5 أيام شهرياً)</div>';
+        h += '    <div style="font-size:11px; color:var(--tx2); margin-top:2px;">المستغرق: <span id="tgPermUsedCount" style="font-weight:bold; color:#d97706">0</span> من 5 أيام | المتبقي: <span id="tgPermRemCount" style="font-weight:bold; color:#10b981">5</span> أيام</div>';
+        h += '  </div>';
+        h += '  <div style="display:flex; align-items:center; gap:8px; flex-wrap:wrap;">';
+        h += '    <label style="display:flex; align-items:center; gap:6px; font-size:11px; font-weight:bold; color:var(--tx2); cursor:pointer;">';
+        h += '      <input type="checkbox" id="tgAdminOverrideToggle" onchange="tgToggleAdminOverride(this.checked)"> وضع الإدخال اليدوي والتجاوز للإدارة ⚙️';
+        h += '    </label>';
+        h += '    <button type="button" class="bt bt-o" onclick="tgPrintMonthlyPermissionSheet()" style="font-size:11px; padding:4px 10px;">🖨️ كشف المتابعة الورقي (31 يوماً)</button>';
+        h += '    <button type="button" class="bt bt-p" onclick="tgOpenPermSheetEmpModal()" style="font-size:11px; padding:4px 12px; font-weight:bold; background:linear-gradient(135deg, #0f172a, #1e293b); color:#fff; border-radius:6px;" title="اختيار واستبعاد وتحديد الموظفين المظهرين في الكشف الورقي">⚙️ تخصيص الموظفين</button>';
+        h += '  </div>';
+        h += '</div>';
+
+        h += '<div id="tgAdminNoticeBox" style="display:none; background:rgba(217,119,6,0.1); border:1px solid #d97706; border-radius:8px; padding:10px 14px; margin-bottom:12px; font-size:11px; color:var(--tx);">';
+        h += '  ⚠️ <strong>تنبيه وضع الإدارة:</strong> أنت تعمل بوضع الإدخال اليدوي والتجاوز الإداري. يُسمح بإدخال إذن نيابة عن الموظف أو تجاوز حد الـ 5 أيام.';
+        h += '</div>';
+
+        h += '<div id="tgPermLimitAlert" style="display:none; background:rgba(239,68,68,0.1); border:1px solid #ef4444; border-radius:8px; padding:10px 14px; margin-bottom:12px; font-size:11px; color:#ef4444; font-weight:bold;">';
+        h += '  ⛔ <strong>عفواً:</strong> لقد استنفذت الحد الأقصى المسموح به للإذنات هذا الشهر (5/5 أيام). يرجى مراجعة الإدارة إذا كنت بحاجة لاستثناء.';
+        h += '</div>';
+
         h+=SC('١','نوع الإذن');
         h+='<div class="chk-grid" style="grid-template-columns:1fr 1fr"><label><input type="radio" name="pt"> <strong>حضور</strong> بعد مواعيد العمل</label><label><input type="radio" name="pt"> <strong>انصراف</strong> قبل مواعيد العمل</label></div>';
         h+=SC('٢','بيانات الموظف');
@@ -3674,8 +4535,13 @@ function load(id,c){
         h+=FGA('السبب',2);
         h+=SC('٤','التوقيعات');
         h+=SG3('توقيع الموظف','','المدير الإداري','الموافقة','المدير التنفيذي','',null,'admin','exec');
-        h+='<div style="text-align:center;font-size:8px;color:var(--tx3);margin-top:6px">المغادرة أو التأخر بدون إذن موقع يعد مخالفة تأديبية م. ١٢٤</div>';
         h+=FT();
+    }
+
+    // ── سجل الإجازة السنوية (كشف أرصدة الموظفين) ───────────────────────────
+    else if(id==="la"){
+        renderAdminLeavesRecordPage(c);
+        return;
     }
 
     // ── التماس تعديل موعد الحضور ──────────────────────────────────────
@@ -3765,6 +4631,58 @@ function load(id,c){
                'المدير التنفيذي','موافقة وإصدار',
                null,'admin','exec');
         h+=FT();
+    }
+
+    // ── نموذج إخطار خصم من الراتب ──────────────────────────────────────
+    else if(id==="deduction"){
+        h=H('إخطار توقيع جزاء خصم','تأديب رسمي وتوثيق الخصم من الراتب','DEDUCTION NOTICE','deduction');
+        h+=SC('١','بيانات الموظف');
+        h+=F2(FGE('اسم الموظف'),FG('القسم / الإدارة'));
+        h+=F2(FG('الكود الوظيفي'),FG('المسمى الوظيفي'));
+        h+=F2(FG('المدير المباشر'),FG('تاريخ الإصدار','date'));
+        
+        h+=SC('٢','تفاصيل المخالفة والسبب');
+        h+=F2(FG('تاريخ وقوع المخالفة','date'),FG('المادة / البند المخالف'));
+        h+='<div class="chk-grid" style="grid-template-columns:1fr 1fr 1fr"><label><input type="checkbox"> غياب بدون إذن مقبول</label><label><input type="checkbox"> التأخر المتكرر عن المواعيد</label><label><input type="checkbox"> الانصراف المبكر بدون تصريح</label><label><input type="checkbox"> إهمال وتقصير في العمل</label><label><input type="checkbox"> عدم الرد / مخالفة اللوائح</label><label><input type="checkbox"> بناءً على محضر تحقيق داخلي</label></div>';
+        h+='<div class="fg"><label>سبب آخر (إن وجد)</label><input type="text"></div>';
+        h+=FGA('توصيف المخالفة الإدارية بالتفصيل',2);
+        
+        h+=SC('٣','قرار الجزاء ومبلغ الخصم');
+        h+=F3(FG('مقدار الخصم (جنيه / أيام)'),FG('يُخصم من أجر شهر'),FG('رقم محضر التحقيق (إن وجد)'));
+        h+='<div class="wb wb-gd"><strong>⚠ تنبيه رسمي وأحكام قانونية:</strong><br>تم توقيع هذا الجزاء وفقاً لأحكام قانون العمل رقم 12 لسنة 2003 ولائحة الجزاءات التنظيمية بالشركة. يُحفظ هذا الإخطار في ملف الموظف وتُرسل نسخة للإدارة المالية لتطبيق الخصم.</div>';
+        
+        h+=SC('٤','التوقيعات والاعتماد');
+        h+=SG3('توقيع الموظف','إقراراً بالعلم والاستلام',
+               'المدير الإداري / الشؤون القانونية','مراجعة واعتماد الجزاء',
+               'المدير التنفيذي','تطبيق وإصدار قرار الخصم',
+               null,'admin','exec');
+        h+=FT(['نسخة للموظف','نسخة للحسابات والمالية','نسخة لملف الموظف (HR)']);
+    }
+
+    // ── قرار فصل وإنهاء خدمة ──────────────────────────────────────────
+    else if(id==="term"){
+        h=H('قرار فصل وإنهاء خدمة','إنهاء الخدمة وتوقيع جزاء الفصل الرسمي','TERMINATION DECISION','term');
+        h+=SC('١','بيانات الموظف');
+        h+=F2(FGE('اسم الموظف'),FG('القسم / الإدارة'));
+        h+=F2(FG('الكود الوظيفي'),FG('المسمى الوظيفي'));
+        h+=F2(FG('المدير المباشر'),FG('تاريخ إصدار القرار','date'));
+        
+        h+=SC('٢','أسباب وموجبات القرار (السند القانوني)');
+        h+=F2(FG('تاريخ وقوع المخالفة الموجبة للفصل','date'),FG('المادة / البند المخالف (قانون العمل / اللائحة)'));
+        h+='<div class="chk-grid" style="grid-template-columns:1fr 1fr"><label><input type="checkbox"> انقطاع عن العمل أكثر من 10 أيام متصلة أو 20 يوماً منفصلة</label><label><input type="checkbox"> انتحال شخصية غير صحيحة أو تقديم شهادات مزورة</label><label><input type="checkbox"> تكرار التقصير والإهمال الجسيم رغم توجيه إنذار كتابي</label><label><input type="checkbox"> إفشاء أسرار الشركة أو الإضرار الجسيم بمصالحها</label><label><input type="checkbox"> الاعتداء السلوكي أو عدم مراعاة الآداب العامة أثناء العمل</label><label><input type="checkbox"> بناءً على توصية محضر تحقيق داخلي معتمد</label></div>';
+        h+='<div class="fg"><label>سبب آخر / تفاصيل إضافية</label><input type="text"></div>';
+        h+=FGA('توصيف أسباب وموجبات قرار الفصل بالتفصيل',2);
+        
+        h+=SC('٣','قرار الإدارة والإجراءات');
+        h+=F3(FG('تاريخ آخر يوم عمل فعلي','date'),FG('تاريخ سريان قرار الفصل','date'),FG('رقم محضر التحقيق (إن وجد)'));
+        h+='<div class="wb wb-rd"><strong>⚠ قرار إداري نهائي وملزم:</strong><br>يُفصل الموظف المذكور أعلاه اعتباراً من التاريخ المحدد وتُلغى كافة صلاحياته ووظائفه بالشركة. يُلزم الموظف باستكمال إجراءات «إخلاء الطرف» وتسليم كافة العُهد والمستندات قبل صرف أي مستحقات مالية نهائية.</div>';
+        
+        h+=SC('٤','التوقيعات والاعتماد');
+        h+=SG3('توقيع الموظف','إقرار بالعلم (أو امتناع عن التوقيع)',
+               'المدير الإداري / الشؤون القانونية','توثيق ومراجعة قرار الفصل',
+               'المدير التنفيذي','اعتماد قرار الفصل وإصداره',
+               null,'admin','exec');
+        h+=FT(['نسخة للموظف','نسخة للشؤون القانونية','نسخة للحسابات والمالية','نسخة لملف الموظف (HR)']);
     }
 
     // ── محضر تحقيق ────────────────────────────────────────────────────
@@ -4035,12 +4953,14 @@ function load(id,c){
 
     // ── الحضور والانصراف ──────────────────────────────────────────────
     else if(id==="att"){
-        h='<div style="background:var(--w);border:1px solid var(--bd);border-radius:6px;overflow:hidden">';
-        h+='<div style="background:var(--nv);color:#fff;padding:10px 20px;display:flex;align-items:center;justify-content:space-between">';
-        h+='<div><span style="font-size:15px;font-weight:800">⏱ نظام الحضور والانصراف</span><br><span style="font-size:10px;opacity:.6">تحليل البيانات · WFH · التقارير التفصيلية</span></div>';
-        h+='<div class="np"><button class="bt bt-g" onclick="document.getElementById(\'attF\').contentWindow.print()">🖨 طباعة التقرير</button></div>';
+        h='<div style="background:var(--w);border:1px solid var(--bd);border-radius:12px;overflow:hidden;box-shadow:var(--sh-sm)">';
+        h+='<div style="background:var(--nv);color:#fff;padding:12px 20px;display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:10px">';
+        h+='<div><span style="font-size:15px;font-weight:800">⏱ نظام الحضور والانصراف المعتمد والأرشيف الشهري</span><br><span style="font-size:11px;opacity:.7">تحليل ملف البصمة attlog.dat · احتساب الساعات · تدقيق الأذونات</span></div>';
+        h+='<div class="np" style="display:flex;gap:8px">';
+        h+='<a href="attendance.html" target="_blank" class="bt bt-o" style="color:#fff;border-color:rgba(255,255,255,0.3);text-decoration:none;font-size:12px;padding:6px 12px;display:inline-flex;align-items:center;gap:4px">↗️ فتح في نافذة كاملة</a>';
         h+='</div>';
-        h+='<iframe id="attF" src="attendance.html" style="width:100%;height:calc(100vh - 100px);border:none"></iframe>';
+        h+='</div>';
+        h+='<iframe id="attF" src="attendance.html" style="width:100%;height:calc(100vh - 130px);border:none;min-height:750px"></iframe>';
         h+='</div>';
     }
 
@@ -4050,14 +4970,17 @@ function load(id,c){
         h='<div style="background:var(--w);border:1px solid var(--bd);border-radius:6px;padding:20px">';
         h+='<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:20px;flex-wrap:wrap;gap:10px">';
         h+='<div><h2 style="margin:0;color:var(--nv);font-size:18px">📡 سجل الحضور الحي (مباشر)</h2><p style="margin:4px 0 0;color:var(--tx3);font-size:13px">يعرض حركات تسجيل الدخول والخروج من حسابات الموظفين مباشرة</p></div>';
-        h+='<div style="display:flex;gap:10px;align-items:center"><input type="date" id="liveAttDate" value="'+todayDate+'" onchange="fetchLiveAttendance()" style="padding:8px 12px;border-radius:6px;border:1px solid var(--bd);outline:none;font-family:inherit"><button class="bt bt-o" onclick="fetchLiveAttendance()">🔄 تحديث</button></div>';
+        h+='<div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap"><button id="tgToggleAttFeatureBtn" onclick="tgQuickToggleAttendanceSystem()" class="bt" style="padding:8px 14px; border-radius:8px; font-weight:800; font-size:12px; cursor:pointer; display:flex; align-items:center; gap:6px;">⏳ جارٍ التحديث...</button><input type="date" id="liveAttDate" value="'+todayDate+'" onchange="fetchLiveAttendance()" style="padding:8px 12px;border-radius:6px;border:1px solid var(--bd);outline:none;font-family:inherit"><button class="bt bt-o" onclick="fetchLiveAttendance()">🔄 تحديث</button></div>';
         h+='</div>';
         h+='<div style="overflow-x:auto"><table class="dt" style="width:100%;text-align:center" id="liveAttTable">';
         h+='<thead><tr><th style="text-align:center">اسم الموظف</th><th style="text-align:center">تاريخ اليوم</th><th style="text-align:center">وقت الدخول</th><th style="text-align:center">وقت الخروج</th><th style="text-align:center">ساعات العمل</th></tr></thead>';
         h+='<tbody id="liveAttBody"><tr><td colspan="5" style="padding:20px;color:var(--tx3)">جارٍ جلب البيانات...</td></tr></tbody>';
         h+='</table></div>';
         h+='</div>';
-        setTimeout(function(){ if(typeof window.fetchLiveAttendance === 'function') window.fetchLiveAttendance(); }, 100);
+        setTimeout(function(){ 
+            if(typeof window.fetchLiveAttendance === 'function') window.fetchLiveAttendance(); 
+            if(typeof window.tgSyncAttendanceToggleBtnUI === 'function') window.tgSyncAttendanceToggleBtnUI();
+        }, 100);
     }
 
     // ── الشكاوى والمقترحات ─────────────────────────────────────────────
@@ -4095,10 +5018,19 @@ function load(id,c){
            '<button class="bt bt-o" onclick="mexpSave()">💾 حفظ بيانات الشهر</button>'+
            '<button class="bt bt-g" onclick="mexpPrint()">🖨 طباعة الشيت / PDF</button>'+
            '</div>';
-        h+='<table class="dt" id="mexp-table">'+
-           '<thead><tr><th style="width:36px">م</th><th style="width:20%">اسم الصارف</th><th style="width:40%">بند (نوع) الصرف</th><th style="width:110px">العدد (المبلغ)</th><th style="width:120px">التاريخ</th><th style="width:15%">ملاحظات</th><th class="np" style="width:30px"></th></tr></thead>'+
+        h+='<table class="dt" id="mexp-table" style="width:100%; border-collapse:collapse;">'+
+           '<thead><tr>'+
+           '<th style="width:32px">م</th>'+
+           '<th style="width:18%">اسم الصارف</th>'+
+           '<th style="width:38%">النوع والعدد</th>'+
+           '<th style="width:105px">سعر الصرف (ج.م)</th>'+
+           '<th style="width:105px">الإجمالي (ج.م)</th>'+
+           '<th style="width:115px">التاريخ</th>'+
+           '<th style="width:12%">ملاحظات</th>'+
+           '<th class="np" style="width:30px"></th>'+
+           '</tr></thead>'+
            '<tbody id="mexp-tbody"></tbody>'+
-           '<tfoot><tr><td colspan="3" style="text-align:left;font-weight:800;background:#edf2f7">الإجمالي</td><td id="mexp-total-cell" style="font-weight:900;color:var(--nv);background:#edf2f7"></td><td colspan="3" style="background:#edf2f7"></td></tr></tfoot>'+
+           '<tfoot><tr><td colspan="4" style="text-align:left;font-weight:800;background:#edf2f7;padding:6px 10px;">إجمالي المصروفات الكلي</td><td id="mexp-total-cell" style="font-weight:900;color:var(--nv);background:#edf2f7;font-size:13px;text-align:center;"></td><td colspan="3" style="background:#edf2f7"></td></tr></tfoot>'+
            '</table>';
         h+=SC('٣','الاعتماد والتوقيعات');
         h+=SG3('أمين الصندوق / المسؤول عن الصرف','تحرير وتوثيق البيانات',
@@ -4205,15 +5137,15 @@ function load(id,c){
         // إشعار بادج
         h+='<div id="staffListViewContainer">';
         h+='<div style="display:flex;gap:12px;margin-bottom:14px;flex-wrap:wrap">';
-        h+='<div style="display:flex;align-items:center;gap:8px;background:rgba(231,76,60,.08);border:1.5px solid rgba(231,76,60,.25);padding:10px 16px;border-radius:10px;cursor:pointer" onclick="clearAdminBadge(\'notif-req-badge\',\'notif-req-badge-sb\')">';
+        h+='<div style="display:flex;align-items:center;gap:8px;background:rgba(231,76,60,.08);border:1.5px solid rgba(231,76,60,.25);padding:10px 16px;border-radius:10px;cursor:pointer" onclick="clearAdminBadge(\'notif-req-badge\',\'notif-req-badge-sb\'); go(\'allrequests\');">';
         h+='📨 طلبات جديدة <span id="notif-req-badge" style="display:none;background:var(--no);color:#fff;border-radius:50%;min-width:20px;height:20px;font-size:11px;font-weight:800;align-items:center;justify-content:center;padding:0 4px">0</span></div>';
         h+='<div style="display:flex;align-items:center;gap:8px;background:rgba(39,174,96,.08);border:1.5px solid rgba(39,174,96,.25);padding:10px 16px;border-radius:10px;cursor:pointer" onclick="clearAdminBadge(\'notif-wkr-badge\',\'notif-wkr-badge-sb\')">';
         h+='📆 تقارير أسبوعية جديدة <span id="notif-wkr-badge" style="display:none;background:var(--ok);color:#fff;border-radius:50%;min-width:20px;height:20px;font-size:11px;font-weight:800;align-items:center;justify-content:center;padding:0 4px">0</span></div>';
         h+='<button class="bt bt-g" onclick="sendWeeklyReportReminder()" style="min-width:120px" id="sysrepReminderBtn">🔔 تذكير الموظفين بالتقرير الأسبوعي</button>';
         h+='</div>';
 
-        h+='<div class="set-sec"><div class="set-sec-title">➕ إضافة حساب جديد</div>';
-        h+='<div class="set-hint">أنشئ بريد إلكتروني وكلمة مرور للموظف حتى يدخل بوابته، أو أنشئ حساب أدمن تقني يملك صلاحية إضافة المشاريع فقط.</div>';
+        h+='<div class="set-sec"><div class="set-sec-title">➕ إنشاء حساب جديد</div>';
+        h+='<div class="set-hint">أنشئ بريد إلكتروني وكلمة مرور للموظف حتى يدخل بوابته، أو أنشئ حساب أدمن بصلاحيات إدارية واستخدام كامل للنظام.</div>';
         h+='<div class="fr fr3" style="margin-top:10px">';
         h+='<div class="fg"><label>اسم المستخدم</label><input type="text" id="newAccName" class="emp-name-fld" list="tgEmpDL" autocomplete="off"></div>';
         h+='<div class="fg"><label>البريد الإلكتروني</label><input type="email" id="newAccEmail" placeholder="name@techgo.com"></div>';
@@ -4226,7 +5158,7 @@ function load(id,c){
         h+='</div>';
         h+='<div class="fr fr2" style="margin-top:10px">';
         h+='<div class="fg"><label>نظام العمل</label><select id="newAccWorkMode"><option value="office">من المكتب</option><option value="remote">عن بُعد (ريموتلي)</option></select></div>';
-        h+='<div class="fg"><label>دور الحساب</label><select id="newAccRole"><option value="employee">موظف (employee)</option><option value="tech_admin">أدمن تقني (بدون صلاحيات إدارية)</option></select></div>';
+        h+='<div class="fg"><label>دور الحساب</label><select id="newAccRole"><option value="employee">موظف (employee)</option><option value="admin">أدمن (صلاحيات كاملة)</option></select></div>';
         h+='</div>';
         h+='<button class="bt bt-p" onclick="createStaffAccount()">➕ إنشاء الحساب</button>';
         h+='<div id="newAccMsg" style="margin-top:8px;font-size:11px"></div>';
@@ -4245,22 +5177,41 @@ function load(id,c){
         h+='</div>';
     }
 
-    // ── بريد التقارير الأسبوعية ─────────────────────────────────────────
-    else if(id==="wkreports"){
-        h='<div class="SP"><h3>📥 بريد التقارير الأسبوعية</h3>';
-        h+='<div class="set-hint">كل التقارير الأسبوعية المُرسلة من الموظفين في مكان واحد — فلترة حسب الموظف أو الأسبوع، تحديد ما تمت مراجعته، وطباعة مباشرة.</div>';
-        h+='<div id="wkrInboxStats" style="display:flex;gap:10px;margin:14px 0;flex-wrap:wrap"></div>';
-        h+='<div class="staff-toolbar">';
-        h+='<select id="wkrInboxEmpFilter" class="global-table-filter" style="width:220px" onchange="renderWeeklyReportsInbox()"><option value="all">كل الموظفين</option></select>';
-        h+='<select id="wkrInboxWeekFilter" class="global-table-filter" style="width:180px" onchange="renderWeeklyReportsInbox()"><option value="all">كل الأسابيع</option></select>';
-        h+='<select id="wkrInboxStatusFilter" class="global-table-filter" style="width:170px" onchange="renderWeeklyReportsInbox()">'+
-           '<option value="all">كل الحالات</option><option value="unreviewed">⏳ غير مراجَعة</option><option value="reviewed">✅ تمت مراجعتها</option></select>';
+
+
+    // ── مركز طلبات الموظفين الموحد ──────────────────────────────────────────
+    else if(id==="allrequests"){
+        h='<div class="SP"><h3>📥 مركز طلبات الموظفين الموحد</h3>';
+        h+='<div class="set-hint">مكان واحد متكامل لمتابعة وتمرير كافة طلبات الموظفين (إجازات، أذونات، التماسات، استقالات، خطابات، شكاوى)، والبت فيها بالموافقة أو الرفض بنقرة واحدة.</div>';
+        h+='<div id="reqHubStatsBar" style="display:flex;gap:12px;margin:16px 0;flex-wrap:wrap"></div>';
+
+        var tabSt = window._reqHubStatusTab || 'pending';
+        h+='<div style="display:flex;gap:10px;margin-bottom:16px;flex-wrap:wrap;border-bottom:2px solid var(--bd);padding-bottom:8px" id="reqHubStatusTabs">';
+        h+='<button class="tg-task-tab '+(tabSt==='pending'?'tg-task-tab-active':'')+'" data-status="pending" onclick="tgSetReqHubStatusTab(this, \'pending\')"><span class="tab-label">⏳ المعلقة</span> <span class="tab-count" id="reqhub-cnt-pending">0</span></button>';
+        h+='<button class="tg-task-tab '+(tabSt==='all'?'tg-task-tab-active':'')+'" data-status="all" onclick="tgSetReqHubStatusTab(this, \'all\')"><span class="tab-label">📋 كافة الطلبات</span> <span class="tab-count" id="reqhub-cnt-all">0</span></button>';
+        h+='<button class="tg-task-tab '+(tabSt==='approved'?'tg-task-tab-active':'')+'" data-status="approved" onclick="tgSetReqHubStatusTab(this, \'approved\')"><span class="tab-label">✅ المقبولة</span> <span class="tab-count" id="reqhub-cnt-approved">0</span></button>';
+        h+='<button class="tg-task-tab '+(tabSt==='rejected'?'tg-task-tab-active':'')+'" data-status="rejected" onclick="tgSetReqHubStatusTab(this, \'rejected\')"><span class="tab-label">❌ المرفوضة</span> <span class="tab-count" id="reqhub-cnt-rejected">0</span></button>';
         h+='</div>';
-        h+='<div id="wkrInboxList" style="margin-top:14px"><div class="empty-hint">⏳ جارٍ تحميل التقارير...</div></div>';
+
+        h+='<div class="staff-toolbar" style="margin-bottom:16px;gap:10px;flex-wrap:wrap">';
+        h+='<input type="text" class="staff-search" id="reqHubSearch" oninput="renderAllRequestsListHub()" placeholder="🔍 ابحث باسم الموظف، نوع الطلب، أو التفاصيل..." style="max-width:320px">';
+        h+='<select id="reqHubTypeFilter" class="global-table-filter" onchange="renderAllRequestsListHub()" style="width:200px">';
+        h+='<option value="all">كل أنواع الطلبات</option>';
+        h+='<option value="leave">طلب إجازة</option>';
+        h+='<option value="perm">إذن حضور / انصراف</option>';
+        h+='<option value="delay">التماس تعديل الحضور</option>';
+        h+='<option value="res">طلب استقالة</option>';
+        h+='<option value="comp">الشكاوى والمقترحات</option>';
+        h+='<option value="other">طلبات أخرى</option>';
+        h+='</select>';
+        h+='<button class="bt bt-d" style="padding:6px 14px;font-size:11px;margin-right:auto" onclick="tgDeleteAllRecords(\'requests\', \'الطلبات\', null, null, loadAllRequestsHub)">🗑 حذف سجلات الطلبات</button>';
+        h+='</div>';
+
+        h+='<div id="allRequestsHubList"><div class="empty-hint">⏳ جارٍ تحميل الطلبات...</div></div>';
         h+='</div>';
         c.innerHTML = h;
-        loadWeeklyReportsInbox();
-        clearAdminBadge('notif-wkr-badge','notif-wkr-badge-sb');
+        loadAllRequestsHub();
+        clearAdminBadge('notif-req-badge','notif-req-badge-sb');
         return;
     }
 
@@ -4309,10 +5260,14 @@ function load(id,c){
         h+='<button class="bt bt-p" style="padding:6px 14px;font-size:12px" onclick="saveAppSettings()">💾 حفظ إعدادات النظام</button>';
         h+='</div>';
 
-        h+='<div class="set-sec"><div class="set-sec-title">🤖 الذكاء الاصطناعي (Gemini / Groq / OpenRouter)</div>';
-        h+='<div class="set-hint" style="margin-bottom:12px">ضع هنا مفتاح API الخاص بك (Gemini أو Groq أو OpenRouter) لتفعيل اقتراحات التطوير المهني. النظام سيتعرف عليه تلقائياً.</div>';
-        h+='<div class="fr fr2"><div class="fg" style="margin:0"><input type="password" id="txtGeminiApi" placeholder="AIzaSy..." value="'+(window._appSettingsCache&&window._appSettingsCache.geminiApiKey?window._appSettingsCache.geminiApiKey:'')+'"></div></div>';
-        h+='<button class="bt bt-p" style="padding:6px 14px;font-size:12px;margin-top:10px" onclick="saveAppSettings()">💾 حفظ إعدادات النظام</button>';
+        h+='<div class="set-sec"><div class="set-sec-title">🤖 الذكاء الاصطناعي والمستشار الذكي (Cerebras / Together / Gemini / Groq / OpenRouter)</div>';
+        h+='<div class="set-hint" style="margin-bottom:12px">ضع هنا مفتاح API الخاص بك (Cerebras أو Together AI أو Gemini أو Groq أو OpenRouter). يتعرف النظام على مزود الخدمة تلقائياً عبر صيغة المفتاح (ينصح بـ Cerebras أو Together للملفات والتقارير الكبيرة).</div>';
+        h+='<div class="fg" style="margin:10px 0 14px; width:100%;">';
+        h+='<label style="font-weight:800; font-size:13px; color:var(--tx); margin-bottom:6px; display:block;">🔑 مفتاح الـ API الخاص بالخدمة</label>';
+        h+='<input type="text" id="txtGeminiApi" style="width:100%; direction:ltr; text-align:left; font-family:monospace; padding:12px 16px; border-radius:10px; border:1.5px solid var(--bd); background:var(--w); color:var(--tx);" placeholder="csk-... (Cerebras) | tgp_... (Together) | gsk_... (Groq) | AIzaSy... (Gemini)" value="'+(window._appSettingsCache&&window._appSettingsCache.geminiApiKey?escH(window._appSettingsCache.geminiApiKey):'')+'">';
+        h+='<div style="font-size:12px; color:var(--tx2); margin-top:8px; display:flex; gap:8px; align-items:center; flex-wrap:wrap;"><span>✨ صيغ المفاتيح المدعومة:</span> <span style="background:rgba(2,132,199,0.12); color:#0284c7; padding:3px 10px; border-radius:8px; font-weight:800;">Cerebras (csk-)</span> <span style="background:rgba(16,185,129,0.12); color:#10b981; padding:3px 10px; border-radius:8px; font-weight:800;">Together AI (tgp_)</span> <span style="background:rgba(245,158,11,0.12); color:#d97706; padding:3px 10px; border-radius:8px; font-weight:800;">Groq (gsk_)</span> <span style="background:rgba(99,102,241,0.12); color:#6366f1; padding:3px 10px; border-radius:8px; font-weight:800;">Gemini (AIzaSy)</span></div>';
+        h+='</div>';
+        h+='<button class="bt bt-p" style="padding:8px 20px; font-size:13px; font-weight:800;" onclick="saveAppSettings()">💾 حفظ إعدادات النظام</button>';
         h+='</div>';
 
         h+='<div class="set-sec"><div class="set-sec-title">📋 ترقيم المستندات</div>';
@@ -4338,6 +5293,7 @@ function load(id,c){
         h+='<h3 style="color:var(--no)">&#9888;&#65039; منطقة الخطر</h3>';
         h+='<p style="font-size:13px;color:var(--tx);margin-bottom:16px">سيؤدي هذا إلى حذف <strong>جميع بيانات النظام</strong> بشكل نهائي لا يمكن التراجع عنه، بما في ذلك الموظفون، المشاريع، المهام، الطلبات، والإشعارات.<br><strong>باستثناء حسابك الحالي (المدير)</strong> — هيفضل موجوداً عشان تقدر تدخل على النظام بعد الحذف.</p>';
         h+='<button class="bt bt-d" style="padding:10px 24px;font-size:13px;font-weight:800" onclick="deleteAllSystemData()">&#128465; حذف جميع بيانات النظام</button>';
+        h+='<div style="margin-top:12px"><button class="bt bt-o" style="padding:8px 18px;font-size:12px;font-weight:700" onclick="cleanDummyTestAccounts()">🧹 تنظيف الحسابات الوهمية والتجريبية من Firestore</button></div>';
         h+='</div>';
 
         h+='<div style="text-align:left;margin-top:20px">'+
@@ -4351,30 +5307,43 @@ function load(id,c){
     // ── إدارة الإعلانات ──────────────────────────────────────────────────────
     else if(id==="announcements"){
         h='<div class="SP">';
-        h+='<h3>&#128226; إدارة الإعلانات</h3>';
+        h+='<h3>📢 إدارة الإعلانات والتكليفات</h3>';
+        h+='<div class="set-hint">قم بنشر وتصميم الإعلانات والتكليفات الإدارية مقسمة لمواضيع وبنود مع إمكانية الإشارة والإشاراة للموظفين (@) لتفعيل التنبيهات.</div>';
         h+='<div class="fg fg-full" style="margin-bottom:12px">';
         h+='<label>نوع الإعلان</label>';
         h+='<div style="display:flex;gap:16px;margin-top:6px">';
-        h+='<label style="display:flex;align-items:center;gap:6px;font-weight:400;cursor:pointer"><input type="radio" name="annAudience" value="all" checked onchange="toggleAnnTargetWrap()"> &#128226; عام لكل الموظفين</label>';
-        h+='<label style="display:flex;align-items:center;gap:6px;font-weight:400;cursor:pointer"><input type="radio" name="annAudience" value="private" onchange="toggleAnnTargetWrap()"> &#128100; خاص لموظف معين</label>';
+        h+='<label style="display:flex;align-items:center;gap:6px;font-weight:400;cursor:pointer"><input type="radio" name="annAudience" value="all" checked onchange="toggleAnnTargetWrap()"> 📢 عام لكل الموظفين</label>';
+        h+='<label style="display:flex;align-items:center;gap:6px;font-weight:400;cursor:pointer"><input type="radio" name="annAudience" value="private" onchange="toggleAnnTargetWrap()"> 👤 خاص لموظف معين</label>';
         h+='</div></div>';
         h+='<div class="fg fg-full" id="annTargetWrap" style="display:none;margin-bottom:12px">';
         h+='<label>الموظف المرسل إليه</label>';
         h+='<select id="annTargetEmployee"><option value="">جارٍ تحميل الموظفين...</option></select>';
         h+='</div>';
         h+='<div class="fr fr2" style="margin-bottom:12px">';
-        h+='<div class="fg"><label>عنوان الإعلان</label><input type="text" id="annTitle"></div>';
+        h+='<div class="fg"><label>عنوان الإعلان / الموضوع الرئيسية</label><input type="text" id="annTitle" placeholder="مثال: الأولويات والمهام المستهدفة"></div>';
         h+='<div class="fg"><label>التاريخ (اختياري)</label><input type="text" id="annDate" placeholder="مثال: 1 أكتوبر 2026"></div>';
         h+='</div>';
-        h+='<div class="fg fg-full" style="margin-bottom:12px"><label>محتوى الإعلان</label><textarea id="annContent" rows="4"></textarea></div>';
-        h+='<button class="bt bt-p" onclick="addAnnouncement()">&#128226; نشر الإعلان</button>';
+        h+='<div class="fg fg-full" style="margin-bottom:12px">';
+        h+='<div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:8px;margin-bottom:6px;">';
+        h+='<label style="margin:0;font-weight:800;">محتوى الإعلان (ادعم المواضيع وبنود النقاط والمنشن @)</label>';
+        h+='<div style="display:flex;gap:6px;flex-wrap:wrap;">';
+        h+='<button type="button" onclick="tgInsertAnnTemplate(\'topic\')" class="bt bt-o" style="padding:4px 10px;font-size:11px;border-radius:12px;font-weight:800;">🎯 إضافة موضوع (@)</button>';
+        h+='<button type="button" onclick="tgInsertAnnTemplate(\'bullet\')" class="bt bt-o" style="padding:4px 10px;font-size:11px;border-radius:12px;font-weight:800;">• إضافة نقطة</button>';
+        h+='<button type="button" onclick="tgInsertAnnTemplate(\'alert\')" class="bt bt-o" style="padding:4px 10px;font-size:11px;border-radius:12px;font-weight:800;">⚠️ تنبيه تذكيري</button>';
+        h+='<select id="annMentionEmpSelect" onchange="tgInsertEmpMention(this)" style="padding:4px 8px;border-radius:12px;font-size:11px;font-weight:800;border:1px solid var(--bd);background:var(--bg);color:var(--tx);outline:none;">';
+        h+='<option value="">👤 إشارة لموظف (@)...</option>';
+        h+='</select>';
+        h+='</div></div>';
+        h+='<textarea id="annContent" rows="6" placeholder="اكتب محتوى الإعلان هنا...\nمثال:\n@مصمم ابراهيم\n• أولوية موقع GO STORE\n*** تنبيه هام لحين انتهاء الأولويات"></textarea>';
+        h+='</div>';
+        h+='<button class="bt bt-p" onclick="addAnnouncement()" style="padding:10px 24px;font-weight:900;font-size:14px;border-radius:30px;">📢 نشر الإعلان والتكليفات</button>';
         h+='<div id="annMsg" style="margin-top:10px;font-weight:bold;font-size:12px;"></div>';
         h+='<hr style="margin:30px 0;border:0;border-top:2px solid var(--bd2)">';
         h+='<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px">';
-        h+='<h3 style="margin:0">&#128209; الإعلانات السابقة</h3>';
-        h+='<button class="bt bt-d" style="padding:5px 14px;font-size:11px" onclick="deleteAllAnnouncements()">&#128465; حذف الكل</button>';
+        h+='<h3 style="margin:0">📋 الإعلانات والتكليفات السابقة</h3>';
+        h+='<button class="bt bt-d" style="padding:5px 14px;font-size:11px" onclick="deleteAllAnnouncements()">🗑 حذف الكل</button>';
         h+='</div>';
-        h+='<div id="annList" style="display:flex;flex-direction:column;gap:12px;"></div>';
+        h+='<div id="annList" style="display:flex;flex-direction:column;gap:14px;"></div>';
         h+='</div>';
     }
 
@@ -4395,6 +5364,409 @@ function load(id,c){
     if(id==="announcements") { loadAdminAnnouncements(); loadAnnouncementTargetEmployees(); }
     if(id==="empdocs") loadEmpDocsOverview();
     if(id==="cal") initGeneralCalendar();
+    if(id==="allrequests") loadAllRequestsHub();
+}
+
+// ═══════════════════════════════════════════════════════════════
+// ── مركز طلبات الموظفين الموحد ──────────────────────────────────
+// ═══════════════════════════════════════════════════════════════
+window._reqHubStatusTab = 'pending';
+window._reqHubDataCache = [];
+
+function tgSetReqHubStatusTab(btnEl, status) {
+    window._reqHubStatusTab = status || 'all';
+    var tabs = document.querySelectorAll('#reqHubStatusTabs .tg-task-tab');
+    tabs.forEach(function(t) { t.classList.remove('tg-task-tab-active'); });
+    if(btnEl) btnEl.classList.add('tg-task-tab-active');
+    renderAllRequestsListHub();
+}
+
+function loadAllRequestsHub() {
+    var container = document.getElementById('allRequestsHubList');
+    if(container) container.innerHTML = '<div class="empty-hint">⏳ جارٍ تحميل طلبات الموظفين...</div>';
+
+    db.collection('requests').get().then(function(snap) {
+        var list = [];
+        snap.forEach(function(doc) {
+            var data = doc.data() || {};
+            data.id = doc.id;
+            list.push(data);
+        });
+
+        // Sort desc by createdAt or timestamp
+        list.sort(function(a, b) {
+            var tA = a.createdAt && a.createdAt.toMillis ? a.createdAt.toMillis() : (new Date(a.createdAt || 0).getTime() || 0);
+            var tB = b.createdAt && b.createdAt.toMillis ? b.createdAt.toMillis() : (new Date(b.createdAt || 0).getTime() || 0);
+            return tB - tA;
+        });
+
+        window._reqHubDataCache = list;
+        updateReqHubStats();
+        renderAllRequestsListHub();
+    }).catch(function(err) {
+        console.error("loadAllRequestsHub error:", err);
+        if(container) container.innerHTML = '<div class="empty-hint" style="color:var(--no)">❌ تعذر تحميل الطلبات: ' + escH(err.message) + '</div>';
+    });
+}
+
+function updateReqHubStats() {
+    var list = window._reqHubDataCache || [];
+    var pending = 0, approved = 0, rejected = 0;
+    list.forEach(function(r) {
+        var s = (r.status || 'pending').toLowerCase();
+        if(s === 'approved') approved++;
+        else if(s === 'rejected') rejected++;
+        else pending++;
+    });
+
+    var pEl = document.getElementById('reqhub-cnt-pending'); if(pEl) pEl.textContent = pending;
+    var aEl = document.getElementById('reqhub-cnt-all'); if(aEl) aEl.textContent = list.length;
+    var apEl = document.getElementById('reqhub-cnt-approved'); if(apEl) apEl.textContent = approved;
+    var rEl = document.getElementById('reqhub-cnt-rejected'); if(rEl) rEl.textContent = rejected;
+
+    var statsBar = document.getElementById('reqHubStatsBar');
+    if(statsBar) {
+        statsBar.innerHTML = 
+            '<div style="flex:1;min-width:130px;background:rgba(243,156,18,0.1);border:1px solid rgba(243,156,18,0.3);padding:12px 16px;border-radius:10px;display:flex;align-items:center;justify-content:space-between">' +
+            '<div><div style="font-size:11px;color:var(--tx3);font-weight:700">⏳ طلبات معلقة</div><div style="font-size:22px;font-weight:800;color:#d35400">' + pending + '</div></div>' +
+            '<span style="font-size:24px">⌛</span></div>' +
+
+            '<div style="flex:1;min-width:130px;background:rgba(39,174,96,0.1);border:1px solid rgba(39,174,96,0.3);padding:12px 16px;border-radius:10px;display:flex;align-items:center;justify-content:space-between">' +
+            '<div><div style="font-size:11px;color:var(--tx3);font-weight:700">✅ طلبات مقبولة</div><div style="font-size:22px;font-weight:800;color:#27ae60">' + approved + '</div></div>' +
+            '<span style="font-size:24px">✔</span></div>' +
+
+            '<div style="flex:1;min-width:130px;background:rgba(231,76,60,0.1);border:1px solid rgba(231,76,60,0.3);padding:12px 16px;border-radius:10px;display:flex;align-items:center;justify-content:space-between">' +
+            '<div><div style="font-size:11px;color:var(--tx3);font-weight:700">❌ طلبات مرفوضة</div><div style="font-size:22px;font-weight:800;color:#c0392b">' + rejected + '</div></div>' +
+            '<span style="font-size:24px">✖</span></div>' +
+
+            '<div style="flex:1;min-width:130px;background:rgba(41,128,185,0.1);border:1px solid rgba(41,128,185,0.3);padding:12px 16px;border-radius:10px;display:flex;align-items:center;justify-content:space-between">' +
+            '<div><div style="font-size:11px;color:var(--tx3);font-weight:700">📋 إجمالي الطلبات</div><div style="font-size:22px;font-weight:800;color:#2980b9">' + list.length + '</div></div>' +
+            '<span style="font-size:24px">📥</span></div>';
+    }
+}
+
+function renderAllRequestsListHub() {
+    var container = document.getElementById('allRequestsHubList');
+    if(!container) return;
+
+    var list = window._reqHubDataCache || [];
+    var statusFilter = window._reqHubStatusTab || 'pending';
+    var search = (document.getElementById('reqHubSearch') ? document.getElementById('reqHubSearch').value : '').toLowerCase().trim();
+    var typeFilter = document.getElementById('reqHubTypeFilter') ? document.getElementById('reqHubTypeFilter').value : 'all';
+
+    var filtered = list.filter(function(r) {
+        var s = (r.status || 'pending').toLowerCase();
+        if(statusFilter !== 'all') {
+            if(statusFilter === 'pending' && s !== 'pending') return false;
+            if(statusFilter === 'approved' && s !== 'approved') return false;
+            if(statusFilter === 'rejected' && s !== 'rejected') return false;
+        }
+
+        if(typeFilter !== 'all') {
+            var t = (r.type || '').toLowerCase();
+            if(typeFilter === 'leave' && t.indexOf('إجازة') === -1) return false;
+            if(typeFilter === 'perm' && t.indexOf('إذن') === -1) return false;
+            if(typeFilter === 'delay' && t.indexOf('التماس') === -1 && t.indexOf('تعديل') === -1) return false;
+            if(typeFilter === 'res' && t.indexOf('استقالة') === -1) return false;
+            if(typeFilter === 'comp' && t.indexOf('شكوى') === -1 && t.indexOf('مقترح') === -1) return false;
+            if(typeFilter === 'other' && (t.indexOf('إجازة') !== -1 || t.indexOf('إذن') !== -1 || t.indexOf('التماس') !== -1 || t.indexOf('استقالة') !== -1 || t.indexOf('شكوى') !== -1)) return false;
+        }
+
+        if(search) {
+            var empMatch = window._staffEmpCache ? (window._staffEmpCache.find(function(e) { return e.uid === r.uid; }) || {}) : {};
+            var nameStr = (empMatch.name || r.uid || '').toLowerCase();
+            var typeStr = (r.type || '').toLowerCase();
+            var detStr = (r.details || '').toLowerCase();
+            var dateStr = (r.fromDate || '').toLowerCase() + (r.toDate || '').toLowerCase();
+            if(nameStr.indexOf(search) === -1 && typeStr.indexOf(search) === -1 && detStr.indexOf(search) === -1 && dateStr.indexOf(search) === -1) {
+                return false;
+            }
+        }
+        return true;
+    });
+
+    if(filtered.length === 0) {
+        container.innerHTML = '<div class="empty-hint" style="padding:30px;background:var(--bg2);border-radius:12px;margin-top:10px">' +
+                              '📭 لا توجد طلبات تطابق عناصر البحث أو الفلترة المحددة.' +
+                              '</div>';
+        return;
+    }
+
+window.tgExtractNameFromRequest = function(r) {
+    if (!r) return 'موظف';
+    
+    // 1. Check direct name properties
+    var directNames = [r.userName, r.employeeName, r.targetName, r.name, r.creatorName];
+    for (var i = 0; i < directNames.length; i++) {
+        var dn = String(directNames[i] || '').trim();
+        if (dn && dn !== 'موظف' && dn !== 'غير معروف' && dn !== 'null' && dn !== 'undefined' && !/^[A-Za-z0-9]{20,}$/.test(dn) && dn.indexOf('Txeg') === -1) {
+            return dn;
+        }
+    }
+
+    // 2. Check dynamicData values
+    if (r.dynamicData && typeof r.dynamicData === 'object') {
+        var dynKeys = ['name', 'empName', 'employeeName', 'fullName', 'اسم الموظف', 'اسم الموظف الكامل', 'الاسم الكامل', 'f1'];
+        for (var j = 0; j < dynKeys.length; j++) {
+            var k = dynKeys[j];
+            var val = String(r.dynamicData[k] || '').trim();
+            if (val && val !== 'null' && val !== 'undefined' && !/^[A-Za-z0-9]{20,}$/.test(val) && val.indexOf('Txeg') === -1) {
+                return val;
+            }
+        }
+
+        // Search dynamicData keys matching label "اسم"
+        var tpl = window.FS_TEMPLATES && r.formTemplateId ? window.FS_TEMPLATES[r.formTemplateId] : null;
+        if (tpl && tpl.fields) {
+            for (var m = 0; m < tpl.fields.length; m++) {
+                var f = tpl.fields[m];
+                if (f.label && (f.label.indexOf('اسم الموظف') !== -1 || f.label.indexOf('اسم') !== -1)) {
+                    var v = String(r.dynamicData[f.id] || '').trim();
+                    if (v && !/^[A-Za-z0-9]{20,}$/.test(v) && v.indexOf('Txeg') === -1) {
+                        return v;
+                    }
+                }
+            }
+        }
+
+        // Search raw key/value pairs in dynamicData where key contains "اسم" or "name"
+        for (var dk in r.dynamicData) {
+            var dv = String(r.dynamicData[dk] || '').trim();
+            if (dk.indexOf('اسم') !== -1 || dk.indexOf('name') !== -1 || dk.indexOf('Name') !== -1) {
+                if (dv && dv.length > 2 && dv.length < 40 && !/^[A-Za-z0-9]{20,}$/.test(dv) && dv.indexOf('Txeg') === -1) {
+                    return dv;
+                }
+            }
+        }
+    }
+
+    // 3. Check staff cache
+    if (window._staffEmpCache && Array.isArray(window._staffEmpCache)) {
+        var match = window._staffEmpCache.find(function(e) { return e.uid === r.uid || (r.uid && e.id === r.uid); });
+        if (match && match.name && !/^[A-Za-z0-9]{20,}$/.test(match.name)) {
+            return match.name;
+        }
+    }
+
+    // 4. Check tgGetRealEmpName
+    if (typeof tgGetRealEmpName === 'function') {
+        var realName = tgGetRealEmpName(r.userName || r.name, r.uid);
+        if (realName && realName !== 'موظف') return realName;
+    }
+
+    return 'موظف';
+};
+
+    var h = '<div style="display:flex;flex-direction:column;gap:12px;margin-top:10px">';
+    filtered.forEach(function(r) {
+        var empMatch = window._staffEmpCache ? (window._staffEmpCache.find(function(e) { return e.uid === r.uid; }) || {}) : {};
+        var empName = tgExtractNameFromRequest(r);
+        var empJob = empMatch.jobTitle || empMatch.dept || r.dept || '';
+
+        var st = (r.status || 'pending').toLowerCase();
+        var statusBadge = '';
+        if(st === 'approved') statusBadge = '<span style="background:rgba(39,174,96,0.15);color:#27ae60;padding:4px 10px;border-radius:20px;font-size:11px;font-weight:800;border:1px solid rgba(39,174,96,0.3)">✅ تمت الموافقة</span>';
+        else if(st === 'rejected') statusBadge = '<span style="background:rgba(231,76,60,0.15);color:#c0392b;padding:4px 10px;border-radius:20px;font-size:11px;font-weight:800;border:1px solid rgba(231,76,60,0.3)">❌ مرفوض</span>';
+        else statusBadge = '<span style="background:rgba(243,156,18,0.15);color:#d35400;padding:4px 10px;border-radius:20px;font-size:11px;font-weight:800;border:1px solid rgba(243,156,18,0.3)">⏳ قيد الانتظار</span>';
+
+        var dh = '';
+        if(r.dynamicData) {
+            var tpl = window.FS_TEMPLATES && r.formTemplateId ? window.FS_TEMPLATES[r.formTemplateId] : null;
+            var fieldLabels = {};
+            if(tpl && tpl.fields) { tpl.fields.forEach(function(f){ fieldLabels[f.id] = f.label; }); }
+            
+            // Canonical consistent field ordering
+            var sortedKeys = [];
+            if(tpl && tpl.fields) {
+                tpl.fields.forEach(function(f) {
+                    if (f.id in r.dynamicData) sortedKeys.push(f.id);
+                });
+            }
+            for(var k in r.dynamicData) {
+                if (sortedKeys.indexOf(k) === -1) sortedKeys.push(k);
+            }
+
+            dh = '<div style="margin-top:8px;padding:10px;background:rgba(0,0,0,0.03);border-radius:8px;font-size:12px;display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:6px">';
+            sortedKeys.forEach(function(k){
+                var v = r.dynamicData[k];
+                if (v === '' || v === '-' || v === '—' || v === null || v === undefined) return;
+                if(v === true) v = 'نعم / تم التسليم';
+                if(v === false) v = 'لا';
+                var lbl = fieldLabels[k] || k;
+                if(lbl === 'chk1') lbl = 'تسليم العهدة المالية';
+                if(lbl === 'chk2') lbl = 'تسليم العهدة العينية';
+                if(lbl === 'chk3') lbl = 'تسليم المستندات والملفات';
+                if(lbl === 'chk4') lbl = 'إنهاء المهام المعلقة';
+                dh += '<div><span style="color:var(--tx3);display:inline-block;">' + escH(lbl) + ':</span> <b style="white-space:pre-wrap;">' + escH(v) + '</b></div>';
+            });
+            dh += '</div>';
+        }
+
+        var attachHtml = '';
+        if(r.fileUrl && r.fileType){
+            if(r.fileType.indexOf('image/')===0){ attachHtml = '<div style="margin-top:8px"><a href="'+r.fileUrl+'" target="_blank"><img src="'+r.fileUrl+'" style="max-width:160px;max-height:110px;border-radius:8px;display:block;border:1px solid var(--bd)"></a></div>'; }
+            else if(r.fileType.indexOf('video/')===0){ attachHtml = '<div style="margin-top:8px"><video src="'+r.fileUrl+'" controls style="max-width:220px;border-radius:8px"></video></div>'; }
+            else { attachHtml = '<div style="margin-top:8px"><a href="'+r.fileUrl+'" target="_blank" style="color:var(--tx);font-weight:700;text-decoration:underline">📎 '+escH(r.fileName||'تحميل الملف المرفق')+'</a></div>'; }
+        }
+
+        var createdDateStr = r.createdAt ? (r.createdAt.toMillis ? new Date(r.createdAt.toMillis()).toLocaleString('ar-EG') : new Date(r.createdAt).toLocaleString('ar-EG')) : '';
+
+        h += '<div class="rq-row" style="background:var(--w);padding:16px;border-radius:12px;border:1px solid var(--bd);box-shadow:0 2px 8px rgba(0,0,0,0.03);">' +
+             '  <div style="display:flex;justify-content:space-between;align-items:flex-start;flex-wrap:wrap;gap:8px">' +
+             '    <div>' +
+             '      <div style="font-size:15px;font-weight:800;color:var(--tx);display:flex;align-items:center;gap:8px">' +
+             '        <span>' + escH(r.type || 'طلب جديد') + '</span>' + statusBadge +
+             '      </div>' +
+             '      <div style="font-size:12px;color:var(--tx2);margin-top:4px;display:flex;align-items:center;gap:12px;flex-wrap:wrap">' +
+             '        <span>👤 <strong>' + escH(empName) + '</strong>' + (empJob ? ' (' + escH(empJob) + ')' : '') + '</span>' +
+             (createdDateStr ? ('<span>🕒 ' + escH(createdDateStr) + '</span>') : '') +
+             '      </div>' +
+             '    </div>' +
+             '  </div>' +
+             (r.fromDate ? ('<div style="margin-top:8px;font-size:12px;color:var(--tx2);background:rgba(52,152,219,0.08);padding:6px 10px;border-radius:6px;display:inline-block">📅 المدة المطلوبة: من <strong>' + escH(r.fromDate) + '</strong>' + (r.toDate ? (' إلى <strong>' + escH(r.toDate) + '</strong>') : '') + '</div>') : '') +
+             (r.details ? ('<div style="margin-top:8px;font-size:13px;line-height:1.6;color:var(--tx);background:var(--bg2);padding:10px;border-radius:8px">' + escH(r.details) + '</div>') : '') +
+             dh + attachHtml +
+             (r.reviewedBy ? ('<div style="margin-top:8px;font-size:11px;color:var(--tx3)">تمت المراجعة بواسطة: ' + escH(r.reviewedBy) + '</div>') : '') +
+             '  <div style="margin-top:12px;display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:8px;border-top:1px dashed var(--bd);padding-top:12px">' +
+             '    <div style="display:flex;gap:8px;flex-wrap:wrap;">' +
+                    (st === 'pending' ? (
+                        '<button class="bt bt-p" style="padding:7px 18px;font-size:12px;font-weight:700" onclick="reviewRequestHub(\'' + r.id + '\',\'approved\')">✔ موافقة على الطلب</button>' +
+                        '<button class="bt bt-d" style="padding:7px 18px;font-size:12px;font-weight:700" onclick="reviewRequestHub(\'' + r.id + '\',\'rejected\')">✕ رفض الطلب</button>'
+                    ) : '') +
+             '    </div>' +
+             '    <div style="display:flex;gap:8px;flex-wrap:wrap;">' +
+                    (r.formTemplateId === 'emp' || (r.type && r.type.indexOf('بيانات الموظف') !== -1) ?
+                        '<button class="bt bt-o" style="padding:6px 14px;font-size:12px;font-weight:800;border-radius:20px;border-color:#0284c7;color:#0284c7;" onclick="tgOpenEditAdminDataModal(\'' + r.id + '\')">✏️ استكمال البيانات الإدارية</button>' : '') +
+             '      <button class="bt bt-o" style="padding:6px 14px;font-size:12px;font-weight:800;border-radius:20px;" onclick="tgPrintRequestFromHub(\'' + r.id + '\')">🖨 طباعة الطلب الرسمية</button>' +
+             '    </div>' +
+             '  </div>' +
+             '</div>';
+    });
+    h += '</div>';
+    container.innerHTML = h;
+}
+
+window.tgOpenEditAdminDataModal = function(reqId) {
+    if (!reqId) return;
+    var r = (window._reqHubDataCache || []).find(function(x) { return x.id === reqId; });
+    if (!r) return;
+    var empMatch = (window._staffEmpCache || []).find(function(e) { return e.uid === r.uid; }) || {};
+    var d = r.dynamicData || {};
+
+    var oldModal = document.getElementById('tgAdminDataEditModal');
+    if (oldModal) oldModal.remove();
+
+    var overlay = document.createElement('div');
+    overlay.id = 'tgAdminDataEditModal';
+    overlay.style.cssText = 'position:fixed;top:0;left:0;right:0;bottom:0;background:rgba(15,23,42,0.7);backdrop-filter:blur(6px);z-index:99999;display:flex;align-items:center;justify-content:center;padding:16px;direction:rtl;';
+
+    var modalHtml = '<div style="background:var(--w);width:100%;max-width:560px;border-radius:16px;box-shadow:0 20px 40px rgba(0,0,0,0.25);border:1px solid var(--bd);overflow:hidden;">' +
+        '  <div style="background:linear-gradient(135deg, #0f172a, #1e293b);padding:16px 20px;color:#fff;display:flex;justify-content:space-between;align-items:center;">' +
+        '    <div>' +
+        '      <div style="font-size:16px;font-weight:900;">📋 استكمال وتعديل البيانات الإدارية والوظيفية</div>' +
+        '      <div style="font-size:12px;opacity:0.85;margin-top:2px;">الموظف: <strong>' + escH(tgExtractNameFromRequest(r)) + '</strong></div>' +
+        '    </div>' +
+        '    <button type="button" onclick="document.getElementById(\'tgAdminDataEditModal\').remove()" style="background:rgba(255,255,255,0.15);border:none;color:#fff;font-size:18px;cursor:pointer;width:32px;height:32px;border-radius:50%;display:flex;align-items:center;justify-content:center;">✕</button>' +
+        '  </div>' +
+        '  <form id="tgAdminDataForm" style="padding:20px;max-height:75vh;overflow-y:auto;display:flex;flex-direction:column;gap:12px;" onsubmit="return false;">' +
+        '    <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;">' +
+        '      <div class="fg"><label style="font-size:12px;font-weight:800;color:var(--tx2);">الرقم الوظيفي (Emp ID)</label><input type="text" id="adm_empId" class="inp" value="' + escH(d.empId || empMatch.empId || '') + '" placeholder="مثال: TG-105" style="width:100%;"></div>' +
+        '      <div class="fg"><label style="font-size:12px;font-weight:800;color:var(--tx2);">المسمى الوظيفي</label><input type="text" id="adm_jobTitle" class="inp" value="' + escH(d.jobTitle || empMatch.jobTitle || '') + '" placeholder="مثال: مصمم جرافيك" style="width:100%;"></div>' +
+        '    </div>' +
+        '    <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;">' +
+        '      <div class="fg"><label style="font-size:12px;font-weight:800;color:var(--tx2);">القسم / الإدارة</label><input type="text" id="adm_dept" class="inp" value="' + escH(d.dept || empMatch.dept || r.dept || '') + '" placeholder="مثال: قسم التصميم" style="width:100%;"></div>' +
+        '      <div class="fg"><label style="font-size:12px;font-weight:800;color:var(--tx2);">تاريخ التعيين</label><input type="date" id="adm_hireDate" class="inp" value="' + escH(d.hireDate || empMatch.hireDate || '') + '" style="width:100%;"></div>' +
+        '    </div>' +
+        '    <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px;">' +
+        '      <div class="fg"><label style="font-size:12px;font-weight:800;color:var(--tx2);">نوع العقد</label>' +
+        '        <select id="adm_contractType" class="inp" style="width:100%;">' +
+        '          <option value="دوام كامل" ' + (d.contractType === 'دوام كامل' || !d.contractType ? 'selected' : '') + '>دوام كامل</option>' +
+        '          <option value="دوام جزئي" ' + (d.contractType === 'دوام جزئي' ? 'selected' : '') + '>دوام جزئي</option>' +
+        '          <option value="عقد محدد المدة" ' + (d.contractType === 'عقد محدد المدة' ? 'selected' : '') + '>عقد محدد المدة</option>' +
+        '          <option value="فترة تجربة" ' + (d.contractType === 'فترة تجربة' ? 'selected' : '') + '>فترة تجربة</option>' +
+        '          <option value="تدريب" ' + (d.contractType === 'تدريب' ? 'selected' : '') + '>تدريب</option>' +
+        '        </select>' +
+        '      </div>' +
+        '      <div class="fg"><label style="font-size:12px;font-weight:800;color:var(--tx2);">المدير المباشر</label><input type="text" id="adm_manager" class="inp" value="' + escH(d.manager || '') + '" placeholder="اسم المدير المباشر" style="width:100%;"></div>' +
+        '    </div>' +
+        '    <div class="fg"><label style="font-size:12px;font-weight:800;color:var(--tx2);">درجة الوظيفة (Grade)</label><input type="text" id="adm_grade" class="inp" value="' + escH(d.grade || '') + '" placeholder="مثال: Senior / Grade A" style="width:100%;"></div>' +
+        '    <div style="margin-top:10px;display:flex;justify-content:flex-end;gap:10px;border-top:1px solid var(--bd);padding-top:14px;flex-wrap:wrap;">' +
+        '      <button type="button" onclick="document.getElementById(\'tgAdminDataEditModal\').remove()" class="bt bt-o" style="font-weight:700;">إلغاء</button>' +
+        '      <button type="button" onclick="tgSaveAdminDataForRequest(\'' + r.id + '\', false)" class="bt" style="background:#0284c7;color:#fff;font-weight:800;padding:8px 18px;border-radius:8px;">💾 حفظ البيانات</button>' +
+        '      ' + (r.status === 'pending' ? '<button type="button" onclick="tgSaveAdminDataForRequest(\'' + r.id + '\', true)" class="bt bt-p" style="font-weight:800;padding:8px 18px;border-radius:8px;">✔ حفظ واعتماد الطلب</button>' : '') +
+        '    </div>' +
+        '  </form>' +
+        '</div>';
+
+    overlay.innerHTML = modalHtml;
+    document.body.appendChild(overlay);
+};
+
+window.tgSaveAdminDataForRequest = function(reqId, approveToo) {
+    var r = (window._reqHubDataCache || []).find(function(x) { return x.id === reqId; });
+    if (!r) return;
+
+    var empId = (document.getElementById('adm_empId').value || '').trim();
+    var jobTitle = (document.getElementById('adm_jobTitle').value || '').trim();
+    var dept = (document.getElementById('adm_dept').value || '').trim();
+    var hireDate = (document.getElementById('adm_hireDate').value || '').trim();
+    var contractType = (document.getElementById('adm_contractType').value || '').trim();
+    var manager = (document.getElementById('adm_manager').value || '').trim();
+    var grade = (document.getElementById('adm_grade').value || '').trim();
+
+    if (!r.dynamicData) r.dynamicData = {};
+    if (empId) r.dynamicData.empId = empId;
+    if (jobTitle) r.dynamicData.jobTitle = jobTitle;
+    if (dept) r.dynamicData.dept = dept;
+    if (hireDate) r.dynamicData.hireDate = hireDate;
+    if (contractType) r.dynamicData.contractType = contractType;
+    if (manager) r.dynamicData.manager = manager;
+    if (grade) r.dynamicData.grade = grade;
+
+    var updates = { dynamicData: r.dynamicData };
+    if (approveToo) {
+        updates.status = 'approved';
+        updates.reviewedBy = TG_USER ? TG_USER.name : 'المدير';
+        updates.reviewedAt = new Date();
+        r.status = 'approved';
+        r.reviewedBy = updates.reviewedBy;
+        r.reviewedAt = updates.reviewedAt;
+    }
+
+    db.collection('requests').doc(reqId).update(updates).then(function() {
+        var m = document.getElementById('tgAdminDataEditModal');
+        if (m) m.remove();
+        if (typeof updateReqHubStats === 'function') updateReqHubStats();
+        if (typeof renderAllRequestsListHub === 'function') renderAllRequestsListHub();
+        alert(approveToo ? '✅ تم حفظ البيانات الإدارية واعتماد الطلب بنجاح!' : '✅ تم حفظ البيانات الإدارية وتحديث الطلب بنجاح!');
+    }).catch(function(err) {
+        alert('❌ حدث خطأ أثناء الحفظ: ' + err.message);
+    });
+};
+
+window.tgPrintRequestFromHub = function(reqId) {
+    if (!reqId) return;
+    var r = (window._reqHubDataCache || []).find(function(x) { return x.id === reqId; });
+    if (!r) return;
+    var empMatch = (window._staffEmpCache || []).find(function(e) { return e.uid === r.uid; }) || { name: r.userName || 'موظف' };
+    if (typeof printRequestDoc === 'function') {
+        printRequestDoc(empMatch, r);
+    } else {
+        window.print();
+    }
+};
+
+function reviewRequestHub(reqId, newStatus) {
+    if(!reqId) return;
+    reviewRequest(reqId, newStatus);
+    var match = (window._reqHubDataCache || []).find(function(r) { return r.id === reqId; });
+    if(match) {
+        match.status = newStatus;
+        match.reviewedBy = TG_USER ? TG_USER.name : 'المدير';
+        match.reviewedAt = new Date();
+    }
+    updateReqHubStats();
+    renderAllRequestsListHub();
 }
 // ═══════════════════════════════════════════════════════════════
 // ── الإعلانات ─────────────────────────────────────────────────
@@ -4405,60 +5777,213 @@ function toggleAnnTargetWrap() {
     if(!wrap) return;
     wrap.style.display = (checked && checked.value === 'private') ? 'block' : 'none';
 }
+window.tgFormatAnnouncementContent = function(rawText) {
+    if(!rawText) return '';
+    var lines = String(rawText).split('\n');
+    var html = '<div class="ann-structured-body" style="display:flex; flex-direction:column; gap:6px; margin:8px 0;">';
+
+    lines.forEach(function(line) {
+        var trimmed = line.trim();
+        if(!trimmed) return;
+
+        // Case 1: Notice / Alert line (*** or --- or ⚠️)
+        if(trimmed.indexOf('***') === 0 || trimmed.indexOf('---') === 0 || trimmed.indexOf('⚠️') === 0) {
+            var noticeContent = trimmed.replace(/^(\*\*\*|\-\-\-|⚠️)\s*/, '');
+            html += '<div style="background:rgba(245,158,11,0.12); border-right:4px solid #f59e0b; border-radius:8px; padding:10px 14px; font-weight:800; color:var(--tx); font-size:13px; margin:6px 0; display:flex; align-items:flex-start; gap:8px;">' +
+                    '<span style="font-size:16px;">⚠️</span>' +
+                    '<div>' + tgHighlightMentions(noticeContent) + '</div>' +
+                    '</div>';
+            return;
+        }
+
+        // Case 2: Mention or Topic Header line (starts with @ or 👤 or 📌 or 🎯)
+        if(trimmed.indexOf('@') === 0 || trimmed.indexOf('👤') === 0 || trimmed.indexOf('📌') === 0 || trimmed.indexOf('🎯') === 0) {
+            var headerText = trimmed.replace(/^([👤📌🎯])\s*/, '');
+            html += '<div style="margin-top:8px; margin-bottom:2px; background:linear-gradient(135deg, rgba(2,132,199,0.12), rgba(16,185,129,0.06)); border:1px solid rgba(2,132,199,0.25); border-radius:10px; padding:8px 14px; display:inline-flex; align-items:center; gap:8px;">' +
+                    '<span style="font-size:15px; color:#0284c7; font-weight:900;">🎯</span>' +
+                    '<span style="font-weight:900; font-size:14px; color:var(--tx);">' + tgHighlightMentions(headerText) + '</span>' +
+                    '</div>';
+            return;
+        }
+
+        // Case 3: Bullet points (starts with • or - or * or number like 1. 2.)
+        var bulletMatch = trimmed.match(/^([•\-\*]|\d+[\.\)])\s*(.*)/);
+        if(bulletMatch) {
+            var bulletText = bulletMatch[2];
+            html += '<div style="display:flex; align-items:flex-start; gap:10px; padding-right:12px; font-size:13.5px; line-height:1.6; color:var(--tx); font-weight:700;">' +
+                    '<span style="color:#10b981; font-weight:900; font-size:15px; line-height:1.2;">•</span>' +
+                    '<div>' + tgHighlightMentions(bulletText) + '</div>' +
+                    '</div>';
+            return;
+        }
+
+        // Case 4: Normal Line
+        html += '<div style="font-size:13.5px; line-height:1.6; color:var(--tx); font-weight:600; padding-right:6px;">' +
+                tgHighlightMentions(trimmed) +
+                '</div>';
+    });
+
+    html += '</div>';
+    return html;
+};
+
+window.tgHighlightMentions = function(str) {
+    if(!str) return '';
+    var escStr = escH(str);
+    return escStr.replace(/@([^\n\r@,;:<>\(\)]+)/g, function(match, name) {
+        var cleanName = name.trim();
+        return '<span class="emp-mention-pill" style="display:inline-flex; align-items:center; gap:4px; background:linear-gradient(135deg, rgba(16,185,129,0.18), rgba(2,132,199,0.18)); color:#0284c7; border:1px solid rgba(2,132,199,0.35); padding:2px 10px; border-radius:16px; font-weight:800; font-size:12px; margin:0 2px; box-shadow:0 2px 6px rgba(2,132,199,0.15);">👤 @' + cleanName + '</span>';
+    });
+};
+
+window.tgInsertAnnTemplate = function(type) {
+    var ta = document.getElementById('annContent');
+    if(!ta) return;
+    var start = ta.selectionStart || ta.value.length;
+    var end = ta.selectionEnd || ta.value.length;
+    var current = ta.value;
+
+    var insertText = '';
+    if(type === 'topic') insertText = '\n@اسم الموظف أو الموضوع الرئيسي\n';
+    else if(type === 'bullet') insertText = '\n• البند أو النقطة التنفيذية هنا\n';
+    else if(type === 'alert') insertText = '\n*** تنبيه تذكيري أو ملاحظة هامة\n';
+
+    ta.value = current.substring(0, start) + insertText + current.substring(end);
+    ta.focus();
+};
+
+window.tgInsertEmpMention = function(selectEl) {
+    if(!selectEl || !selectEl.value) return;
+    var empName = selectEl.value;
+    selectEl.value = '';
+
+    var ta = document.getElementById('annContent');
+    if(!ta) return;
+
+    var start = ta.selectionStart || ta.value.length;
+    var end = ta.selectionEnd || ta.value.length;
+    var current = ta.value;
+
+    var mentionText = '@' + empName + ' ';
+
+    ta.value = current.substring(0, start) + mentionText + current.substring(end);
+    ta.focus();
+};
+
 function loadAnnouncementTargetEmployees() {
     var sel = document.getElementById('annTargetEmployee');
-    if(!sel) return;
-    db.collection('users').where('role','in',['employee','tech_admin']).get().then(function(snap) {
-        if(snap.empty) { sel.innerHTML = '<option value="">لا يوجد موظفون مسجّلون</option>'; return; }
+    var mentionSel = document.getElementById('annMentionEmpSelect');
+    if(!sel && !mentionSel) return;
+
+    db.collection('users').where('role','==','employee').get().then(function(snap) {
+        if(snap.empty) {
+            if(sel) sel.innerHTML = '<option value="">لا يوجد موظفون مسجّلون</option>';
+            if(mentionSel) mentionSel.innerHTML = '<option value="">لا يوجد موظفون</option>';
+            return;
+        }
         var opts = '<option value="">اختر الموظف...</option>';
+        var mentionOpts = '<option value="">👤 إشارة لموظف (@)...</option>';
         var list = [];
         snap.forEach(function(doc) { list.push(Object.assign({uid:doc.id}, doc.data())); });
         list.sort(function(a,b){ return (a.name||'').localeCompare(b.name||'', 'ar'); });
         list.forEach(function(emp) {
-            opts += '<option value="'+emp.uid+'">'+escH(emp.name||emp.email||emp.uid)+'</option>';
+            var n = emp.name || emp.email || emp.uid;
+            opts += '<option value="'+emp.uid+'">'+escH(n)+'</option>';
+            mentionOpts += '<option value="'+escH(n)+'">👤 @'+escH(n)+'</option>';
         });
-        sel.innerHTML = opts;
+        if(sel) sel.innerHTML = opts;
+        if(mentionSel) mentionSel.innerHTML = mentionOpts;
     }).catch(function(err) {
-        sel.innerHTML = '<option value="">تعذر تحميل الموظفين</option>';
+        if(sel) sel.innerHTML = '<option value="">تعذر تحميل الموظفين</option>';
         console.error(err);
     });
 }
+window.tgDeleteMeetingAnnouncements = function(silent) {
+    if (!window.db) return;
+    db.collection('announcements').get().then(function(snap) {
+        var batch = db.batch();
+        var deletedCount = 0;
+        snap.forEach(function(doc) {
+            var data = doc.data();
+            var t = (data.title || '').toLowerCase();
+            var c = (data.content || '').toLowerCase();
+            if (t.indexOf('اجتماع') !== -1 || c.indexOf('اجتماع') !== -1 || t.indexOf('مكالمة') !== -1 || c.indexOf('مكالمة') !== -1 || t.indexOf('livemeeting') !== -1) {
+                batch.delete(doc.ref);
+                deletedCount++;
+            }
+        });
+        if (deletedCount > 0) {
+            return batch.commit().then(function() {
+                if (!silent && typeof tgToast === 'function') tgToast('🗑 تم حذف ' + deletedCount + ' إشعار اجتماع سابق بنجاح', 'ok');
+            });
+        } else {
+            if (!silent && typeof tgToast === 'function') tgToast('لا توجد إشعارات اجتماعات لحذفها', 'ok');
+        }
+    }).catch(function(err) {
+        console.warn("Meeting announcements purge skipped:", err);
+    });
+};
+
 function loadAdminAnnouncements() {
     window.loadedAnnouncements = {};
     var box = document.getElementById('annList');
     if(!box) return;
-    box.innerHTML = '<div class="empty-hint" style="color:var(--tx3)">&#9203; جارٍ التحميل...</div>';
-    db.collection('announcements').orderBy('createdAt', 'desc').limit(20).get().then(function(snap) {
+    box.innerHTML = '<div class="empty-hint" style="color:var(--tx3)">⌛ جارٍ التحميل...</div>';
+
+    if (typeof tgDeleteMeetingAnnouncements === 'function') tgDeleteMeetingAnnouncements(true);
+
+    db.collection('announcements').limit(50).get().then(function(snap) {
         if(snap.empty) { box.innerHTML = '<div class="empty-hint">لا توجد إعلانات سابقة.</div>'; return; }
-        var h = '';
+        
+        var list = [];
         snap.forEach(function(d) {
             var a = d.data();
+            var t = (a.title || '').toLowerCase();
+            var c = (a.content || '').toLowerCase();
+            if (t.indexOf('اجتماع') !== -1 || c.indexOf('اجتماع') !== -1 || t.indexOf('مكالمة') !== -1 || c.indexOf('مكالمة') !== -1) return;
+            a._id = d.id;
             window.loadedAnnouncements[d.id] = a;
-            var ts = (a.createdAt && a.createdAt.seconds) ? new Date(a.createdAt.seconds*1000).toLocaleDateString('ar-EG') : '';
+            list.push(a);
+        });
+
+        try {
+            localStorage.setItem('techgo_shared_announcements', JSON.stringify(list));
+        } catch(e){}
+
+        list.sort(function(a, b) {
+            var tA = a.createdAt && a.createdAt.seconds ? a.createdAt.seconds*1000 : (a.createdAt ? new Date(a.createdAt).getTime() : 0);
+            var tB = b.createdAt && b.createdAt.seconds ? b.createdAt.seconds*1000 : (b.createdAt ? new Date(b.createdAt).getTime() : 0);
+            return tB - tA;
+        });
+
+        var h = '';
+        list.forEach(function(a) {
+            var ts = (a.createdAt && a.createdAt.seconds) ? new Date(a.createdAt.seconds*1000).toLocaleDateString('ar-EG') : (a.createdAt ? new Date(a.createdAt).toLocaleDateString('ar-EG') : '');
             var isPrivate = a.audience === 'private';
-            h += '<div class="pj-row" style="border-right:4px solid '+(isPrivate?'var(--gd)':'var(--nv)')+'">';
-            h += '<div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-bottom:4px">';
-            h += '<div class="pj-t" style="font-size:14px;font-weight:800">'+escH(a.title)+'</div>';
+            h += '<div class="pj-row" style="border-right:4px solid '+(isPrivate?'var(--gd)':'var(--nv)')+'; background:var(--w); border-radius:14px; padding:16px; border:1px solid var(--bd); box-shadow:0 4px 15px rgba(0,0,0,0.03);">';
+            h += '<div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-bottom:6px">';
+            h += '<div class="pj-t" style="font-size:16px;font-weight:900;color:var(--tx)">'+escH(a.title)+'</div>';
             h += isPrivate
-                ? '<span class="badge" style="background:var(--gd);color:#1b2a4a">&#128100; خاص &rarr; '+escH(a.targetName||'موظف')+'</span>'
-                : '<span class="badge" style="background:var(--nv);color:#fff">&#128226; عام لكل الموظفين</span>';
+                ? '<span class="badge" style="background:rgba(245,158,11,0.15);color:#d97706;border:1px solid rgba(245,158,11,0.3);font-weight:800;padding:3px 12px;border-radius:20px;">👤 خاص → '+escH(a.targetName||'موظف')+'</span>'
+                : '<span class="badge" style="background:rgba(16,185,129,0.15);color:#10b981;border:1px solid rgba(16,185,129,0.3);font-weight:800;padding:3px 12px;border-radius:20px;">📢 عام لكل الموظفين</span>';
             h += '</div>';
-            h += '<div class="pj-meta" style="margin:6px 0 10px;font-size:12px;color:var(--tx);line-height:1.6">'+escH(a.content)+'</div>';
-            h += '<div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:6px">';
-            h += '<div class="pj-meta" style="display:flex;gap:12px;opacity:0.85">';
-            h += (a.date ? '<span>&#128197; '+escH(a.date)+'</span>' : '');
-            h += (ts ? '<span>&#128336; نُشر: '+ts+'</span>' : '');
-            h += (a.createdBy ? '<span>&#128100; '+escH(a.createdBy)+' ('+escH(a.createdByRole||'أدمن إداري')+')</span>' : '');
+            h += '<div class="pj-meta" style="margin:8px 0 12px;">' + tgFormatAnnouncementContent(a.content) + '</div>';
+            h += '<div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:8px;border-top:1px dashed var(--bd);padding-top:10px">';
+            h += '<div class="pj-meta" style="display:flex;gap:12px;opacity:0.85;font-size:12px;color:var(--tx2);font-weight:700;">';
+            h += (a.date ? '<span>📅 '+escH(a.date)+'</span>' : '');
+            h += (ts ? '<span>🕒 نُشر: '+ts+'</span>' : '');
+            h += (a.createdBy ? '<span>👤 '+escH(a.createdBy)+' ('+escH(a.createdByRole||'أدمن')+')</span>' : '');
             h += '</div>';
             h += '<div style="display:flex;gap:6px">';
-            var hideBtnText = a.isHidden ? '&#128065; إظهار' : '&#128123; إخفاء مؤقت';
-            h += '<button class="bt bt-o" style="padding:4px 10px;font-size:11px" onclick="toggleAnnouncementVisibility(\''+d.id+'\', '+!!a.isHidden+')">'+hideBtnText+'</button>';
-            h += '<button class="bt bt-d" style="padding:4px 10px;font-size:11px" onclick="deleteAnnouncement(\''+d.id+'\')">&#128465; حذف</button>';
+            var hideBtnText = a.isHidden ? '👁 إظهار' : '👻 إخفاء مؤقت';
+            h += '<button class="bt bt-o" style="padding:5px 12px;font-size:12px;font-weight:800;border-radius:20px;" onclick="republishAnnouncement(\''+a._id+'\')">✏️ تعديل</button>';
+            h += '<button class="bt bt-o" style="padding:5px 12px;font-size:12px;font-weight:800;border-radius:20px;" onclick="toggleAnnouncementVisibility(\''+a._id+'\', '+!!a.isHidden+')">'+hideBtnText+'</button>';
+            h += '<button class="bt bt-d" style="padding:5px 12px;font-size:12px;font-weight:800;border-radius:20px;" onclick="deleteAnnouncement(\''+a._id+'\')">🗑 حذف</button>';
             h += '</div></div></div>';
         });
         box.innerHTML = h;
     }).catch(function(err) {
-        box.innerHTML = '<div class="empty-hint" style="color:var(--no)">&#10060; تعذر التحميل: '+err.message+'<br><small style="color:var(--tx3)">تأكد من نشر قواعد Firestore في Firebase Console</small></div>';
+        box.innerHTML = '<div class="empty-hint" style="color:var(--no)">❌ تعذر التحميل: '+err.message+'</div>';
     });
 }
 
@@ -4571,6 +6096,44 @@ function deleteAllSystemData() {
                 setTimeout(function(){ document.body.removeChild(msg); }, 4000);
             }
         });
+    });
+}
+
+function cleanDummyTestAccounts() {
+    if (!confirm('هل تريد تنظيف وإزالة جميع الحسابات الوهمية والتجريبية (مثل script_ و admin_ و @temp) من قاعدة بيانات Firestore؟')) return;
+    var msg = document.createElement('div');
+    msg.style.cssText = 'position:fixed;top:20px;left:50%;transform:translateX(-50%);background:#1b2a4a;color:#fff;padding:14px 28px;border-radius:10px;z-index:99999;font-size:14px;font-weight:700;box-shadow:0 8px 24px rgba(0,0,0,.3)';
+    msg.textContent = '⏳ جارٍ فحص الحسابات الوهمية وتنظيفها...';
+    document.body.appendChild(msg);
+
+    db.collection('users').get().then(function(snap) {
+        var batch = db.batch();
+        var deletedCount = 0;
+        snap.forEach(function(doc) {
+            var data = doc.data() || {};
+            var email = (data.email || '').toLowerCase();
+            var name = (data.name || '').toLowerCase();
+            if (email.startsWith('script_') || email.startsWith('admin_') || email.includes('@temp') || email === 'test@gmail.com' || email === 'test@techgo.com' || name.includes('script_') || name.includes('admin_')) {
+                batch.delete(doc.ref);
+                deletedCount++;
+            }
+        });
+        if (deletedCount > 0) {
+            return batch.commit().then(function() {
+                msg.style.background = '#1d7a4f';
+                msg.textContent = '✅ تم حذف ' + deletedCount + ' حساب وهمي وتجريبي من Firestore بنجاح!';
+                setTimeout(function(){ if (msg.parentNode) msg.parentNode.removeChild(msg); }, 3500);
+                if (typeof loadStaffOverview === 'function') loadStaffOverview();
+            });
+        } else {
+            msg.style.background = '#2c3e50';
+            msg.textContent = 'ℹ️ لم يتم العثور على أي حسابات وهمية في Firestore.';
+            setTimeout(function(){ if (msg.parentNode) msg.parentNode.removeChild(msg); }, 3000);
+        }
+    }).catch(function(err) {
+        msg.style.background = '#c0392b';
+        msg.textContent = '❌ تعذر تنظيف الحسابات: ' + err.message;
+        setTimeout(function(){ if (msg.parentNode) msg.parentNode.removeChild(msg); }, 4000);
     });
 }
 
@@ -5089,7 +6652,7 @@ function addAnnouncement() {
     
     msg.style.color = 'var(--tx3)'; msg.textContent = '⏳ جارٍ النشر...';
     
-    var createdByRole = (TG_USER && TG_USER.role === 'tech_admin') ? 'أدمن تقني' : 'أدمن إداري';
+    var createdByRole = (TG_USER && TG_USER.role === 'tech_admin') ? 'أدمن' : 'أدمن';
     try {
         var annData = {
             title: title,
@@ -5139,54 +6702,81 @@ function loadEmpAnnouncements() {
     if(!box || !panel) return;
     var myUid = TG_USER ? TG_USER.uid : '';
 
+    try {
+        localStorage.removeItem('techgo_cached_announcements');
+    } catch(e){}
+
     function annCard(data, isPrivate) {
         var borderColor = isPrivate ? 'var(--gd)' : 'var(--nv)';
-        var h = '<div style="background:rgba(255,255,255,.1);padding:14px 18px;border-radius:10px;border-right:4px solid '+borderColor+';margin-bottom:8px">';
-        h += '<div style="font-size:15px;font-weight:800;margin-bottom:6px">'+esc(data.title)+'</div>';
-        h += '<div style="font-size:13px;opacity:.9;line-height:1.6">'+esc(data.content)+'</div>';
-        if(data.createdBy) h += '<div style="font-size:11px;opacity:.75;margin-top:8px">👤 '+esc(data.createdBy)+(data.createdByRole?' <span style="opacity:.8">('+esc(data.createdByRole)+')</span>':'')+'</div>';
-        if(data.date) h += '<div style="font-size:11px;opacity:.6;margin-top:4px">📅 '+esc(data.date)+'</div>';
+        var h = '<div style="background:var(--w);padding:16px 20px;border-radius:14px;border-right:5px solid '+borderColor+';border:1px solid var(--bd);margin-bottom:12px;box-shadow:0 4px 15px rgba(0,0,0,0.03);">';
+        h += '<div style="font-size:16px;font-weight:900;margin-bottom:6px;color:var(--tx)">'+esc(data.title)+'</div>';
+        h += '<div style="font-size:13px;line-height:1.75;color:var(--tx)">'+tgFormatAnnouncementContent(data.content)+'</div>';
+        h += '<div style="display:flex;gap:12px;margin-top:10px;border-top:1px dashed var(--bd);padding-top:8px;font-size:11px;color:var(--tx2);font-weight:700;">';
+        if(data.createdBy) h += '<div>👤 '+esc(data.createdBy)+(data.createdByRole?' <span style="opacity:.8">('+esc(data.createdByRole)+')</span>':'')+'</div>';
+        if(data.date) h += '<div>📅 '+esc(data.date)+'</div>';
+        h += '</div>';
         h += '</div>';
         return h;
     }
 
-    // نجيب أحدث 30 إعلان ونقسمهم على العميل — بيغطي الإعلانات القديمة اللي مفيهاش حقل audience (بتتعامل كـ "عام")
-    db.collection('announcements').orderBy('createdAt', 'desc').limit(30).onSnapshot(function(snap) {
-        if(snap.empty) {
-            panel.style.display = 'none';
-            return;
-        }
-        var publicOnes = [];
-        var privateOnes = [];
-        snap.forEach(function(d) {
-            var data = d.data();
-            if(data.isHidden) return;
-            if(data.audience === 'private') {
-                if(data.targetUid === myUid) privateOnes.push(data);
-            } else {
-                publicOnes.push(data);
+    if (typeof db !== 'undefined' && db && db.collection) {
+        db.collection('announcements').limit(50).onSnapshot(function(snap) {
+            if(!snap || snap.empty) {
+                panel.style.display = 'none';
+                box.innerHTML = '';
+                return;
             }
-        });
-        publicOnes = publicOnes.slice(0, 5);
-        privateOnes = privateOnes.slice(0, 5);
+            var allList = [];
+            snap.forEach(function(d) {
+                var data = Object.assign({ id: d.id }, d.data());
+                if(data.isHidden) return;
+                var t = (data.title || '').toLowerCase();
+                var c = (data.content || '').toLowerCase();
+                if (t.indexOf('اجتماع') !== -1 || c.indexOf('اجتماع') !== -1 || t.indexOf('مكالمة') !== -1 || c.indexOf('مكالمة') !== -1) return;
+                allList.push(data);
+            });
 
-        if(!publicOnes.length && !privateOnes.length) {
+            allList.sort(function(a, b) {
+                var tA = a.createdAt && a.createdAt.seconds ? a.createdAt.seconds*1000 : (a.createdAt ? new Date(a.createdAt).getTime() : 0);
+                var tB = b.createdAt && b.createdAt.seconds ? b.createdAt.seconds*1000 : (b.createdAt ? new Date(b.createdAt).getTime() : 0);
+                return tB - tA;
+            });
+
+            var publicOnes = [];
+            var privateOnes = [];
+            allList.forEach(function(data) {
+                if(data.audience === 'private') {
+                    if(data.targetUid === myUid) privateOnes.push(data);
+                } else {
+                    publicOnes.push(data);
+                }
+            });
+
+            if(!publicOnes.length && !privateOnes.length) {
+                panel.style.display = 'none';
+                box.innerHTML = '';
+                return;
+            }
+            panel.style.display = 'block';
+
+            var h = '';
+            if(privateOnes.length) {
+                h += '<div style="font-size:13px;font-weight:800;margin:0 0 8px;opacity:.9">👤 إعلانات خاصة بيك</div>';
+                privateOnes.forEach(function(data){ h += annCard(data, true); });
+            }
+            if(publicOnes.length) {
+                if(privateOnes.length) h += '<div style="font-size:13px;font-weight:800;margin:14px 0 8px;opacity:.9">📢 إعلانات عامة</div>';
+                publicOnes.forEach(function(data){ h += annCard(data, false); });
+            }
+            box.innerHTML = h;
+        }, function(err) {
             panel.style.display = 'none';
-            return;
-        }
-        panel.style.display = 'block';
-
-        var h = '';
-        if(privateOnes.length) {
-            h += '<div style="font-size:13px;font-weight:800;margin:0 0 8px;opacity:.9">👤 إعلانات خاصة بيك</div>';
-            privateOnes.forEach(function(data){ h += annCard(data, true); });
-        }
-        if(publicOnes.length) {
-            if(privateOnes.length) h += '<div style="font-size:13px;font-weight:800;margin:14px 0 8px;opacity:.9">📢 إعلانات عامة</div>';
-            publicOnes.forEach(function(data){ h += annCard(data, false); });
-        }
-        box.innerHTML = h;
-    });
+            box.innerHTML = '';
+        });
+    } else {
+        panel.style.display = 'none';
+        box.innerHTML = '';
+    }
 }
 
 // ═══════════════════════════════════════════════════════════════
@@ -5194,7 +6784,7 @@ function loadEmpAnnouncements() {
 function loadEmpDocsOverview() {
     var box = document.getElementById('empDocsList');
     if(!box) return;
-    db.collection('users').where('role','in',['employee','tech_admin']).get().then(function(snap){
+    db.collection('users').where('role','==','employee').get().then(function(snap){
         if(snap.empty){
             box.innerHTML = '<div class="empty-hint">لا يوجد موظفون مسجّلون بعد.</div>';
             return;
@@ -5708,6 +7298,34 @@ function initAdminCalendar() {
     calendar.render();
 }
 
+window.tgFormatWorkHours = function(checkIn, checkOut, dateStr) {
+    if (!checkIn || !checkOut || checkIn === '-' || checkOut === '—') return '—';
+    try {
+        var baseDate = dateStr || '2026-01-01';
+        var d1 = new Date(baseDate + 'T' + checkIn);
+        var d2 = new Date(baseDate + 'T' + checkOut);
+        if (d2 < d1) d2.setDate(d2.getDate() + 1);
+        
+        var diffMs = d2 - d1;
+        if (isNaN(diffMs) || diffMs <= 0) return '0 دقيقة';
+        
+        var totalMinutes = Math.floor(diffMs / 60000);
+        var hours = Math.floor(totalMinutes / 60);
+        var minutes = totalMinutes % 60;
+        
+        if (hours > 0 && minutes > 0) {
+            var hLabel = (hours === 1) ? 'ساعة' : (hours === 2 ? 'ساعتان' : (hours >= 3 && hours <= 10 ? hours + ' ساعات' : hours + ' ساعة'));
+            return hLabel + ' و ' + minutes + ' دقيقة';
+        } else if (hours > 0) {
+            return (hours === 1) ? 'ساعة واحدة' : (hours === 2 ? 'ساعتان' : (hours >= 3 && hours <= 10 ? hours + ' ساعات' : hours + ' ساعة'));
+        } else {
+            return minutes + ' دقيقة';
+        }
+    } catch(e) {
+        return '—';
+    }
+};
+
 window.fetchLiveAttendance = async function() {
     var tbody = document.getElementById('liveAttBody');
     var dateInput = document.getElementById('liveAttDate');
@@ -5738,22 +7356,14 @@ window.fetchLiveAttendance = async function() {
         logs.forEach(function(log) {
             var checkIn = log.checkIn || '—';
             var checkOut = log.checkOut || '—';
-            var hours = '—';
-            
-            if(log.checkIn && log.checkOut) {
-                var t1 = new Date("2000-01-01T" + log.checkIn + ":00");
-                var t2 = new Date("2000-01-01T" + log.checkOut + ":00");
-                var diff = (t2 - t1) / 3600000;
-                if(diff < 0) diff += 24;
-                hours = diff > 0 ? diff.toFixed(1) + ' ساعة' : '—';
-            }
+            var hours = tgFormatWorkHours(log.checkIn, log.checkOut, log.date);
             
             html += '<tr>' +
                 '<td style="font-weight:bold;color:var(--nv)">' + (log.name || 'مجهول') + '</td>' +
                 '<td>' + log.date + '</td>' +
                 '<td style="color:#059669;font-weight:bold">' + checkIn + '</td>' +
                 '<td style="color:#dc2626;font-weight:bold">' + checkOut + '</td>' +
-                '<td style="font-weight:bold">' + hours + '</td>' +
+                '<td style="font-weight:bold;color:#0284c7">' + hours + '</td>' +
                 '</tr>';
         });
         
@@ -5763,6 +7373,52 @@ window.fetchLiveAttendance = async function() {
         console.error("fetchLiveAttendance error:", e);
         tbody.innerHTML = '<tr><td colspan="5" style="padding:20px;color:red">حدث خطأ أثناء جلب البيانات</td></tr>';
     }
+};
+
+window.tgSyncAttendanceToggleBtnUI = function() {
+    var btn = document.getElementById('tgToggleAttFeatureBtn');
+    if (!btn) return;
+    var isEnabled = (window._appSettingsCache && window._appSettingsCache.attendanceEnabled !== false);
+    if (isEnabled) {
+        btn.style.background = 'rgba(16,185,129,0.12)';
+        btn.style.color = '#059669';
+        btn.style.border = '1.5px solid #10b981';
+        btn.innerHTML = '🟢 ميزة الحضور مفعّلة للموظفين (انقر للتعطيل)';
+    } else {
+        btn.style.background = 'rgba(239,68,68,0.12)';
+        btn.style.color = '#dc2626';
+        btn.style.border = '1.5px solid #ef4444';
+        btn.innerHTML = '🔴 ميزة الحضور معطّلة للموظفين (انقر للتفعيل)';
+    }
+};
+
+window.tgQuickToggleAttendanceSystem = function() {
+    var current = !(window._appSettingsCache && window._appSettingsCache.attendanceEnabled === false);
+    var nextState = !current;
+    
+    if (!window._appSettingsCache) window._appSettingsCache = {};
+    window._appSettingsCache.attendanceEnabled = nextState;
+    
+    tgSyncAttendanceToggleBtnUI();
+    
+    db.collection('system').doc('appSettings').set({
+        attendanceEnabled: nextState
+    }, { merge: true }).then(function() {
+        if (typeof tgToast === 'function') {
+            if (nextState) tgToast('🟢 تم تفعيل خدمة الحضور والانصراف للموظفين بنجاح', 'ok');
+            else tgToast('🔴 تم إيقاف خدمة الحضور والانصراف للموظفين', 'warn');
+        }
+    }).catch(function(err) {
+        window._appSettingsCache.attendanceEnabled = current;
+        tgSyncAttendanceToggleBtnUI();
+        if (typeof tgToast === 'function') tgToast('تعذر التحديث: ' + err.message, 'err');
+    });
+};
+
+var prevOnAppSettingsUpdate = window.onAppSettingsUpdate;
+window.onAppSettingsUpdate = function(settings) {
+    if (typeof prevOnAppSettingsUpdate === 'function') prevOnAppSettingsUpdate(settings);
+    if (typeof tgSyncAttendanceToggleBtnUI === 'function') tgSyncAttendanceToggleBtnUI();
 };
 
 // ─── بروفايل الموظف المنظم ──────────────────────────────────────────
@@ -5800,6 +7456,67 @@ function tgOpenEmployeeProfile(uid) {
     });
 }
 
+function tgToggleProfEdit(id) {
+    var el = document.getElementById(id);
+    if(!el) return;
+    el.style.display = (el.style.display === 'none' || !el.style.display) ? 'flex' : 'none';
+}
+
+function saveEmpNameFromProfile(uid) {
+    var input = document.getElementById('empProfNameInput');
+    var msg = document.getElementById('empProfNameMsg');
+    if(!input) return;
+    var name = (input.value || '').trim();
+    if(!name){ if(msg) msg.textContent = 'اكتب اسماً صحيحاً.'; return; }
+    if(msg) { msg.style.color = '#fff'; msg.textContent = '⏳ جارٍ الحفظ...'; }
+    
+    db.collection('users').doc(uid).get().then(function(doc){
+        var jt = doc.data().jobTitle || '';
+        var finalName = jt ? name + ' (' + jt + ')' : name;
+        return db.collection('users').doc(uid).update({baseName: name, name: finalName});
+    }).then(function(){
+        if(typeof addEmployeeName === 'function') addEmployeeName(name);
+        if(typeof tgToast === 'function') tgToast('✅ تم حفظ الاسم بنجاح', 'ok');
+        loadStaffOverview();
+        tgOpenEmployeeProfile(uid);
+    }).catch(function(err){ if(msg) { msg.style.color = '#ff6b6b'; msg.textContent = '❌ ' + err.message; } });
+}
+
+function saveEmpJobFromProfile(uid) {
+    var input = document.getElementById('empProfJobInput');
+    var msg = document.getElementById('empProfJobMsg');
+    if(!input) return;
+    var jobTitle = (input.value || '').trim();
+    if(msg) { msg.style.color = '#fff'; msg.textContent = '⏳ جارٍ الحفظ...'; }
+    
+    db.collection('users').doc(uid).get().then(function(doc){
+        var baseName = doc.data().baseName || doc.data().name || '';
+        if (baseName.includes(' (')) baseName = baseName.split(' (')[0].trim();
+        var finalName = jobTitle ? baseName + ' (' + jobTitle + ')' : baseName;
+        return db.collection('users').doc(uid).update({jobTitle: jobTitle, baseName: baseName, name: finalName});
+    }).then(function(){
+        if(typeof tgToast === 'function') tgToast('✅ تم حفظ المسمى الوظيفي بنجاح', 'ok');
+        loadStaffOverview();
+        tgOpenEmployeeProfile(uid);
+    }).catch(function(err){ if(msg) { msg.style.color = '#ff6b6b'; msg.textContent = '❌ ' + err.message; } });
+}
+
+function saveEmpDeptPhoneFromProfile(uid) {
+    var deptInput = document.getElementById('empProfDeptInput');
+    var phoneInput = document.getElementById('empProfPhoneInput');
+    var msg = document.getElementById('empProfDeptPhoneMsg');
+    if(!deptInput || !phoneInput) return;
+    var dept = (deptInput.value || '').trim();
+    var phone = (phoneInput.value || '').trim();
+    if(msg) { msg.style.color = '#fff'; msg.textContent = '⏳ جارٍ الحفظ...'; }
+    
+    db.collection('users').doc(uid).update({dept: dept, phone: phone}).then(function(){
+        if(typeof tgToast === 'function') tgToast('✅ تم حفظ البيانات بنجاح', 'ok');
+        loadStaffOverview();
+        tgOpenEmployeeProfile(uid);
+    }).catch(function(err){ if(msg) { msg.style.color = '#ff6b6b'; msg.textContent = '❌ ' + err.message; } });
+}
+
 function renderEmployeeProfileModal(emp) {
     var modal = document.getElementById('tgProfileModal');
     if(!modal) {
@@ -5815,103 +7532,220 @@ function renderEmployeeProfileModal(emp) {
         return s + (pm || 0);
     }, 0) / emp.projects.length) : 0;
 
-    var h = '<div class="profile-container">' +
-        '<div class="profile-header">' +
-            '<div class="profile-close" onclick="tgCloseProfile()">✕</div>' +
-            '<div class="profile-info">' +
-                '<div class="profile-avatar">' + initials + '</div>' +
-                '<div class="profile-details">' +
-                    '<div class="profile-name">' + escH(emp.name || emp.email) + '</div>' +
-                    '<div class="profile-job">💼 ' + escH(emp.jobTitle || 'موظف') + ' · 📧 ' + escH(emp.email) + '</div>' +
+    var empIdx = (window._staffEmpCache || []).findIndex(function(e){ return e.uid === emp.uid; });
+    if(empIdx !== -1) {
+        window._staffEmpCache[empIdx] = emp;
+    }
+
+    var h = '<div class="profile-container" style="max-width:1100px; margin:20px auto; min-height:92vh; border-radius:24px;">' +
+        // Top Toolbar Header
+        '<div style="background:var(--w); padding:14px 24px; border-bottom:1px solid var(--bd); display:flex; align-items:center; justify-content:space-between; flex-wrap:wrap; gap:10px;">' +
+            '<button class="bt bt-p" onclick="tgCloseProfile()" style="border-radius:20px; padding:8px 20px; font-weight:800; font-size:13px; cursor:pointer;">' +
+                '<span style="font-size:14px; margin-left:6px;">⬅️</span> العودة لقائمة الموظفين' +
+            '</button>' +
+            '<div style="font-size:15px; font-weight:800; color:var(--nv);">👤 صفحة الموظف: ' + escH(emp.name || emp.email) + '</div>' +
+        '</div>' +
+
+        // Main Employee Banner Header
+        '<div class="profile-header" style="height:auto; min-height:220px; padding:24px 30px; flex-direction:column; justify-content:space-between;">' +
+            '<div class="profile-info" style="align-items:flex-start; flex-wrap:wrap; gap:20px;">' +
+                '<div class="profile-avatar" style="width:100px; height:100px; font-size:40px; border-radius:24px;">' + initials + '</div>' +
+                '<div class="profile-details" style="flex:1;">' +
+                    '<div style="display:flex; align-items:center; gap:10px; flex-wrap:wrap; margin-bottom:6px;">' +
+                        '<span class="profile-name" style="margin:0; font-size:26px;">' + escH(emp.name || emp.email) + '</span>' +
+                        (emp.jobTitle ? '<span class="badge" style="background:var(--gd); color:#1b2a4a; font-weight:800; font-size:12px;">' + escH(emp.jobTitle) + '</span>' : '') +
+                        (emp.disabled ? '<span class="badge badge-disabled">🚫 معطّل</span>' : '<span class="badge badge-active">✅ نشط</span>') +
+                        '<span class="perf-score" title="تقييم الأداء العام" style="background:rgba(255,255,255,0.2); color:#fff; border:1px solid rgba(255,255,255,0.3);">🏆 ' + (emp.perf ? emp.perf.total : 0) + '%</span>' +
+                    '</div>' +
+                    '<div class="profile-job" style="color:rgba(255,255,255,0.85); margin-bottom:6px; flex-wrap:wrap;">' +
+                        '📧 ' + escH(emp.email || '-') + 
+                        (emp.phone ? ' · ☎️ ' + escH(emp.phone) : '') + 
+                        (emp.dept ? ' · 🏢 ' + escH(emp.dept) : '') + 
+                        ' · 🏢 ' + (emp.workMode === 'remote' ? 'عن بُعد' : 'من المكتب') +
+                    '</div>' +
+                    '<div class="perf-stars">' + renderStars(emp.perf ? emp.perf.stars : 0) + '</div>' +
                 '</div>' +
             '</div>' +
+
+            // Admin Controls Toolbar inside header
+            '<div style="margin-top:20px; padding-top:14px; border-top:1px solid rgba(255,255,255,0.15); display:flex; gap:8px; flex-wrap:wrap; width:100%; z-index:2;">' +
+                '<button class="bt bt-o" style="background:rgba(255,255,255,0.15); color:#fff; border-color:rgba(255,255,255,0.3); font-size:11px;" onclick="tgToggleProfEdit(\'empProfNameEdit\')">✏️ تعديل الاسم</button>' +
+                '<button class="bt bt-o" style="background:rgba(255,255,255,0.15); color:#fff; border-color:rgba(255,255,255,0.3); font-size:11px;" onclick="tgToggleProfEdit(\'empProfJobEdit\')">🏷 تعديل المسمى</button>' +
+                '<button class="bt bt-o" style="background:rgba(255,255,255,0.15); color:#fff; border-color:rgba(255,255,255,0.3); font-size:11px;" onclick="tgToggleProfEdit(\'empProfDeptPhoneEdit\')">☎️ الإدارة والهاتف</button>' +
+                '<button class="bt ' + (emp.chatAccess === false ? 'bt-p' : 'bt-o') + '" style="font-size:11px;" onclick="tgToggleEmpChatAccess(\'' + emp.uid + '\',' + (emp.chatAccess !== false) + ')">' + (emp.chatAccess === false ? '💬 السماح بالشات' : '💬 منع الشات') + '</button>' +
+                '<button class="bt ' + (emp.disabled ? 'bt-p' : 'bt-o') + '" style="font-size:11px;" onclick="toggleEmpDisabled(\'' + emp.uid + '\',' + (!!emp.disabled) + ')">' + (emp.disabled ? '✅ إعادة تفعيل الحساب' : '🚫 تعطيل الحساب') + '</button>' +
+                '<button class="bt bt-d" style="font-size:11px; margin-right:auto;" onclick="openDeleteEmpModal(\'' + emp.uid + '\')">🗑 حذف الموظف</button>' +
+            '</div>' +
+
+            // Inline edit boxes
+            '<div id="empProfNameEdit" style="display:none; margin-top:12px; gap:8px; align-items:center; z-index:2; background:rgba(0,0,0,0.3); padding:10px 14px; border-radius:10px;">' +
+                '<input type="text" id="empProfNameInput" value="' + escH(emp.baseName || emp.name || '') + '" style="max-width:240px; padding:6px 12px; font-size:12px; border-radius:6px; border:1px solid rgba(255,255,255,0.3); background:#fff; color:#000;">' +
+                '<button class="bt bt-p" style="padding:6px 14px; font-size:11px;" onclick="saveEmpNameFromProfile(\'' + emp.uid + '\')">💾 حفظ</button>' +
+                '<span id="empProfNameMsg" style="font-size:11px; color:#fff;"></span>' +
+            '</div>' +
+
+            '<div id="empProfJobEdit" style="display:none; margin-top:12px; gap:8px; align-items:center; z-index:2; background:rgba(0,0,0,0.3); padding:10px 14px; border-radius:10px;">' +
+                '<input type="text" id="empProfJobInput" value="' + escH(emp.jobTitle || '') + '" placeholder="المسمى الوظيفي" style="max-width:240px; padding:6px 12px; font-size:12px; border-radius:6px; border:1px solid rgba(255,255,255,0.3); background:#fff; color:#000;">' +
+                '<button class="bt bt-p" style="padding:6px 14px; font-size:11px;" onclick="saveEmpJobFromProfile(\'' + emp.uid + '\')">💾 حفظ</button>' +
+                '<span id="empProfJobMsg" style="font-size:11px; color:#fff;"></span>' +
+            '</div>' +
+
+            '<div id="empProfDeptPhoneEdit" style="display:none; margin-top:12px; gap:8px; align-items:center; flex-wrap:wrap; z-index:2; background:rgba(0,0,0,0.3); padding:10px 14px; border-radius:10px;">' +
+                '<input type="text" id="empProfDeptInput" value="' + escH(emp.dept || '') + '" placeholder="القسم / الإدارة" style="max-width:160px; padding:6px 12px; font-size:12px; border-radius:6px; border:1px solid rgba(255,255,255,0.3); background:#fff; color:#000;">' +
+                '<input type="text" id="empProfPhoneInput" value="' + escH(emp.phone || '') + '" placeholder="رقم الهاتف" style="max-width:160px; padding:6px 12px; font-size:12px; border-radius:6px; border:1px solid rgba(255,255,255,0.3); background:#fff; color:#000;">' +
+                '<button class="bt bt-p" style="padding:6px 14px; font-size:11px;" onclick="saveEmpDeptPhoneFromProfile(\'' + emp.uid + '\')">💾 حفظ</button>' +
+                '<span id="empProfDeptPhoneMsg" style="font-size:11px; color:#fff;"></span>' +
+            '</div>' +
+
         '</div>' +
+
+        // Navigation Tabs
         '<div class="profile-nav">' +
             '<div class="profile-tab a" data-pt="ov" onclick="tgProfileGo(\'ov\',this)">🏠 نظرة عامة</div>' +
-            '<div class="profile-tab" data-pt="pj" onclick="tgProfileGo(\'pj\',this)">📁 المشاريع ('+emp.projects.length+')</div>' +
-            '<div class="profile-tab" data-pt="tk" onclick="tgProfileGo(\'tk\',this)">🗂 المهام ('+(emp.tasks?emp.tasks.length:0)+')</div>' +
-            '<div class="profile-tab" data-pt="ac" onclick="tgProfileGo(\'ac\',this)">🏆 الإنجازات ('+emp.achievements.length+')</div>' +
-            '<div class="profile-tab" data-pt="wr" onclick="tgProfileGo(\'wr\',this)">📊 التقارير ('+emp.weeklyReports.length+')</div>' +
-            '<div class="profile-tab" data-pt="rq" onclick="tgProfileGo(\'rq\',this)">📨 الطلبات ('+emp.requests.length+')</div>' +
+            '<div class="profile-tab" data-pt="pj" onclick="tgProfileGo(\'pj\',this)">📁 المشاريع والمهام (' + (emp.projects.length + (emp.tasks ? emp.tasks.length : 0)) + ')</div>' +
+            '<div class="profile-tab" data-pt="wr" onclick="tgProfileGo(\'wr\',this)">📊 التقارير الأسبوعية (' + emp.weeklyReports.length + ')</div>' +
+            '<div class="profile-tab" data-pt="ac" onclick="tgProfileGo(\'ac\',this)">🏆 الإنجازات (' + emp.achievements.length + ')</div>' +
+            '<div class="profile-tab" data-pt="rq" onclick="tgProfileGo(\'rq\',this)">📨 الطلبات (' + emp.requests.length + ')</div>' +
         '</div>' +
+
+        // Profile Content Area
         '<div class="profile-content">' +
-            // Overview
+            // Overview Tab
             '<div class="profile-pg a" id="ppg-ov">' +
-                '<div class="p-stats">' +
-                    '<div class="p-stat-box"><div class="p-stat-val">' + emp.projects.length + '</div><div class="p-stat-lbl">مشاريع</div></div>' +
+                '<div class="p-stats" style="grid-template-columns:repeat(auto-fit, minmax(160px, 1fr)); gap:14px; margin-bottom:24px;">' +
+                    '<div class="p-stat-box"><div class="p-stat-val">' + emp.projects.length + '</div><div class="p-stat-lbl">مشاريع مُسندة</div></div>' +
                     '<div class="p-stat-box"><div class="p-stat-val">' + avgProg + '%</div><div class="p-stat-lbl">متوسط التقدم</div></div>' +
-                    '<div class="p-stat-box"><div class="p-stat-val">' + emp.achievements.length + '</div><div class="p-stat-lbl">إنجازات</div></div>' +
-                    '<div class="p-stat-box"><div class="p-stat-val">' + emp.weeklyReports.length + '</div><div class="p-stat-lbl">تقارير</div></div>' +
+                    '<div class="p-stat-box"><div class="p-stat-val">' + emp.achievements.length + '</div><div class="p-stat-lbl">إنجازات مسجلة</div></div>' +
+                    '<div class="p-stat-box"><div class="p-stat-val">' + emp.weeklyReports.length + '</div><div class="p-stat-lbl">تقارير أسبوعية</div></div>' +
+                    '<div class="p-stat-box"><div class="p-stat-val">' + emp.requests.length + '</div><div class="p-stat-lbl">إجمالي الطلبات</div></div>' +
+                    '<div class="p-stat-box" style="background:rgba(201,162,39,0.1); border-color:var(--gd);"><div class="p-stat-val" style="color:var(--gd2);">' + (emp.perf ? emp.perf.total : 0) + '%</div><div class="p-stat-lbl">الأداء العام</div></div>' +
                 '</div>' +
+                
                 '<div class="profile-grid">' +
-                    '<div class="p-card"><div class="p-card-h">🧑 البيانات الشخصية</div>' +
+                    '<div class="p-card"><div class="p-card-h">🧑 البيانات الوظيفية والشخصية</div>' +
                         '<div class="p-info-list">' +
-                            '<div class="p-info-item"><span class="p-info-lbl">الاسم</span><span class="p-info-val">' + escH(emp.name || '-') + '</span></div>' +
+                            '<div class="p-info-item"><span class="p-info-lbl">الاسم الكامل</span><span class="p-info-val">' + escH(emp.name || '-') + '</span></div>' +
                             '<div class="p-info-item"><span class="p-info-lbl">المسمى الوظيفي</span><span class="p-info-val">' + escH(emp.jobTitle || '-') + '</span></div>' +
                             '<div class="p-info-item"><span class="p-info-lbl">البريد الإلكتروني</span><span class="p-info-val">' + escH(emp.email || '-') + '</span></div>' +
+                            '<div class="p-info-item"><span class="p-info-lbl">الهاتف</span><span class="p-info-val">' + escH(emp.phone || '-') + '</span></div>' +
+                            '<div class="p-info-item"><span class="p-info-lbl">الإدارة / القسم</span><span class="p-info-val">' + escH(emp.dept || '-') + '</span></div>' +
                             '<div class="p-info-item"><span class="p-info-lbl">نظام العمل</span><span class="p-info-val">' + (emp.workMode==='remote'?'عن بُعد':'من المكتب') + '</span></div>' +
+                            '<div class="p-info-item"><span class="p-info-lbl">حالة الحساب</span><span class="p-info-val">' + (emp.disabled?'🚫 معطّل':'✅ نشط') + '</span></div>' +
                         '</div>' +
                     '</div>' +
-                    '<div class="p-card"><div class="p-card-h">📅 آخر النشاطات</div>' +
-                        '<div class="empty-hint" style="font-size:11px">سيتم ربط سجل النشاطات لاحقاً...</div>' +
+                    '<div class="p-card"><div class="p-card-h">🏆 تقييم وتفاعل الموظف</div>' +
+                        '<div style="text-align:center; padding:20px 0;">' +
+                            '<div style="font-size:36px; font-weight:900; color:var(--gd2);">' + (emp.perf ? emp.perf.total : 0) + '%</div>' +
+                            '<div style="font-size:13px; color:var(--tx3); margin:4px 0 12px 0;">نسبة الإنجاز والالتزام الكلية</div>' +
+                            '<div class="perf-stars" style="font-size:24px;">' + renderStars(emp.perf ? emp.perf.stars : 0) + '</div>' +
+                        '</div>' +
                     '</div>' +
                 '</div>' +
             '</div>' +
-            // Projects
+
+            // Projects & Tasks Tab
             '<div class="profile-pg" id="ppg-pj">' +
-                '<div class="profile-grid">' +
+                '<div style="font-size:15px; font-weight:800; margin-bottom:14px; color:var(--nv);">📁 المشاريع المُسندة (' + emp.projects.length + ')</div>' +
+                '<div class="profile-grid" style="margin-bottom:24px;">' +
                     (emp.projects.length ? emp.projects.map(function(p){
-                        var pm = (p.progressMap && p.progressMap[emp.uid]) || {progress:0, status:'لم يبدأ'};
-                        return '<div class="p-card"><div class="p-card-h">📁 ' + escH(p.title) + '</div>' +
-                               '<div class="pj-bar"><div class="pj-bar-in" style="width:'+pm.progress+'%"></div></div>' +
-                               '<div style="font-size:11px;margin-top:8px;display:flex;justify-content:space-between">' +
-                               '<span>الحالة: <b>'+escH(pm.status)+'</b></span><span>'+pm.progress+'%</span></div>' +
+                        var pm = (p.progressMap && p.progressMap[emp.uid]) || {progress:0, status:'لم يبدأ', note:''};
+                        return '<div class="p-card">' +
+                               '<div class="p-card-h">📁 ' + escH(p.title) + '</div>' +
+                               (p.description ? '<div style="font-size:12px; color:var(--tx3); margin-bottom:10px;">' + tgMakeExpandable(p.description, 100) + '</div>' : '') +
+                               '<div class="pj-bar" style="height:10px; border-radius:5px; background:var(--bd);"><div class="pj-bar-in" style="width:' + pm.progress + '%; background:var(--gd);"></div></div>' +
+                               '<div style="font-size:12px; margin-top:10px; display:flex; justify-content:space-between; align-items:center;">' +
+                               '<span>الحالة: <span class="badge ' + badgeClassForStatus(pm.status) + '">' + escH(pm.status) + '</span></span>' +
+                               '<b style="color:var(--nv);">' + pm.progress + '%</b>' +
+                               '</div>' +
+                               (pm.note ? '<div style="font-size:11px; color:var(--tx3); margin-top:6px;">ملاحظة: ' + escH(pm.note) + '</div>' : '') +
                                '</div>';
-                    }).join('') : '<div class="empty-hint">لا توجد مشاريع حالية.</div>') +
+                    }).join('') : '<div class="empty-hint">لا توجد مشاريع مُسندة حالياً.</div>') +
                 '</div>' +
-            '</div>' +
-            // Tasks
-            '<div class="profile-pg" id="ppg-tk">' +
+
+                '<div style="font-size:15px; font-weight:800; margin-bottom:14px; color:var(--nv);">🗂 المهام المُسندة (' + (emp.tasks ? emp.tasks.length : 0) + ')</div>' +
                 '<div class="profile-grid">' +
                     (emp.tasks && emp.tasks.length ? emp.tasks.map(function(t){
                         return '<div class="p-card"><div class="p-card-h">🗂 ' + escH(t.title) + '</div>' +
-                               '<div style="font-size:11px;opacity:0.8">' + escH(t.description || '') + '</div>' +
-                               '<div style="margin-top:10px"><span class="badge '+pstatusBadgeClass(t.status)+'">'+escH(t.status)+'</span></div>' +
+                               '<div style="font-size:12px; opacity:0.8; margin-bottom:10px;">' + escH(t.description || '') + '</div>' +
+                               '<div><span class="badge ' + badgeClassForStatus(t.status) + '">' + escH(t.status || 'لم يبدأ') + '</span></div>' +
                                '</div>';
-                    }).join('') : '<div class="empty-hint">لا توجد مهام حالية.</div>') +
+                    }).join('') : '<div class="empty-hint">لا توجد مهام مُسندة حالياً.</div>') +
                 '</div>' +
             '</div>' +
-            // Achievements
-            '<div class="profile-pg" id="ppg-ac">' +
-                '<div class="p-timeline">' +
-                    (emp.achievements.length ? emp.achievements.map(function(a){
-                        return '<div class="p-timeline-item"><div class="p-timeline-dot"></div>' +
-                               '<div class="p-timeline-content"><div class="p-timeline-date">' + escH(a.date) + '</div>' +
-                               '<div class="p-timeline-title">' + escH(a.title) + '</div>' +
-                               (a.description?'<div style="font-size:11px;opacity:0.7;margin-top:4px">'+escH(a.description)+'</div>':'') +
-                               '</div></div>';
-                    }).join('') : '<div class="empty-hint">لا توجد إنجازات مسجلة.</div>') +
-                '</div>' +
-            '</div>' +
-            // Weekly Reports
+
+            // Weekly Reports Tab
             '<div class="profile-pg" id="ppg-wr">' +
+                '<div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:14px;">' +
+                    '<div style="font-size:15px; font-weight:800; color:var(--nv);">📊 التقارير الأسبوعية (' + emp.weeklyReports.length + ')</div>' +
+                    (emp.weeklyReports.length ? '<button class="bt bt-d" style="padding:4px 12px; font-size:11px;" onclick="tgDeleteAllRecords(\'weeklyReports\', \'تقارير الموظف\', \'uid\', \'' + emp.uid + '\', function(){ tgOpenEmployeeProfile(\'' + emp.uid + '\'); loadStaffOverview(); })">🗑 حذف كافة التقارير</button>' : '') +
+                '</div>' +
                 '<div class="profile-grid">' +
-                    (emp.weeklyReports.length ? emp.weeklyReports.map(function(r){
-                        return '<div class="p-card"><div class="p-card-h">📅 أسبوع ' + escH(r.weekStart) + '</div>' +
-                               '<div style="font-size:11px;opacity:0.8;white-space:pre-wrap">' + escH(r.content) + '</div>' +
+                    (emp.weeklyReports.length ? emp.weeklyReports.map(function(r, ri){
+                        var waMsg = encodeURIComponent('التقرير الأسبوعي - ' + (emp.name || emp.email || '') + '\n' + 'الأسبوع: ' + (r.weekStart || '') + '\n---\n' + (r.content || ''));
+                        return '<div class="p-card">' +
+                               '<div class="p-card-h" style="display:flex; justify-content:space-between; align-items:center;">' +
+                               '<span>📅 أسبوع ' + escH(r.weekStart || '') + '</span>' +
+                               '<div>' +
+                               '  <button class="bt bt-o" style="padding:2px 8px; font-size:10px;" onclick="printWeeklyReportDoc(' + JSON.stringify(emp).replace(/"/g, '&quot;') + ',' + JSON.stringify(r).replace(/"/g, '&quot;') + ')">🖨 طباعة</button>' +
+                               '  <a href="https://wa.me/?text=' + waMsg + '" target="_blank" class="bt bt-g" style="padding:2px 8px; font-size:10px; text-decoration:none; display:inline-flex; align-items:center;">📲 واتساب</a>' +
+                               '</div>' +
+                               '</div>' +
+                               '<div style="font-size:12px; line-height:1.6; opacity:0.9; white-space:pre-wrap; margin-top:8px;">' + escH(r.content || '') + '</div>' +
                                '</div>';
-                    }).join('') : '<div class="empty-hint">لا توجد تقارير أسبوعية.</div>') +
+                    }).join('') : '<div class="empty-hint">لم يُرسل الموظف أي تقرير أسبوعي بعد.</div>') +
                 '</div>' +
             '</div>' +
-            // Requests
+
+            // Achievements Tab
+            '<div class="profile-pg" id="ppg-ac">' +
+                '<div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:14px;">' +
+                    '<div style="font-size:15px; font-weight:800; color:var(--nv);">🏆 الإنجازات المسجلة (' + emp.achievements.length + ')</div>' +
+                    (emp.achievements.length ? '<button class="bt bt-d" style="padding:4px 12px; font-size:11px;" onclick="tgDeleteAllRecords(\'achievements\', \'إنجازات الموظف\', \'uid\', \'' + emp.uid + '\', function(){ tgOpenEmployeeProfile(\'' + emp.uid + '\'); loadStaffOverview(); })">🗑 حذف كافة الإنجازات</button>' : '') +
+                '</div>' +
+                '<div class="profile-grid">' +
+                    (emp.achievements.length ? emp.achievements.map(function(a){
+                        return '<div class="p-card">' +
+                               '<div class="p-card-h" style="display:flex; justify-content:space-between; align-items:center;">' +
+                               '<span>🏆 ' + escH(a.title || '') + '</span>' +
+                               '<button class="bt bt-o" style="padding:2px 8px; font-size:10px;" onclick="printAchievementDoc(' + JSON.stringify(emp).replace(/"/g, '&quot;') + ',' + JSON.stringify(a).replace(/"/g, '&quot;') + ')">🖨 طباعة</button>' +
+                               '</div>' +
+                               (a.description ? '<div style="font-size:12px; opacity:0.8; margin-top:6px;">' + escH(a.description) + '</div>' : '') +
+                               (a.date ? '<div style="font-size:11px; color:var(--tx3); margin-top:6px;">📅 ' + escH(a.date) + '</div>' : '') +
+                               '</div>';
+                    }).join('') : '<div class="empty-hint">لا توجد إنجازات مسجلة بعد.</div>') +
+                '</div>' +
+            '</div>' +
+
+            // Requests Tab
             '<div class="profile-pg" id="ppg-rq">' +
+                '<div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:14px;">' +
+                    '<div style="font-size:15px; font-weight:800; color:var(--nv);">📨 الطلبات (' + emp.requests.length + ')</div>' +
+                    (emp.requests.length ? '<button class="bt bt-d" style="padding:4px 12px; font-size:11px;" onclick="tgDeleteAllRecords(\'requests\', \'طلبات الموظف\', \'uid\', \'' + emp.uid + '\', function(){ tgOpenEmployeeProfile(\'' + emp.uid + '\'); loadStaffOverview(); })">🗑 حذف كافة الطلبات</button>' : '') +
+                '</div>' +
                 '<div class="profile-grid">' +
                     (emp.requests.length ? emp.requests.map(function(r){
-                        return '<div class="p-card"><div class="p-card-h">📨 ' + escH(r.type) + '</div>' +
-                               '<div style="font-size:11px;margin-bottom:8px">' + escH(r.details || '') + '</div>' +
+                        var attachHtml = '';
+                        if(r.fileUrl && r.fileType){
+                            if(r.fileType.indexOf('image/')===0){
+                                attachHtml = '<div style="margin-top:8px"><a href="'+r.fileUrl+'" target="_blank"><img src="'+r.fileUrl+'" style="max-width:160px; max-height:110px; border-radius:8px; display:block"></a></div>';
+                            } else if(r.fileType.indexOf('video/')===0){
+                                attachHtml = '<div style="margin-top:8px"><video src="'+r.fileUrl+'" controls style="max-width:200px; border-radius:8px"></video></div>';
+                            } else {
+                                attachHtml = '<div style="margin-top:8px"><a href="'+r.fileUrl+'" target="_blank" style="color:var(--tx); font-weight:700; text-decoration:underline">📎 '+escH(r.fileName||'ملف مرفق')+'</a></div>';
+                            }
+                        }
+                        return '<div class="p-card">' +
+                               '<div class="p-card-h" style="display:flex; justify-content:space-between; align-items:center;">' +
+                               '<span>📨 ' + escH(r.type || 'طلب') + '</span>' +
+                               (r.type !== 'طلب نموذج' ? '<button class="bt bt-o" style="padding:2px 8px; font-size:10px;" onclick="printRequestDoc(' + JSON.stringify(emp).replace(/"/g, '&quot;') + ',' + JSON.stringify(r).replace(/"/g, '&quot;') + ')">🖨 طباعة</button>' : '') +
+                               '</div>' +
+                               '<div style="margin:6px 0;"><span class="badge ' + badgeClassForReq(r.status) + '">' + reqStatusLabel(r.status) + '</span></div>' +
+                               (r.details ? '<div style="font-size:12px; margin-bottom:6px;">' + escH(r.details) + '</div>' : '') +
+                               (r.fromDate ? ('<div style="font-size:11px; color:var(--tx3);">من ' + escH(r.fromDate) + (r.toDate ? (' إلى ' + escH(r.toDate)) : '') + '</div>') : '') +
+                               (r.reviewedBy ? ('<div style="font-size:11px; color:var(--tx3);">مراجعة: ' + escH(r.reviewedBy) + '</div>') : '') +
                                (function(){
                                    if(!r.dynamicData) return '';
-                                   var dh = '<div style="margin-bottom:8px;padding:8px;background:rgba(0,0,0,0.04);border-radius:6px;font-size:11px;">';
+                                   var dh = '<div style="margin-top:8px; padding:8px; background:rgba(0,0,0,0.03); border-radius:6px; font-size:11px;">';
                                    var tpl = window.FS_TEMPLATES && r.formTemplateId ? window.FS_TEMPLATES[r.formTemplateId] : null;
                                    var fieldLabels = {};
                                    if(tpl && tpl.fields) { tpl.fields.forEach(function(f){ fieldLabels[f.id] = f.label; }); }
@@ -5920,16 +7754,17 @@ function renderEmployeeProfileModal(emp) {
                                        if(v === true) v = 'نعم / تم';
                                        if(v === false) v = 'لا';
                                        var lbl = fieldLabels[k] || k;
-                                       if(lbl === 'chk1') lbl = 'تسليم العهدة المالية';
-                                       if(lbl === 'chk2') lbl = 'تسليم العهدة العينية';
-                                       if(lbl === 'chk3') lbl = 'تسليم المستندات والملفات';
-                                       if(lbl === 'chk4') lbl = 'إنهاء المهام المعلقة';
-                                       dh += '<div style="margin-bottom:3px;"><span style="color:var(--tx3);display:inline-block;width:100px;">' + escH(lbl) + ':</span> <b style="white-space:pre-wrap;">' + escH(v) + '</b></div>';
+                                       dh += '<div style="margin-bottom:3px;"><span style="color:var(--tx3); display:inline-block; width:100px;">' + escH(lbl) + ':</span> <b>' + escH(v) + '</b></div>';
                                    }
                                    dh += '</div>';
                                    return dh;
                                })() +
-                               '<div><span class="badge '+badgeClassForReq(r.status)+'">'+reqStatusLabel(r.status)+'</span></div>' +
+                               attachHtml +
+                               (r.status==='pending' ? ('<div style="margin-top:10px; display:flex; gap:6px; flex-wrap:wrap;">' +
+                                   (r.type==='طلب نموذج' ? '<button class="bt bt-o" style="font-size:10px;" onclick="goSendForm(document.querySelector(\'[onclick*=\\\'goSendForm\\\']\'), \'' + emp.uid + '\', \'' + escH(r.details || '') + '\')">📨 إرسال نموذج</button>' : '') +
+                                   '<button class="bt bt-p" style="padding:4px 10px; font-size:11px;" onclick="reviewRequest(\'' + r.id + '\',\'approved\'); setTimeout(function(){ tgOpenEmployeeProfile(\'' + emp.uid + '\'); }, 500);">✔ موافقة</button>' +
+                                   '<button class="bt bt-d" style="padding:4px 10px; font-size:11px;" onclick="reviewRequest(\'' + r.id + '\',\'rejected\'); setTimeout(function(){ tgOpenEmployeeProfile(\'' + emp.uid + '\'); }, 500);">✕ رفض</button>' +
+                               '</div>') : '') +
                                '</div>';
                     }).join('') : '<div class="empty-hint">لا توجد طلبات سابقة.</div>') +
                 '</div>' +
@@ -6181,7 +8016,7 @@ function tgViewArchiveDoc(id) {
 // ─── ميزة التعبئة التلقائية ──────────────────────────────────────────
 var tgAutoEmpList = [];
 function tgLoadAutoCompleteList() {
-    db.collection('users').where('role','in',['employee','tech_admin']).get().then(function(snap){
+    db.collection('users').where('role','==','employee').get().then(function(snap){
         tgAutoEmpList = snap.docs.map(function(d){ return Object.assign({uid:d.id}, d.data()); });
         tgAutoEmpList.sort(function(a,b){ return (a.name||a.email||'').localeCompare(b.name||b.email||''); });
         
@@ -6615,7 +8450,7 @@ window.addDevRes = function() {
         if(file.size > 100*1024*1024) { alert('حجم الملف كبير جداً (يجب أن يكون أقل من 100 ميجا)'); return; }
         
         btn.disabled = true;
-        status.innerText = '⏳ جارٍ رفع الملف...';
+        status.innerText = '⏳ جارٍ رفع الملف... 0%';
         
         tgUploadFile('dev_resources', file.name, file, 
             function(progress) {
@@ -6893,8 +8728,7 @@ async function buildAdvisorLiveContext(questionText) {
         if (reqSnap.size === 0) ctx += "لا توجد طلبات معلقة.\n";
         reqSnap.forEach(function(d) {
             var r = d.data();
-            var empMatch = (window._staffEmpCache || []).find(function(e){ return e.uid === r.uid; });
-            var empName = empMatch ? empMatch.name : (r.uid || 'غير معروف');
+            var empName = tgGetRealEmpName(r.userName || r.name, r.uid);
             ctx += "- " + (r.type || 'طلب') + " من " + empName + (r.fromDate ? (" بتاريخ " + r.fromDate + (r.toDate ? (" إلى " + r.toDate) : "")) : "") + "\n";
         });
     } catch(e) { console.error("Advisor ctx (requests) error", e); }
@@ -7082,47 +8916,117 @@ async function buildAdvisorLiveContext(questionText) {
         }
     } catch(e) { console.error("Advisor ctx (knowledge docs) error", e); }
 
-    ctx += "\n\nتعليمات هامة جداً للمستشار:\n" +
-           "1. أنت 'المستشار الذكي الشامل' الخاص بنظام Tech Go لإدارة الشركة والموظفين.\n" +
-           "2. بين يديك الآن البيانات الكاملة والتفصيلية المحدثة للشركة: قائمة الموظفين والمناصب، المهام والمشاريع، الحضور والانصراف، الطلبات المعلقة، التقارير الأسبوعية والشهرية، الإنجازات، والخطط الشهرية التفصيلية كاملة بأهدافها ومهامها ونسب إنجازها، بالإضافة لكافة المستندات المرفوعة في قاعدة المعرفة.\n" +
-           "3. عندما يسألك المستخدم عن خطط أي شهر (مثل شهر 8 أو شهر أغسطس أو غيره)، اعرض تفاصيل خطط الموظفين المتاحة وأهدافهم ومهامهم ونسب إنجازهم بوضوح واستفاضة من البيانات أعلاه، ولا تقل أبداً إن 'المعلومات التفصيلية غير موجودة'.\n" +
-           "4. أجب بدقة ووضوح وبطريقة احترافية ومفيدة باللهجة المصرية، وساعد المدير دائماً برؤية تحليليّة وإدارية حكيمة.\n";
+    ctx += "\n\n✨ تعليمات توجيهية وإخراجية هامة جداً للمستشار الذكي (استخدم أقصى درجات التفصيل والجمال التنسيقي):\n" +
+           "1. أنت 'المستشار الذكي الشامل ورئيس الاستشارات الإدارية والتقنية' لنظام Tech Go لإدارة الشركات والعمليات.\n" +
+           "2. بين يديك الآن كافة البيانات التفصيلية المحدثة للشركة: قائمة الموظفين والمناصب، المهام والمشاريع، الحضور والانصراف، الطلبات المعلقة، التقارير الأسبوعية والشهرية، الإنجازات، والخطط الشهرية التفصيلية كاملة بأهدافها ومهامها ونسب إنجازها، بالإضافة لكافة المستندات المرفوعة في قاعدة المعرفة.\n" +
+           "3. يجب أن تكون إجاباتك مفصلة، غنية بالمعلومات، مريحة للعين، ومنسقة بأجمل شكل ممكن (استخدم تنسيق Markdown احترافي، عناوين رئيسية ###، نقاط إيموجي 📊 🎯 📌 👤 📅 ⚡، وجداول توضيحية عند الحاجة).\n" +
+           "4. حلل البيانات المتاحة بأسلوب استشاري راقٍ وعميق باللغة العربية / اللهجة المصرية الإدارية المحترمة، وقدم تحليلات رقمية ونسب إنجاز وملاحظات قيادية تُساعد المدير والتنفيذيين في اتخاذ القرارات بوضوح.\n" +
+           "5. إذا سألك المستخدم عن أي خطط أو تقارير أو مستندات، استعرض التفاصيل الكاملة والأسماء والبنود والمستهدفات بكل استفاضة ودقة ولا تكتفِ بالإجابات المختصرة السطحية.\n" +
+           "6. قدم مقترحات عملية وخطوات قادمة موصى بها في نهاية كل إجابة لتعزيز الكفاءة والانتاجية.\n";
     return ctx;
 }
 
-function aiAdvisorCallAPI(apiKey, contextText, historyArr) {
+window.tgFetchOpenAIChatCompletions = function(endpoint, apiKey, primaryModel, messages, temperature, fallbacks) {
     return new Promise(function(resolve, reject) {
-        if (!apiKey) { reject(new Error('مفتاح API غير موجود.')); return; }
-        var isGroq = apiKey.indexOf('gsk_') === 0;
-        var isOpenRouter = apiKey.indexOf('sk-or-') === 0;
-
-        if (isGroq || isOpenRouter) {
-            var endpoint = isGroq ? 'https://api.groq.com/openai/v1/chat/completions' : 'https://openrouter.ai/api/v1/chat/completions';
-            var modelName = isGroq ? 'llama-3.3-70b-versatile' : 'meta-llama/llama-3.1-8b-instruct:free';
-            var messages = [{ role: 'system', content: contextText }];
-            historyArr.forEach(function(m) { messages.push({ role: m.role === 'user' ? 'user' : 'assistant', content: m.content }); });
-
+        var modelsToTry = [primaryModel].concat(fallbacks || []);
+        
+        function tryNextModel(index) {
+            if (index >= modelsToTry.length) {
+                reject(new Error('جميع نماذج الخدمات المتاحة تعذر الوصول إليها.'));
+                return;
+            }
+            
+            var currentModel = modelsToTry[index];
+            
             fetch(endpoint, {
                 method: 'POST',
                 headers: {
                     'Authorization': 'Bearer ' + apiKey,
                     'Content-Type': 'application/json',
                     'HTTP-Referer': window.location.href,
-                    'X-Title': 'Tech Go System - AI Advisor'
+                    'X-Title': 'Tech Go System'
                 },
-                body: JSON.stringify({ model: modelName, messages: messages, temperature: 0.6 })
+                body: JSON.stringify({ model: currentModel, messages: messages, temperature: temperature || 0.6 })
             })
             .then(function(res) { return res.json(); })
             .then(function(data) {
                 if (data.error) {
                     var msg = typeof data.error === 'string' ? data.error : (data.error.message || JSON.stringify(data.error));
-                    reject(new Error(msg));
+                    
+                    var matchSlug = msg.match(/use this slug instead:\s*([a-zA-Z0-9_\-\.\/:]+)/i);
+                    if (matchSlug && matchSlug[1]) {
+                        var suggestedSlug = matchSlug[1].trim();
+                        modelsToTry.splice(index + 1, 0, suggestedSlug);
+                    }
+                    
+                    if (index + 1 < modelsToTry.length) {
+                        tryNextModel(index + 1);
+                    } else {
+                        reject(new Error(msg));
+                    }
                     return;
                 }
-                if (data.choices && data.choices.length > 0) resolve(data.choices[0].message.content);
-                else reject(new Error('رد فارغ من الخادم.'));
+                
+                if (data.choices && data.choices.length > 0) {
+                    resolve(data.choices[0].message.content);
+                } else {
+                    if (index + 1 < modelsToTry.length) {
+                        tryNextModel(index + 1);
+                    } else {
+                        reject(new Error('رد فارغ من الخادم.'));
+                    }
+                }
             })
-            .catch(reject);
+            .catch(function(err) {
+                if (index + 1 < modelsToTry.length) {
+                    tryNextModel(index + 1);
+                } else {
+                    reject(err);
+                }
+            });
+        }
+        
+        tryNextModel(0);
+    });
+};
+
+function aiAdvisorCallAPI(apiKey, contextText, historyArr) {
+    return new Promise(function(resolve, reject) {
+        if (!apiKey) { reject(new Error('مفتاح API غير موجود.')); return; }
+        var isGroq = apiKey.indexOf('gsk_') === 0;
+        var isOpenRouter = apiKey.indexOf('sk-or-') === 0;
+        var isCerebras = apiKey.indexOf('csk-') === 0 || apiKey.indexOf('csk_') === 0 || apiKey.toLowerCase().indexOf('cerebras') !== -1;
+        var isTogether = apiKey.indexOf('tgp_') === 0 || apiKey.indexOf('together_') === 0 || apiKey.indexOf('together-') === 0 || apiKey.indexOf('tg-') === 0 || apiKey.toLowerCase().indexOf('together') !== -1;
+
+        if (isGroq || isOpenRouter || isCerebras || isTogether) {
+            var endpoint = '';
+            var primaryModel = '';
+            var fallbacks = [];
+
+            if (isCerebras) {
+                endpoint = 'https://api.cerebras.ai/v1/chat/completions';
+                primaryModel = 'llama-3.3-70b';
+                fallbacks = ['llama3.3-70b', 'llama3.1-8b'];
+            } else if (isTogether) {
+                endpoint = 'https://api.together.xyz/v1/chat/completions';
+                primaryModel = 'meta-llama/Llama-3.3-70B-Instruct-Turbo';
+                fallbacks = ['meta-llama/llama-3.3-70b-instruct', 'meta-llama/llama-3.1-8b-instruct', 'meta-llama/Meta-Llama-3.1-8B-Instruct-Turbo'];
+            } else if (isGroq) {
+                endpoint = 'https://api.groq.com/openai/v1/chat/completions';
+                primaryModel = 'llama-3.3-70b-versatile';
+                fallbacks = ['llama-3.1-8b-instant', 'mixtral-8x7b-32768'];
+            } else {
+                endpoint = 'https://openrouter.ai/api/v1/chat/completions';
+                primaryModel = 'google/gemini-2.0-flash-exp:free';
+                fallbacks = ['meta-llama/llama-3.3-70b-instruct:free', 'meta-llama/llama-3.1-8b-instruct', 'qwen/qwen-2.5-72b-instruct:free', 'deepseek/deepseek-r1:free'];
+            }
+
+            var messages = [{ role: 'system', content: contextText }];
+            historyArr.forEach(function(m) { messages.push({ role: m.role === 'user' ? 'user' : 'assistant', content: m.content }); });
+
+            tgFetchOpenAIChatCompletions(endpoint, apiKey, primaryModel, messages, 0.6, fallbacks)
+                .then(resolve)
+                .catch(reject);
             return;
         }
 
@@ -7143,7 +9047,7 @@ function aiAdvisorCallAPI(apiKey, contextText, historyArr) {
                 if (data.error) {
                     var errMsg = data.error.message || 'خطأ من Gemini';
                     if (errMsg.toLowerCase().indexOf('quota') !== -1 && errMsg.indexOf('limit: 0') !== -1) {
-                        reject(new Error('حساب Google المرتبط بمفتاح الـ API ده مالوش أي رصيد مجاني حالياً (Limit: 0) — ده غالباً بيحصل لو حساب Google في دولة مش مدعومة بالباقة المجانية، أو محتاج تفعيل الفوترة. الحل الأسرع: جيب مفتاح Groq المجاني من console.groq.com وحطه بدل مفتاح Gemini في إعدادات النظام (نفس الخانة، بيتعرف تلقائي).'));
+                        reject(new Error('حساب Google المرتبط بمفتاح الـ API ده مالوش أي رصيد مجاني حالياً (Limit: 0) — ده غالباً بيحصل لو حساب Google في دولة مش مدعومة بالباقة المجانية، أو محتاج تفعيل الفوترة. الحل الأسرع: جيب مفتاح مجاني بسعة ضخمة من Cerebras أو Together AI أو Groq وحطه بدل مفتاح Gemini في إعدادات النظام (بيتعرف تلقائي).'));
                         return;
                     }
                     if (errMsg.toLowerCase().indexOf('quota') !== -1 || errMsg.indexOf('429') !== -1) {
@@ -7205,7 +9109,7 @@ function loadAiAdvisor(c) {
         h += '<div style="padding:24px 16px; background:#faf5ff; border:1px solid #e9d5ff; border-radius:10px; text-align:center;">';
         h += '<div style="font-size:34px; margin-bottom:8px;">🔑</div>';
         h += '<div style="font-weight:800; color:var(--nv); margin-bottom:6px;">لسه محتاج تفعّل الميزة دي</div>';
-        h += '<div style="color:var(--tx3); font-size:13px; margin-bottom:14px; max-width:420px; margin-inline:auto;">أضف مفتاح Gemini (أو Groq / OpenRouter) — مجاني بالكامل — من إعدادات النظام عشان المستشار الذكي يبدأ يشتغل.</div>';
+        h += '<div style="color:var(--tx3); font-size:13px; margin-bottom:14px; max-width:420px; margin-inline:auto;">أضف مفتاح Cerebras أو Together AI أو Gemini أو Groq — مجاني بالكامل — من إعدادات النظام عشان المستشار الذكي يبدأ يشتغل.</div>';
         h += '<button class="bt bt-p" onclick="go(\'set\')">⚙️ روح لإعدادات النظام</button>';
         h += '</div></div>';
         c.innerHTML = h;
@@ -7267,6 +9171,9 @@ async function tgExtractFileText(file) {
     if (isPdf) {
         return await tgExtractPdfText(file);
     }
+    if (/\.(xlsx|xls)$/i.test(file.name)) {
+        throw new Error('ملفات Excel (.xlsx/.xls) ملفات ثنائية غير نصية. يرجى تصدير التقرير بصيغة CSV أو TXT أو PDF لكي يقرأها المستشار بدقة.');
+    }
     // قراءة الملفات النصية المباشرة (TXT, MD, CSV, JSON, LOG, إلخ)
     try {
         if (file.text) {
@@ -7313,7 +9220,7 @@ window.aiKbUpload = async function() {
             btn.disabled = false;
             return;
         }
-        var capped = text.length > 220000 ? (text.slice(0, 220000) + '\n[...تم اقتصاص الباقي...]') : text;
+        var capped = text.length > 110000 ? (text.slice(0, 110000) + '\n[...تم اقتصاص الباقي لتفادي حظر الحجم...]') : text;
 
         function saveKbDoc(fileUrl) {
             db.collection('aiKnowledgeDocs').add({
@@ -7480,7 +9387,7 @@ window.adminGenerateSuggestions = async function() {
 
     var apiKey = window._appSettingsCache && window._appSettingsCache.geminiApiKey;
     if(!apiKey) {
-        alert('مفتاح الذكاء الاصطناعي غير موجود في إعدادات النظام. يرجى إضافة مفتاح (Gemini أو Groq أو OpenRouter) أولاً.');
+        alert('مفتاح الذكاء الاصطناعي غير موجود في إعدادات النظام. يرجى إضافة مفتاح (Cerebras أو Together أو Gemini أو Groq أو OpenRouter) أولاً.');
         return;
     }
 
@@ -7504,15 +9411,17 @@ function callGemini(apiKey, prompt, btn, resultBox, btnOriginalText, isAdmin) {
         return;
     }
     
-    var isGroq = apiKey.startsWith('gsk_');
-    var isOpenRouter = apiKey.startsWith('sk-or-');
-    var isGemini = !isGroq && !isOpenRouter;
+    var isGroq = apiKey.indexOf('gsk_') === 0;
+    var isOpenRouter = apiKey.indexOf('sk-or-') === 0;
+    var isCerebras = apiKey.indexOf('csk-') === 0 || apiKey.indexOf('csk_') === 0 || apiKey.toLowerCase().indexOf('cerebras') !== -1;
+    var isTogether = apiKey.indexOf('tgp_') === 0 || apiKey.indexOf('together_') === 0 || apiKey.indexOf('together-') === 0 || apiKey.indexOf('tg-') === 0 || apiKey.toLowerCase().indexOf('together') !== -1;
+    var isGemini = !isGroq && !isOpenRouter && !isCerebras && !isTogether;
 
     btn.disabled = true;
     btn.innerHTML = '⏳ جاري المعالجة...';
     resultBox.style.display = 'block';
     
-    var providerName = isGroq ? 'Groq' : (isOpenRouter ? 'OpenRouter' : 'Gemini');
+    var providerName = isCerebras ? 'Cerebras' : (isTogether ? 'Together AI' : (isGroq ? 'Groq' : (isOpenRouter ? 'OpenRouter' : 'Gemini')));
     resultBox.innerHTML = '<div style="text-align:center; color:var(--tx2);">جاري إنشاء الرد عبر ' + providerName + '...</div>';
 
     function renderResult(text) {
@@ -7545,40 +9454,35 @@ function callGemini(apiKey, prompt, btn, resultBox, btnOriginalText, isAdmin) {
         resultBox.innerHTML = errHtml;
     }
 
-    if (isGroq || isOpenRouter) {
-        var endpoint = isGroq ? 'https://api.groq.com/openai/v1/chat/completions' : 'https://openrouter.ai/api/v1/chat/completions';
-        var modelName = isGroq ? 'llama-3.3-70b-versatile' : 'meta-llama/llama-3.1-8b-instruct:free';
+    if (isGroq || isOpenRouter || isCerebras || isTogether) {
+        var endpoint = '';
+        var primaryModel = '';
+        var fallbacks = [];
+
+        if (isCerebras) {
+            endpoint = 'https://api.cerebras.ai/v1/chat/completions';
+            primaryModel = 'llama-3.3-70b';
+            fallbacks = ['llama3.3-70b', 'llama3.1-8b'];
+        } else if (isTogether) {
+            endpoint = 'https://api.together.xyz/v1/chat/completions';
+            primaryModel = 'meta-llama/Llama-3.3-70B-Instruct-Turbo';
+            fallbacks = ['meta-llama/llama-3.3-70b-instruct', 'meta-llama/llama-3.1-8b-instruct', 'meta-llama/Meta-Llama-3.1-8B-Instruct-Turbo'];
+        } else if (isGroq) {
+            endpoint = 'https://api.groq.com/openai/v1/chat/completions';
+            primaryModel = 'llama-3.3-70b-versatile';
+            fallbacks = ['llama-3.1-8b-instant', 'mixtral-8x7b-32768'];
+        } else {
+            endpoint = 'https://openrouter.ai/api/v1/chat/completions';
+            primaryModel = 'google/gemini-2.0-flash-exp:free';
+            fallbacks = ['meta-llama/llama-3.3-70b-instruct:free', 'meta-llama/llama-3.1-8b-instruct', 'qwen/qwen-2.5-72b-instruct:free', 'deepseek/deepseek-r1:free'];
+        }
         
-        fetch(endpoint, {
-            method: 'POST',
-            headers: {
-                'Authorization': 'Bearer ' + apiKey,
-                'Content-Type': 'application/json',
-                'HTTP-Referer': window.location.href,
-                'X-Title': 'Tech Go System'
-            },
-            body: JSON.stringify({
-                model: modelName,
-                messages: [{role: "user", content: prompt}],
-                temperature: 0.7
-            })
-        })
-        .then(function(res) { return res.json(); })
-        .then(function(data) {
-            if(data.error) {
-                var msg = typeof data.error === 'string' ? data.error : (data.error.message || JSON.stringify(data.error));
-                renderError('<div style="color:red; font-size:14px; text-align:right;">❌ خطأ من ' + providerName + ':<br><strong style="font-family:monospace; direction:ltr; display:block; margin-top:5px; padding:10px; background:#fdd; border-radius:5px;">' + escH(msg) + '</strong></div>');
-                return;
-            }
-            if(data.choices && data.choices.length > 0) {
-                renderResult(data.choices[0].message.content);
-            } else {
-                renderError('<div style="color:red; font-size:14px; text-align:right;">❌ ' + providerName + ' returned empty response.</div>');
-            }
-        })
-        .catch(function(err) {
-            renderError('<div style="color:red; font-size:14px; text-align:right;">❌ فشل الاتصال بخادم ' + providerName + ':<br><strong style="font-family:monospace; direction:ltr; display:block; margin-top:5px; padding:10px; background:#fdd; border-radius:5px;">' + escH(err.message) + '</strong></div>');
-        });
+        var messages = [{ role: 'user', content: prompt }];
+        tgFetchOpenAIChatCompletions(endpoint, apiKey, primaryModel, messages, 0.7, fallbacks)
+            .then(renderResult)
+            .catch(function(err) {
+                renderError('<div style="color:red; font-size:14px; text-align:right;">❌ فشل الاتصال بخادم ' + providerName + ':<br><strong style="font-family:monospace; direction:ltr; display:block; margin-top:5px; padding:10px; background:#fdd; border-radius:5px;">' + escH(err.message) + '</strong></div>');
+            });
         return;
     }
 
@@ -8389,7 +10293,6 @@ window.tgRemoveMRItem = function(sIdx, iIdx) {
     }
 };
 
-
 window.tgOpenEditMonthlyReportModal = function(reportId) {
     if (!reportId) return;
 
@@ -8555,6 +10458,242 @@ window.tgSubmitMonthlyReport = function(e) {
     }).catch(function(err) {
         alert("حدث خطأ أثناء حفظ التقرير: " + err.message);
     });
+};
+
+window.tgApproveMonthlyReport = function(reportId) {
+    if (!window.db || !reportId) return;
+    var p1 = db.collection('monthly_reports').doc(reportId).update({
+        status: 'approved',
+        adminNotes: 'تم الاعتماد رسمياً من الإدارة.'
+    }).catch(function(){});
+    var p2 = db.collection('monthlyReports').doc(reportId).update({
+        status: 'approved',
+        adminNotes: 'تم الاعتماد رسمياً من الإدارة.'
+    }).catch(function(){});
+
+    Promise.all([p1, p2]).then(function() {
+        if (typeof tgShowToast === 'function') tgShowToast('✅ تم اعتماد التقرير الشهري بنجاح!');
+        else alert('✅ تم اعتماد التقرير الشهري بنجاح!');
+
+        if (typeof tgRenderMonthlyReportsAdminInUnified === 'function') tgRenderMonthlyReportsAdminInUnified();
+        if (typeof tgRenderMonthlyReportsAdmin === 'function') tgRenderMonthlyReportsAdmin();
+        if (typeof loadMonthlyReportsEmp === 'function') loadMonthlyReportsEmp();
+        if (typeof tgRenderMonthlyReportsEmp === 'function') tgRenderMonthlyReportsEmp();
+    });
+};
+
+window.tgRejectMonthlyReportModal = function(reportId) {
+    if (!window.db || !reportId) return;
+    var note = prompt("ادخل ملاحظات التعديل للموظف حول التقرير الشهري:");
+    if (note === null) return;
+
+    var p1 = db.collection('monthly_reports').doc(reportId).update({
+        status: 'rejected',
+        adminNotes: note
+    }).catch(function(){});
+    var p2 = db.collection('monthlyReports').doc(reportId).update({
+        status: 'rejected',
+        adminNotes: note
+    }).catch(function(){});
+
+    Promise.all([p1, p2]).then(function() {
+        if (typeof tgShowToast === 'function') tgShowToast('✏️ تمت إعادة التقرير الشهري للموظف للتعديل');
+        else alert('✏️ تمت إعادة التقرير الشهري للموظف للتعديل');
+
+        if (typeof tgRenderMonthlyReportsAdminInUnified === 'function') tgRenderMonthlyReportsAdminInUnified();
+        if (typeof tgRenderMonthlyReportsAdmin === 'function') tgRenderMonthlyReportsAdmin();
+        if (typeof loadMonthlyReportsEmp === 'function') loadMonthlyReportsEmp();
+        if (typeof tgRenderMonthlyReportsEmp === 'function') tgRenderMonthlyReportsEmp();
+    });
+};
+
+window.tgDeleteMonthlyReport = function(reportId) {
+    if (!window.db || !reportId) return;
+    if (!confirm('⚠️ هل أنت تأكد من رغبتك في حذف هذا التقرير الشهري نهائياً؟')) return;
+
+    if (window._allMonthlyReports) {
+        window._allMonthlyReports = window._allMonthlyReports.filter(function(r){ return r.id !== reportId; });
+    }
+
+    var p1 = db.collection('monthly_reports').doc(reportId).delete().catch(function(){});
+    var p2 = db.collection('monthlyReports').doc(reportId).delete().catch(function(){});
+
+    Promise.all([p1, p2]).then(function() {
+        if (typeof tgShowToast === 'function') tgShowToast('🗑 تم حذف التقرير الشهري بنجاح!');
+        else alert('🗑 تم حذف التقرير الشهري بنجاح!');
+
+        if (typeof tgRenderMonthlyReportsAdminInUnified === 'function') tgRenderMonthlyReportsAdminInUnified();
+        if (typeof tgRenderMonthlyReportsAdmin === 'function') tgRenderMonthlyReportsAdmin();
+        if (typeof loadMonthlyReportsEmp === 'function') loadMonthlyReportsEmp();
+        if (typeof tgRenderMonthlyReportsEmp === 'function') tgRenderMonthlyReportsEmp();
+    });
+};
+
+window.tgExecutePrintDocument = function(printHTML, docTitle) {
+    var old = document.getElementById('tgInPagePrintOverlay');
+    if (old) old.remove();
+
+    var overlay = document.createElement('div');
+    overlay.id = 'tgInPagePrintOverlay';
+    overlay.style.cssText = 'position:fixed; top:0; left:0; right:0; bottom:0; background:rgba(15,23,42,0.95); backdrop-filter:blur(12px); z-index:999999; display:flex; flex-direction:column; align-items:center; padding:16px 12px; box-sizing:border-box;';
+
+    var topBar = document.createElement('div');
+    topBar.style.cssText = 'width:100%; max-width:980px; background:#0f172a; border:1.5px solid #334155; padding:12px 22px; border-radius:14px; margin-bottom:12px; display:flex; justify-content:space-between; align-items:center; color:#ffffff; box-shadow:0 10px 30px rgba(0,0,0,0.5); font-family:system-ui, -apple-system, sans-serif; box-sizing:border-box;';
+    topBar.innerHTML = `
+        <div style="display:flex; align-items:center; gap:12px;">
+            <span style="font-size:22px;">🖨️</span>
+            <div>
+                <strong style="font-size:15px; color:#38bdf8; display:block;">${docTitle || 'معاينة المستند الرسمية للطباعة (Official A4 Document)'}</strong>
+                <span style="font-size:12px; color:#94a3b8;">جاهزة للطباعة فوراً أو حفظ المستند كـ PDF بجميع البنود بالكامل</span>
+            </div>
+        </div>
+        <div style="display:flex; gap:10px;">
+            <button type="button" id="tgDirectPrintBtn" style="background:linear-gradient(135deg, #10b981, #059669); color:#ffffff; border:none; padding:10px 24px; border-radius:10px; font-size:14px; font-weight:900; cursor:pointer;">🖨 طباعة المستند الآن</button>
+            <button type="button" onclick="document.getElementById('tgInPagePrintOverlay').remove();" style="background:#334155; color:#ffffff; border:none; padding:10px 18px; border-radius:10px; font-size:14px; font-weight:800; cursor:pointer;">✕ إغلاق</button>
+        </div>
+    `;
+
+    var iframe = document.createElement('iframe');
+    iframe.id = 'tgPrintTargetFrame';
+    iframe.style.cssText = 'width:100%; max-width:980px; flex:1; border:none; border-radius:14px; background:#ffffff; box-shadow:0 25px 60px rgba(0,0,0,0.6);';
+
+    overlay.appendChild(topBar);
+    overlay.appendChild(iframe);
+    document.body.appendChild(overlay);
+
+    var doc = iframe.contentWindow.document;
+    doc.open();
+    doc.write(printHTML);
+    doc.close();
+
+    document.getElementById('tgDirectPrintBtn').onclick = function() {
+        iframe.contentWindow.focus();
+        iframe.contentWindow.print();
+    };
+};
+
+window.tgPrintMonthlyReport = function(reportId, customSummary, displayMonth) {
+    var renderPrint = function(r) {
+        var printHTML = `
+            <!DOCTYPE html>
+            <html dir="rtl" lang="ar">
+            <head>
+                <meta charset="UTF-8">
+                <title>تقرير شهري - ${r.userName || r.creatorName || ''} (${r.monthYear || displayMonth || ''})</title>
+                <link rel="preconnect" href="https://fonts.googleapis.com">
+                <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+                <link href="https://fonts.googleapis.com/css2?family=Cairo:wght@400;600;700;800;900&display=swap" rel="stylesheet">
+                <style>
+                    @page { size: A4; margin: 12mm; }
+                    * { box-sizing: border-box; }
+                    body { font-family: 'Cairo', system-ui, -apple-system, sans-serif; background: #ffffff; color: #0f172a; padding: 25px; margin: 0; line-height: 1.6; }
+                    .header-banner { background: linear-gradient(135deg, #0f172a 0%, #1e293b 100%); color: #ffffff; border-radius: 16px; padding: 22px 28px; margin-bottom: 24px; border-bottom: 4px solid #10b981; display: flex; justify-content: space-between; align-items: center; }
+                    .logo-brand { font-size: 23px; font-weight: 900; color: #ffffff; margin: 0; display: flex; align-items: center; gap: 12px; }
+                    .logo-tag { background: #10b981; color: #ffffff; padding: 3px 12px; border-radius: 8px; font-size: 12px; font-weight: 900; }
+                    .subtitle { font-size: 13.5px; color: #34d399; margin-top: 4px; font-weight: 700; }
+                    .badge-month { background: rgba(16,185,129,0.2); color: #34d399; border: 1.5px solid #10b981; padding: 8px 20px; border-radius: 30px; font-size: 14px; font-weight: 900; text-align: center; }
+                    .stats-grid { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 12px; margin-bottom: 24px; }
+                    .stat-card { background: #f8fafc; border: 1.5px solid #e2e8f0; padding: 14px 16px; border-radius: 14px; border-right: 4px solid #10b981; }
+                    .stat-card strong { color: #64748b; display: block; margin-bottom: 4px; font-size: 11.5px; font-weight: 800; }
+                    .stat-card span { font-size: 14px; font-weight: 800; color: #0f172a; }
+                    .sec-card { margin-bottom: 24px; background: #f8fafc; border: 1.5px solid #e2e8f0; padding: 20px; border-radius: 16px; page-break-inside: avoid; break-inside: avoid; }
+                    .sec-title { font-size: 16px; font-weight: 900; color: #059669; border-bottom: 1.5px dashed #cbd5e1; padding-bottom: 8px; margin-bottom: 14px; }
+                    .footer-signatures { margin-top: 50px; display: flex; justify-content: space-between; text-align: center; font-size: 13px; font-weight: 800; color: #334155; border-top: 2px dashed #cbd5e1; padding-top: 28px; page-break-inside: avoid; break-inside: avoid; }
+                </style>
+            </head>
+            <body>
+                <div class="header-banner">
+                    <div>
+                        <h1 class="logo-brand">TECH-GO MANAGEMENT SYSTEM <span class="logo-tag">MONTHLY REPORT</span></h1>
+                        <div class="subtitle">📊 تقرير الأداء والإنجازات الشهري المعتمد (Monthly Report - MR)</div>
+                    </div>
+                    <div class="badge-month">الشهر: ${r.monthYear || displayMonth || ''}</div>
+                </div>
+
+                <div class="stats-grid">
+                    <div class="stat-card" style="border-right-color:#0284c7;">
+                        <strong>👤 الموظف / صاحب التقرير:</strong>
+                        <span>${r.userName || r.creatorName || 'غير محدد'}</span>
+                    </div>
+                    <div class="stat-card" style="border-right-color:#8b5cf6;">
+                        <strong>🏢 القسم / الإدارة:</strong>
+                        <span>${r.department || r.userRole || 'عام'}</span>
+                    </div>
+                    <div class="stat-card" style="border-right-color:#10b981;">
+                        <strong>📌 حالة الاعتماد:</strong>
+                        <span>${r.status === 'approved' ? '✅ معتمد رسمياً' : '🕒 قيد المراجعة'}</span>
+                    </div>
+                </div>
+
+                <div class="sec-card">
+                    <div class="sec-title">📝 ملخص الإنجازات والبنود المكتملة خلال الشهر:</div>
+                    <div style="white-space:pre-line; line-height:1.8; font-size:14px; color:#1e293b; font-weight:700;">${r.achievements || customSummary || 'لم تذكر تفاصيل'}</div>
+                </div>
+
+                <div class="footer-signatures">
+                    <div>توقيع الموظف:<br><br>.........................................</div>
+                    <div>اعتماد مدير القسم:<br><br>.........................................</div>
+                    <div>اعتماد الإدارة العليا:<br><br>.........................................</div>
+                </div>
+            </body>
+            </html>
+        `;
+
+        tgExecutePrintDocument(printHTML, '📊 معاينة وثيقة التقرير الشهري الرسمية (Monthly Report)');
+    };
+
+    var processReport = function(r) {
+        renderPrint(r);
+    };
+
+    if (typeof reportId === 'object' && reportId !== null) {
+        processReport(reportId);
+        return;
+    }
+
+    var findLocalReport = function(id) {
+        var sources = [window._allMonthlyReports, window._empMonthlyReports];
+        for (var s = 0; s < sources.length; s++) {
+            var arr = sources[s];
+            if (Array.isArray(arr)) {
+                var found = arr.find(function(item){ return item.id === id || item._id === id; });
+                if (found) return found;
+            }
+        }
+        return null;
+    };
+
+    if (reportId) {
+        var cached = findLocalReport(reportId);
+        if (cached) {
+            processReport(cached);
+            return;
+        }
+    }
+
+    if (reportId && window.db) {
+        db.collection('monthly_reports').doc(reportId).get().then(function(doc) {
+            if (doc.exists) {
+                var d = doc.data();
+                d.id = doc.id;
+                processReport(d);
+            } else {
+                db.collection('monthlyReports').doc(reportId).get().then(function(doc2) {
+                    if (doc2.exists) {
+                        var d2 = doc2.data();
+                        d2.id = doc2.id;
+                        processReport(d2);
+                    } else {
+                        processReport({ achievements: customSummary, monthYear: displayMonth });
+                    }
+                }).catch(function(){ processReport({ achievements: customSummary, monthYear: displayMonth }); });
+            }
+        }).catch(function() {
+            processReport({ achievements: customSummary, monthYear: displayMonth });
+        });
+    } else {
+        processReport({ achievements: customSummary, monthYear: displayMonth });
+    }
 };
 
 // Helper function to aggregate and group employee plans by normalized department names
@@ -8765,7 +10904,7 @@ window.tgRenderMonthlyPlansAdmin = async function(retryCount) {
                             </div>
 
                             <div style="display:flex; gap:10px; flex-wrap:wrap; justify-content:flex-end; align-items:center; border-top:1px solid var(--bd); padding-top:14px; margin-top:10px;">
-                                <button type="button" onclick="tgPrintMonthlyPlan('${p.id}')" class="bt" style="background:linear-gradient(135deg, #10b981, #059669); color:#fff; font-size:13.5px; padding:10px 22px; font-weight:900; border:none; border-radius:50px; box-shadow:0 4px 14px rgba(16,185,129,0.35); cursor:pointer;">🖨 طباعة الخطة التجميعية MP</button>
+                                <button type="button" onclick="tgPrintMonthlyPlan('${p.id}')" class="bt" style="background:linear-gradient(135deg, #10b981, #059669); color:#fff; font-size:13.5px; padding:10px 22px; font-weight:900; border:none; border-radius:50px; box-shadow:0 4px 14px rgba(16,185,129,0.35); cursor:pointer;">🖨 طباعة التقرير التجميعي الشامل لجميع الأقسام (Master Plan)</button>
                                 <button type="button" onclick="tgDeleteMonthlyPlan('${p.id}')" class="bt bt-o" style="border-color:#ef4444; color:#ef4444; font-size:13.5px; padding:10px 18px; font-weight:800; border-radius:50px;">🗑 حذف الخطة</button>
                             </div>
                         </div>
@@ -8901,6 +11040,197 @@ window.loadMonthlyPlansAdmin = function(container) {
     `;
 
     tgRenderMonthlyPlansAdmin();
+};
+
+window._mpAdminDataCache = [];
+window._mpAdminUnsub = null;
+
+window.renderMonthlyPlansAdminListHTML = function() {
+    var listEl = document.getElementById('mpAdminList');
+    if (!listEl) return;
+
+    var plans = window._mpAdminDataCache || [];
+
+    var searchVal = (document.getElementById('mpAdminSearch') ? document.getElementById('mpAdminSearch').value : '').toLowerCase().trim();
+    var deptVal = document.getElementById('mpAdminDeptFilter') ? document.getElementById('mpAdminDeptFilter').value : 'all';
+
+    var filtered = plans.filter(function(p) {
+        if (deptVal !== 'all') {
+            var d = (p.department || p.userRole || '').toLowerCase();
+            if (deptVal === 'sales' && d.indexOf('مبيعات') === -1 && d.indexOf('سلز') === -1) return false;
+            if (deptVal === 'prog' && d.indexOf('برمجة') === -1 && d.indexOf('تطبيق') === -1 && d.indexOf('تطوير') === -1 && d.indexOf('باك') === -1 && d.indexOf('فرونت') === -1) return false;
+            if (deptVal === 'hr' && d.indexOf('موارد') === -1 && d.indexOf('hr') === -1) return false;
+            if (deptVal === 'mkt' && d.indexOf('تسويق') === -1 && d.indexOf('ماركتنج') === -1) return false;
+        }
+
+        if (searchVal) {
+            var tStr = (p.title || '').toLowerCase();
+            var cStr = (p.creatorName || p.userName || '').toLowerCase();
+            var dStr = (p.department || '').toLowerCase();
+            var mStr = (p.monthYear || '').toLowerCase();
+            if (tStr.indexOf(searchVal) === -1 && cStr.indexOf(searchVal) === -1 && dStr.indexOf(searchVal) === -1 && mStr.indexOf(searchVal) === -1) {
+                return false;
+            }
+        }
+        return true;
+    });
+
+    var totalCount = plans.length;
+    var masterCount = plans.filter(function(p){ return p.type === 'executive_master'; }).length;
+    var completedCount = plans.filter(function(p){ return (p.progress || 0) >= 100; }).length;
+    var activeCount = totalCount - completedCount;
+
+    var html = `
+        <div style="display:grid; grid-template-columns:repeat(auto-fit, minmax(180px, 1fr)); gap:14px; margin-bottom:20px;">
+            <div style="background:var(--w); border:1.5px solid var(--bd); padding:16px; border-radius:16px; box-shadow:0 4px 15px rgba(0,0,0,0.03); display:flex; align-items:center; justify-content:space-between;">
+                <div>
+                    <div style="font-size:12px; font-weight:700; color:var(--tx2);">📋 عدد الخطط المتاحة</div>
+                    <div style="font-size:24px; font-weight:900; color:var(--tx); margin-top:2px;">${totalCount}</div>
+                </div>
+                <div style="font-size:32px;">🎯</div>
+            </div>
+            <div style="background:rgba(245,158,11,0.08); border:1.5px solid rgba(245,158,11,0.3); padding:16px; border-radius:16px; display:flex; align-items:center; justify-content:space-between;">
+                <div>
+                    <div style="font-size:12px; font-weight:700; color:#d97706;">⭐ خطط استراتيجية تجميعية</div>
+                    <div style="font-size:24px; font-weight:900; color:#d97706; margin-top:2px;">${masterCount}</div>
+                </div>
+                <div style="font-size:32px;">✨</div>
+            </div>
+            <div style="background:rgba(16,185,129,0.08); border:1.5px solid rgba(16,185,129,0.3); padding:16px; border-radius:16px; display:flex; align-items:center; justify-content:space-between;">
+                <div>
+                    <div style="font-size:12px; font-weight:700; color:#10b981;">✅ خطط مكتملة (100%)</div>
+                    <div style="font-size:24px; font-weight:900; color:#10b981; margin-top:2px;">${completedCount}</div>
+                </div>
+                <div style="font-size:32px;">🏆</div>
+            </div>
+            <div style="background:rgba(59,130,246,0.08); border:1.5px solid rgba(59,130,246,0.3); padding:16px; border-radius:16px; display:flex; align-items:center; justify-content:space-between;">
+                <div>
+                    <div style="font-size:12px; font-weight:700; color:#3b82f6;">⚡ خطط قيد التنفيذ</div>
+                    <div style="font-size:24px; font-weight:900; color:#3b82f6; margin-top:2px;">${activeCount}</div>
+                </div>
+                <div style="font-size:32px;">🚀</div>
+            </div>
+        </div>
+
+        <div style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:12px; margin-bottom:20px; background:var(--bg2); padding:14px 18px; border-radius:16px; border:1.5px solid var(--bd);">
+            <div style="display:flex; gap:10px; flex-wrap:wrap; flex:1; max-width:600px;">
+                <input type="text" id="mpAdminSearch" value="${searchVal}" oninput="renderMonthlyPlansAdminListHTML()" placeholder="🔍 ابحث باسم الخطة، الموظف، أو القسم..." style="flex:1; min-width:200px; padding:10px 14px; border-radius:10px; border:1.5px solid var(--bd); background:var(--bg); color:var(--tx); font-weight:700; outline:none; font-size:13px;">
+                <select id="mpAdminDeptFilter" onchange="renderMonthlyPlansAdminListHTML()" style="width:180px; padding:10px; border-radius:10px; border:1.5px solid var(--bd); background:var(--bg); color:var(--tx); font-weight:700; outline:none; font-size:13px;">
+                    <option value="all" ${deptVal==='all'?'selected':''}>كل الأقسام</option>
+                    <option value="sales" ${deptVal==='sales'?'selected':''}>المبيعات والـ Sales</option>
+                    <option value="prog" ${deptVal==='prog'?'selected':''}>البرمجة والتطوير</option>
+                    <option value="hr" ${deptVal==='hr'?'selected':''}>الموارد البشرية HR</option>
+                    <option value="mkt" ${deptVal==='mkt'?'selected':''}>التسويق والإعلام</option>
+                </select>
+            </div>
+            <div style="display:flex; gap:10px;">
+                <button type="button" onclick="tgExpandAllCards('mpAdminList')" class="bt bt-o" style="font-size:12.5px; padding:8px 16px; border-radius:20px; font-weight:800; cursor:pointer;">📂 فتح جميع الكروت</button>
+                <button type="button" onclick="tgCollapseAllCards('mpAdminList')" class="bt bt-o" style="font-size:12.5px; padding:8px 16px; border-radius:20px; font-weight:800; cursor:pointer;">📁 طي جميع الكروت</button>
+            </div>
+        </div>
+    `;
+
+    if (filtered.length === 0) {
+        html += `
+            <div style="background:var(--bg2); border:1.5px dashed var(--bd); padding:40px; text-align:center; border-radius:16px; color:var(--tx2); font-weight:bold; font-size:14.5px;">
+                📭 لا توجد خطط شهرية تطابق عناصر التصفية والبحث المحددة.
+            </div>
+        `;
+        listEl.innerHTML = html;
+        return;
+    }
+
+    filtered.forEach(function(p, pIdx) {
+        var isExecMaster = (p.type === 'executive_master');
+        var tasks = p.tasks || [];
+        var completedTasks = tasks.filter(function(t){ return t.done; }).length;
+        var progress = tasks.length > 0 ? Math.round((completedTasks / tasks.length) * 100) : (p.progress || 0);
+
+        var progressColor = progress >= 80 ? '#10b981' : (progress >= 40 ? '#3b82f6' : '#f59e0b');
+
+        var cardBorder = isExecMaster ? '2px solid #f59e0b' : '1.5px solid var(--bd)';
+        var cardBg = isExecMaster ? 'linear-gradient(135deg, rgba(245,158,11,0.04), var(--w))' : 'var(--w)';
+
+        html += `
+            <div class="card p-3 mb-3" style="background:${cardBg}; border:${cardBorder}; border-radius:20px; box-shadow:0 6px 22px rgba(0,0,0,0.04); padding:22px; margin-bottom:20px; transition:transform 0.2s, box-shadow 0.2s;">
+                <div style="display:flex; justify-content:space-between; align-items:flex-start; flex-wrap:wrap; gap:14px;">
+                    <div>
+                        <div style="display:flex; align-items:center; gap:10px; flex-wrap:wrap; margin-bottom:8px;">
+                            <h3 style="font-size:19px; font-weight:900; color:var(--tx); margin:0;">📌 ${p.title || 'خطة شهرية'}</h3>
+                            ${isExecMaster ? '<span style="background:linear-gradient(135deg, #f59e0b, #d97706); color:#fff; font-size:12px; font-weight:900; padding:4px 14px; border-radius:20px; box-shadow:0 3px 10px rgba(245,158,11,0.3);">✨ خطة استراتيجية تجميعية</span>' : ''}
+                        </div>
+                        <div style="display:flex; gap:10px; flex-wrap:wrap; font-size:13px; font-weight:800; color:var(--tx2); margin-top:6px;">
+                            <span style="color:#0284c7; background:rgba(2,132,199,0.1); padding:4px 12px; border-radius:8px; border:1px solid rgba(2,132,199,0.25);">👤 الموظف (الراسل): <b>${p.creatorName || p.userName || 'غير مخصص'}</b></span>
+                            <span style="color:#10b981; background:rgba(16,185,129,0.1); padding:4px 12px; border-radius:8px; border:1px solid rgba(16,185,129,0.25);">🏢 القسم: <b>${p.department || p.userRole || 'قسم عام'}</b></span>
+                            <span style="color:#f59e0b; background:rgba(245,158,11,0.1); padding:4px 12px; border-radius:8px; border:1px solid rgba(245,158,11,0.25);">📅 الشهر: <b>${p.monthYear || ''}</b></span>
+                        </div>
+                    </div>
+
+                    <div style="display:flex; align-items:center; gap:12px;">
+                        <span class="badge" style="background:${progressColor}; color:#fff; font-size:13px; font-weight:900; padding:6px 18px; border-radius:30px; box-shadow:0 4px 12px ${progressColor}44;">إنجاز ${progress}%</span>
+                        <button type="button" onclick="tgToggleCardDetails('mp-admin-body-${p.id}', this)" class="tg-toggle-btn bt bt-o" style="font-size:13px; padding:7px 18px; border-radius:20px; font-weight:800; cursor:pointer;">
+                            ${pIdx === 0 ? '🔼 إخفاء التفاصيل' : '🔽 عرض التفاصيل والبنود'}
+                        </button>
+                    </div>
+                </div>
+
+                <div id="mp-admin-body-${p.id}" class="tg-card-body" style="display:${pIdx === 0 ? 'block' : 'none'}; margin-top:18px; border-top:1.5px dashed var(--bd); padding-top:18px;">
+                    <div style="background:var(--bg2); border:1.5px solid var(--bd); height:14px; border-radius:10px; overflow:hidden; margin-bottom:16px;">
+                        <div style="background:linear-gradient(90deg, ${progressColor}, #34d399); height:100%; width:${progress}%; transition:width 0.5s ease-in-out;"></div>
+                    </div>
+
+                    <div style="background:rgba(59,130,246,0.06); border:1.5px solid rgba(59,130,246,0.2); border-radius:14px; padding:16px; margin-bottom:16px;">
+                        <strong style="color:#3b82f6; font-size:14.5px; font-weight:900; display:block; margin-bottom:6px;">📌 الملخص والاستراتيجية المطلوبة:</strong>
+                        <div style="white-space:pre-line; line-height:1.7; color:var(--tx); font-weight:700; font-size:13.5px;">${p.objectives || p.execSummary || 'لا يوجد سياق أو ملخص مسجل'}</div>
+                    </div>
+
+                    ${tasks.length > 0 ? `
+                        <div style="background:var(--bg2); padding:16px; border-radius:14px; border:1.5px solid var(--bd); margin-bottom:16px;">
+                            <strong style="color:var(--tx); font-size:14px; font-weight:900; display:block; margin-bottom:12px;">✅ قائمة البنود والمستهدفات التفصيلية (${completedTasks} من ${tasks.length}):</strong>
+                            <div style="display:flex; flex-direction:column; gap:8px;">
+                                ${tasks.map(function(t, tIdx) {
+                                    return `
+                                        <div style="font-size:13.5px; padding:10px 14px; background:var(--w); border:1.5px solid var(--bd); border-radius:10px; color:${t.done ? '#10b981' : 'var(--tx)'}; font-weight:${t.done ? '800' : '600'}; display:flex; justify-content:space-between; align-items:center;">
+                                            <div style="display:flex; align-items:center; gap:10px;">
+                                                <span style="font-size:16px;">${t.done ? '✅' : '⏳'}</span>
+                                                <span style="${t.done ? 'text-decoration:line-through; opacity:0.8;' : ''}">${t.title}</span>
+                                            </div>
+                                            <div style="display:flex; gap:8px; align-items:center;">
+                                                ${t.kpi ? '<span style="font-size:11px; background:rgba(16,185,129,0.15); color:#10b981; padding:3px 10px; border-radius:6px; font-weight:800; border:1px solid rgba(16,185,129,0.3);">KPI: ' + t.kpi + '</span>' : ''}
+                                                <span style="font-size:11px; background:rgba(59,130,246,0.15); color:#3b82f6; padding:3px 10px; border-radius:6px; font-weight:800; border:1px solid rgba(59,130,246,0.3);">${t.week || 'أسبوع'}</span>
+                                            </div>
+                                        </div>
+                                    `;
+                                }).join('')}
+                            </div>
+                        </div>
+                    ` : ''}
+
+                    <div style="display:flex; justify-content:flex-end; gap:10px; border-top:1px solid var(--bd); padding-top:14px; flex-wrap:wrap;">
+                        <button type="button" onclick="tgOpenEditMonthlyPlanModal('${p.id}')" class="bt" style="background:linear-gradient(135deg, #3b82f6, #1d4ed8); color:#fff; font-size:13px; padding:9px 22px; font-weight:900; border:none; border-radius:30px; box-shadow:0 4px 14px rgba(59,130,246,0.35); cursor:pointer;">✏️ تعديل الخطة و KPIs</button>
+                        <button type="button" onclick="tgPrintMonthlyPlan('${p.id}')" class="bt bt-o" style="font-size:13px; padding:9px 22px; font-weight:800; border-radius:30px; cursor:pointer;">🖨 طباعة الخطة MP</button>
+                        <button type="button" onclick="tgDeleteMonthlyPlan('${p.id}')" class="bt bt-o" style="border-color:#ef4444; color:#ef4444; font-size:13px; padding:9px 20px; font-weight:800; border-radius:30px; cursor:pointer;">🗑 حذف الخطة</button>
+                    </div>
+                </div>
+            </div>
+        `;
+    });
+
+    listEl.innerHTML = html;
+};
+
+window.tgDeleteMonthlyPlan = function(planId) {
+    if (!planId || !window.db) return;
+    if (!confirm('⚠️ هل أنت محقق من محاولة حذف هذه الخطة الشهرية نهائياً؟')) return;
+
+    db.collection('monthly_plans').doc(planId).delete().then(function() {
+        if (typeof tgToast === 'function') tgToast('🗑 تم حذف الخطة الشهرية بنجاح', 'ok');
+        else alert('🗑 تم حذف الخطة الشهرية بنجاح');
+        tgRenderMonthlyPlansAdmin();
+    }).catch(function(err) {
+        alert('❌ فشل حذف الخطة: ' + err.message);
+    });
+};
 
 
 window.tgRenderMonthlyPlansEmp = function() {
@@ -8914,13 +11244,18 @@ window.tgRenderMonthlyPlansEmp = function() {
         try { window._mpEmpUnsub(); } catch(e){}
     }
 
-    window._mpEmpUnsub = db.collection('monthly_plans').onSnapshot(function(snap) {
+    var isAnyAdmin = (u.role === 'admin' || u.role === 'tech_admin');
+    var targetQuery = (isAnyAdmin || !myUid)
+        ? db.collection('monthly_plans')
+        : db.collection('monthly_plans').where('uid', '==', myUid);
+
+    window._mpEmpUnsub = targetQuery.onSnapshot(function(snap) {
         var plans = [];
         snap.forEach(function(doc) {
             var data = doc.data();
             data.id = doc.id;
             if (data.type === 'executive_master') return;
-            if (data.uid === myUid || data.createdBy === myUid || (data.creatorName && data.creatorName === u.name)) {
+            if (isAnyAdmin || data.uid === myUid || data.createdBy === myUid || (data.creatorName && data.creatorName === u.name)) {
                 plans.push(data);
             }
         });
@@ -9042,7 +11377,11 @@ window.tgToggleEmpPlanTaskDone = function(planId, taskIndex, isDone) {
     });
 };
 
-
+window.loadMonthlyReportsEmp = function(container) {
+    if (typeof loadWeeklyReportsEmp === 'function') {
+        loadWeeklyReportsEmp(container);
+    }
+};
 
 window.loadMonthlyPlansEmp = function(container) {
     if (!container) container = document.getElementById('epg-monthlyplans');
@@ -9079,49 +11418,54 @@ window.tgOpenEmployeeNewMonthlyPlanModal = function() {
     var todayMonth = new Date().toISOString().substring(0, 7);
 
     var html = `
-    <div id="${modalId}" style="position:fixed; top:0; left:0; right:0; bottom:0; background:rgba(15,23,42,0.85); z-index:999999; display:flex; justify-content:center; align-items:center; padding:16px; backdrop-filter:blur(10px); font-family:sans-serif; direction:rtl; text-align:right;">
-        <div style="background:var(--bg2); border:1.5px solid var(--bd); border-radius:20px; width:100%; max-width:680px; max-height:90vh; overflow-y:auto; box-shadow:0 25px 50px rgba(0,0,0,0.4); display:flex; flex-direction:column;">
+    <div id="${modalId}" style="position:fixed; top:0; left:0; right:0; bottom:0; background:rgba(15,23,42,0.85); z-index:999999; display:flex; justify-content:center; align-items:center; padding:16px; backdrop-filter:blur(12px); font-family:inherit; direction:rtl; text-align:right;">
+        <div style="background:#1e293b; border:1.5px solid #334155; border-radius:24px; width:100%; max-width:720px; max-height:92vh; overflow-y:auto; box-shadow:0 25px 60px rgba(0,0,0,0.6); display:flex; flex-direction:column; color:#ffffff;">
             
-            <div style="padding:18px 24px; border-bottom:1px solid var(--bd); display:flex; justify-content:space-between; align-items:center; background:linear-gradient(135deg, rgba(16,185,129,0.1), rgba(16,185,129,0.02)); border-radius:20px 20px 0 0;">
-                <div>
-                    <h3 style="margin:0; font-size:20px; font-weight:900; color:var(--tx);">➕ إعداد وتقديم خطتي الشهرية للإدارة (MP)</h3>
-                    <p style="margin:4px 0 0; color:var(--tx2); font-size:13px; font-weight:600;">حدد مستهدفات عملك الشهرية والأسبوعية ومؤشرات النجاح KPI.</p>
+            <div style="padding:20px 26px; border-bottom:1.5px solid #334155; display:flex; justify-content:space-between; align-items:center; background:linear-gradient(135deg, #10b981, #059669); border-radius:24px 24px 0 0; color:#ffffff;">
+                <div style="display:flex; align-items:center; gap:12px;">
+                    <span style="font-size:24px;">🎯</span>
+                    <div>
+                        <h3 style="margin:0; font-size:20px; font-weight:900; color:#ffffff;">إعداد وتقديم خطتي الشهرية للإدارة (MP)</h3>
+                        <p style="margin:4px 0 0; color:#d1fae5; font-size:12.5px; font-weight:700;">حدد مستهدفات عملك الشهرية والأسبوعية ومؤشرات النجاح KPI</p>
+                    </div>
                 </div>
-                <button type="button" onclick="document.getElementById('${modalId}').remove()" style="background:none; border:none; color:var(--tx2); font-size:22px; cursor:pointer; font-weight:bold;">✕</button>
+                <button type="button" onclick="document.getElementById('${modalId}').remove()" style="background:rgba(255,255,255,0.2); border:none; color:#ffffff; font-size:18px; width:34px; height:34px; border-radius:50%; display:flex; align-items:center; justify-content:center; cursor:pointer; font-weight:900;">✕</button>
             </div>
 
-            <div style="padding:22px; display:flex; flex-direction:column; gap:16px;">
+            <div style="padding:24px; display:flex; flex-direction:column; gap:18px;">
                 <div style="display:grid; grid-template-columns:1fr 1fr; gap:14px;">
                     <div>
-                        <label style="font-size:13px; font-weight:800; color:var(--tx); display:block; margin-bottom:6px;">عنوان الخطة</label>
-                        <input type="text" id="empMpTitle" placeholder="مثلاً: خطة عمل شهر أغسطس 2026" value="خطة شهر ${new Date().toLocaleString('ar-EG', {month:'long'})}" style="width:100%; padding:10px 14px; border-radius:10px; border:1.5px solid var(--bd); background:var(--bg); color:var(--tx); outline:none; font-weight:700;">
+                        <label style="font-size:13px; font-weight:800; color:#38bdf8; display:block; margin-bottom:6px;">📌 عنوان الخطة</label>
+                        <input type="text" id="empMpTitle" placeholder="مثلاً: خطة عمل شهر أغسطس 2026" value="خطة شهر ${new Date().toLocaleString('ar-EG', {month:'long'})}" style="width:100%; padding:12px 14px; border-radius:12px; border:1.5px solid #334155; background:#0f172a; color:#ffffff; outline:none; font-weight:700; font-size:14px;">
                     </div>
                     <div>
-                        <label style="font-size:13px; font-weight:800; color:var(--tx); display:block; margin-bottom:6px;">الشهر المستهدف</label>
-                        <input type="month" id="empMpMonth" value="${todayMonth}" style="width:100%; padding:10px 14px; border-radius:10px; border:1.5px solid var(--bd); background:var(--bg); color:var(--tx); outline:none; font-weight:700;">
+                        <label style="font-size:13px; font-weight:800; color:#38bdf8; display:block; margin-bottom:6px;">📅 الشهر المستهدف</label>
+                        <input type="month" id="empMpMonth" value="${todayMonth}" style="width:100%; padding:12px 14px; border-radius:12px; border:1.5px solid #334155; background:#0f172a; color:#ffffff; outline:none; font-weight:700; font-size:14px; cursor:pointer;">
                     </div>
                 </div>
 
                 <div>
-                    <label style="font-size:13px; font-weight:800; color:var(--tx); display:block; margin-bottom:6px;">الخلاصة والهدف الاستراتيجي من الخطة</label>
-                    <textarea id="empMpObjectives" rows="3" placeholder="ملخص أهدافك ومستهدفاتك لهذا الشهر..." style="width:100%; padding:12px 14px; border-radius:10px; border:1.5px solid var(--bd); background:var(--bg); color:var(--tx); outline:none; font-weight:600; line-height:1.6;"></textarea>
+                    <label style="font-size:13px; font-weight:800; color:#38bdf8; display:block; margin-bottom:6px;">📝 الخلاصة والهدف الاستراتيجي من الخطة</label>
+                    <textarea id="empMpObjectives" rows="3" placeholder="اكتب ملخص أهدافك ومستهدفاتك الاستراتيجية لهذا الشهر..." style="width:100%; padding:12px 14px; border-radius:12px; border:1.5px solid #334155; background:#0f172a; color:#ffffff; outline:none; font-weight:600; line-height:1.6; font-size:13.5px; resize:vertical;"></textarea>
                 </div>
 
-                <div style="border-top:1px dashed var(--bd); padding-top:14px;">
-                    <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:12px;">
-                        <strong style="color:#10b981; font-size:14px; font-weight:900;">📋 بنود ومستهدفات الخطة التفصيلية:</strong>
-                        <button type="button" onclick="tgAddEmpMpTaskRow()" class="bt bt-o" style="padding:4px 14px; font-size:12px; font-weight:800; border-radius:20px;">➕ إضافة بند/هدف</button>
+                <div style="border-top:1.5px dashed #334155; padding-top:16px;">
+                    <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:14px;">
+                        <strong style="color:#34d399; font-size:14.5px; font-weight:900; display:flex; align-items:center; gap:6px;">
+                            📋 بنود ومستهدفات الخطة التفصيلية:
+                        </strong>
+                        <button type="button" onclick="tgAddEmpMpTaskRow()" style="background:#0f172a; color:#34d399; border:1.5px dashed #10b981; padding:6px 16px; font-size:12.5px; font-weight:800; border-radius:20px; cursor:pointer; display:inline-flex; align-items:center; gap:5px;">➕ إضافة بند/هدف جديد</button>
                     </div>
 
-                    <div id="empMpTasksBox" style="display:flex; flex-direction:column; gap:10px;">
-                        <!-- Default rows -->
+                    <div id="empMpTasksBox" style="display:flex; flex-direction:column; gap:12px;">
+                        <!-- Task rows rendered dynamically -->
                     </div>
                 </div>
             </div>
 
-            <div style="padding:16px 24px; background:var(--bg); border-top:1px solid var(--bd); display:flex; justify-content:flex-end; gap:12px; border-radius:0 0 20px 20px;">
-                <button type="button" onclick="document.getElementById('${modalId}').remove()" style="background:#334155; color:#fff; border:none; padding:10px 22px; border-radius:30px; font-weight:bold; cursor:pointer;">إلغاء</button>
-                <button type="button" onclick="tgSubmitEmployeeMonthlyPlan()" style="background:linear-gradient(135deg, #10b981, #059669); color:#fff; border:none; padding:10px 28px; border-radius:30px; font-weight:900; box-shadow:0 4px 15px rgba(16,185,129,0.4); cursor:pointer;">📨 إرسال الخطة للإدارة</button>
+            <div style="padding:18px 26px; background:#0f172a; border-top:1.5px solid #334155; display:flex; justify-content:flex-end; gap:12px; border-radius:0 0 24px 24px;">
+                <button type="button" onclick="document.getElementById('${modalId}').remove()" style="background:#334155; color:#cbd5e1; border:none; padding:11px 24px; border-radius:30px; font-weight:800; cursor:pointer;">إلغاء</button>
+                <button type="button" onclick="tgSubmitEmployeeMonthlyPlan()" style="background:linear-gradient(135deg, #10b981, #059669); color:#ffffff; border:none; padding:11px 32px; border-radius:30px; font-weight:900; font-size:14.5px; box-shadow:0 6px 20px rgba(16,185,129,0.4); cursor:pointer;">📨 إرسال الخطة للإدارة</button>
             </div>
         </div>
     </div>
@@ -9136,6 +11480,10 @@ window.tgOpenEmployeeNewMonthlyPlanModal = function() {
     tgAddEmpMpTaskRow();
 };
 
+window.tgOpenNewMonthlyPlanModal = function() {
+    window.tgOpenEmployeeNewMonthlyPlanModal();
+};
+
 window.tgAddEmpMpTaskRow = function() {
     var box = document.getElementById('empMpTasksBox');
     if (!box) return;
@@ -9143,20 +11491,394 @@ window.tgAddEmpMpTaskRow = function() {
     var rowId = 'empMpRow_' + Date.now() + '_' + Math.random().toString(36).substr(2, 4);
     var row = document.createElement('div');
     row.id = rowId;
-    row.style.cssText = 'display:grid; grid-template-columns:2fr 1fr 1fr auto; gap:8px; align-items:center; background:var(--bg2); padding:10px; border-radius:12px; border:1px solid var(--bd);';
+    row.style.cssText = 'display:grid; grid-template-columns:2fr 1fr 1fr auto; gap:10px; align-items:center; background:#0f172a; padding:12px 14px; border-radius:14px; border:1.5px solid #334155;';
     row.innerHTML = `
-        <input type="text" placeholder="اسم الهدف / البند التنفيذي" class="emp-mp-t-title" style="padding:8px 12px; border-radius:8px; border:1px solid var(--bd); background:var(--bg); color:var(--tx); font-weight:600; outline:none; font-size:13px;">
-        <select class="emp-mp-t-week" style="padding:8px; border-radius:8px; border:1px solid var(--bd); background:var(--bg); color:var(--tx); font-weight:600; outline:none; font-size:12.5px;">
-            <option value="الأسبوع 1">الأسبوع 1</option>
-            <option value="الأسبوع 2">الأسبوع 2</option>
-            <option value="الأسبوع 3">الأسبوع 3</option>
-            <option value="الأسبوع 4">الأسبوع 4</option>
-            <option value="طوال الشهر">طوال الشهر</option>
+        <input type="text" placeholder="اسم الهدف / البند التنفيذي..." class="emp-mp-t-title" style="padding:10px 14px; border-radius:10px; border:1.5px solid #334155; background:#1e293b; color:#ffffff; font-weight:700; outline:none; font-size:13.5px;">
+        <select class="emp-mp-t-week" style="padding:10px 12px; border-radius:10px; border:1.5px solid #334155; background:#1e293b; color:#38bdf8; font-weight:800; outline:none; font-size:13px; cursor:pointer;">
+            <option value="الأسبوع 1">🗓️ الأسبوع 1</option>
+            <option value="الأسبوع 2">🗓️ الأسبوع 2</option>
+            <option value="الأسبوع 3">🗓️ الأسبوع 3</option>
+            <option value="الأسبوع 4">🗓️ الأسبوع 4</option>
+            <option value="طوال الشهر">📅 طوال الشهر</option>
         </select>
-        <input type="text" placeholder="مؤشر KPI (مثلاً: 100%)" class="emp-mp-t-kpi" style="padding:8px 12px; border-radius:8px; border:1px solid var(--bd); background:var(--bg); color:var(--tx); font-weight:600; outline:none; font-size:12.5px;">
-        <button type="button" onclick="document.getElementById('${rowId}').remove()" style="background:rgba(239,68,68,0.15); color:#ef4444; border:none; padding:8px 10px; border-radius:8px; cursor:pointer; font-weight:bold; font-size:12px;">🗑</button>
+        <input type="text" placeholder="مؤشر KPI (مثلاً: 100%)" class="emp-mp-t-kpi" style="padding:10px 14px; border-radius:10px; border:1.5px solid #334155; background:#1e293b; color:#34d399; font-weight:800; outline:none; font-size:13px;">
+        <button type="button" onclick="document.getElementById('${rowId}').remove()" style="background:rgba(239,68,68,0.15); color:#ef4444; border:1px solid rgba(239,68,68,0.3); padding:9px 12px; border-radius:10px; cursor:pointer; font-weight:900; font-size:13px;">🗑</button>
     `;
     box.appendChild(row);
+};
+
+window.tgPrintMonthlyPlan = function(planId) {
+    var renderExecPrint = async function(p) {
+        var deptBreakdownObj = p.deptBreakdown;
+        if (!deptBreakdownObj || Object.keys(deptBreakdownObj).length === 0) {
+            if (typeof tgGetAggregatedDeptBreakdown === 'function') {
+                deptBreakdownObj = await tgGetAggregatedDeptBreakdown(p.monthYear);
+            }
+        }
+        var deptKeys = (typeof deptBreakdownObj === 'object') ? Object.keys(deptBreakdownObj) : [];
+        var deptCount = deptKeys.length;
+
+        var totalTasksCount = 0;
+        var completedTasksCount = 0;
+
+        var sectorColors = {
+            'قطاع البرمجة وتكنولوجيا المعلومات': { border: '#0284c7', bg: '#f0f9ff', badge: '#0369a1' },
+            'قطاع المبيعات واستقطاب العملاء': { border: '#f59e0b', bg: '#fffbebf5', badge: '#b45309' },
+            'قطاع الجرافيك والتصميم (Graphic Design)': { border: '#8b5cf6', bg: '#f5f3ff', badge: '#6d28d9' },
+            'قطاع خدمة العملاء والدعم الفني': { border: '#10b981', bg: '#ecfdf5', badge: '#047857' }
+        };
+
+        var deptsHtml = deptKeys.map(function(deptName) {
+            var items = deptBreakdownObj[deptName] || [];
+            totalTasksCount += items.length;
+
+            var sTheme = sectorColors[deptName] || { border: '#0284c7', bg: '#f0f9ff', badge: '#0369a1' };
+
+            var rowsHtml = items.map(function(it, idx) {
+                if (it.done) completedTasksCount++;
+                var isEven = idx % 2 === 1;
+                return `
+                    <tr style="background:${isEven ? '#f8fafc' : '#ffffff'};">
+                        <td style="border:1px solid #e2e8f0; padding:10px; text-align:center; font-weight:800; color:#64748b;">${idx + 1}</td>
+                        <td style="border:1px solid #e2e8f0; padding:10px 14px; font-weight:700; color:#0f172a; line-height:1.6;">${it.taskTitle || ''}</td>
+                        <td style="border:1px solid #e2e8f0; padding:10px; text-align:center;">
+                            <span style="background:#f0f9ff; color:#0369a1; border:1px solid #bae6fd; padding:4px 10px; border-radius:8px; font-weight:800; font-size:12px; white-space:nowrap;">👤 ${it.userName || 'غير محدد'}</span>
+                        </td>
+                        <td style="border:1px solid #e2e8f0; padding:10px; text-align:center;">
+                            <span style="background:#fdf4ff; color:#a21caf; border:1px solid #f5d0fe; padding:4px 10px; border-radius:8px; font-weight:800; font-size:12px; white-space:nowrap;">🗓️ ${it.week || 'طوال الشهر'}</span>
+                        </td>
+                        <td style="border:1px solid #e2e8f0; padding:10px; text-align:center;">
+                            <span style="background:#ecfdf5; color:#047857; border:1px solid #a7f3d0; padding:4px 10px; border-radius:8px; font-weight:900; font-size:12px; white-space:nowrap;">${it.kpi || '100%'}</span>
+                        </td>
+                        <td style="border:1px solid #e2e8f0; padding:10px; text-align:center;">
+                            ${it.done 
+                                ? '<span style="background:#dcfce7; color:#15803d; border:1.5px solid #86efac; padding:4px 12px; border-radius:20px; font-weight:900; font-size:11.5px; white-space:nowrap; display:inline-block;">✅ مكتمل</span>'
+                                : '<span style="background:#fef3c7; color:#b45309; border:1.5px solid #fde68a; padding:4px 12px; border-radius:20px; font-weight:900; font-size:11.5px; white-space:nowrap; display:inline-block;">⏳ قيد التنفيذ</span>'}
+                        </td>
+                    </tr>
+                `;
+            }).join('');
+
+            return `
+                <div style="margin-bottom:28px; background:#ffffff; border:2px solid ${sTheme.border}; border-radius:16px; overflow:hidden; box-shadow:0 4px 15px rgba(0,0,0,0.04);">
+                    <div style="background:${sTheme.bg}; border-bottom:2px solid ${sTheme.border}; padding:14px 20px; display:flex; justify-content:space-between; align-items:center; break-after:avoid; page-break-after:avoid;">
+                        <span style="font-size:16px; font-weight:900; color:${sTheme.badge};">🏛️ ${deptName}</span>
+                        <span style="font-size:12.5px; background:${sTheme.border}; color:#ffffff; padding:4px 14px; border-radius:20px; font-weight:900;">إجمالي البنود: ${items.length} بند</span>
+                    </div>
+                    <table style="width:100%; border-collapse:collapse; font-size:13px;">
+                        <thead>
+                            <tr style="background:#0f172a; color:#ffffff;">
+                                <th style="border:1px solid #1e293b; padding:10px; width:35px; text-align:center;">#</th>
+                                <th style="border:1px solid #1e293b; padding:10px; text-align:right;">البند التنفيذي والهدف المخصص</th>
+                                <th style="border:1px solid #1e293b; padding:10px; text-align:center; width:170px;">الموظف المسئول</th>
+                                <th style="border:1px solid #1e293b; padding:10px; text-align:center; width:110px;">الموعد المستهدف</th>
+                                <th style="border:1px solid #1e293b; padding:10px; text-align:center; width:100px;">مؤشر KPI</th>
+                                <th style="border:1px solid #1e293b; padding:10px; text-align:center; width:110px;">الحالة</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            ${rowsHtml}
+                        </tbody>
+                    </table>
+                </div>
+            `;
+        }).join('');
+
+        var execProgress = totalTasksCount > 0 ? Math.round((completedTasksCount / totalTasksCount) * 100) : 0;
+
+        var printHTML = `
+            <!DOCTYPE html>
+            <html dir="rtl" lang="ar">
+            <head>
+                <meta charset="UTF-8">
+                <title>الخطة الاستراتيجية التجميعية للإدارة العليا - ${p.monthYear || ''}</title>
+                <link rel="preconnect" href="https://fonts.googleapis.com">
+                <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+                <link href="https://fonts.googleapis.com/css2?family=Cairo:wght@400;600;700;800;900&display=swap" rel="stylesheet">
+                <style>
+                    @page { size: A4; margin: 12mm; }
+                    * { box-sizing: border-box; }
+                    body { font-family: 'Cairo', system-ui, -apple-system, sans-serif; background: #ffffff; color: #0f172a; padding: 0; margin: 0; line-height: 1.6; }
+                    .no-print-bar { background: linear-gradient(135deg, #0f172a, #1e293b); color: #ffffff; padding: 16px 26px; border-radius: 16px; margin-bottom: 25px; display: flex; justify-content: space-between; align-items: center; box-shadow: 0 10px 30px rgba(15,23,42,0.4); }
+                    .no-print-bar button { cursor: pointer; padding: 10px 24px; border-radius: 12px; border: none; font-weight: 800; font-size: 13.5px; font-family: 'Cairo', sans-serif; transition: all 0.2s; }
+                    .header-banner { background: linear-gradient(135deg, #0f172a 0%, #1e293b 100%); color: #ffffff; border-radius: 16px; padding: 22px 28px; margin-bottom: 24px; border-bottom: 4px solid #f59e0b; display: flex; justify-content: space-between; align-items: center; }
+                    .logo-brand { font-size: 23px; font-weight: 900; color: #ffffff; margin: 0; display: flex; align-items: center; gap: 12px; }
+                    .logo-tag { background: #f59e0b; color: #0f172a; padding: 3px 12px; border-radius: 8px; font-size: 12px; font-weight: 900; }
+                    .subtitle { font-size: 13.5px; color: #38bdf8; margin-top: 4px; font-weight: 700; }
+                    .badge-month { background: rgba(245,158,11,0.2); color: #fbbf24; border: 1.5px solid #f59e0b; padding: 8px 20px; border-radius: 30px; font-size: 14px; font-weight: 900; text-align: center; }
+                    .notice-box { background: #fef3c7; border: 1.5px solid #f59e0b; color: #92400e; padding: 14px 18px; border-radius: 14px; margin-bottom: 22px; font-size: 13.5px; font-weight: 700; line-height: 1.6; }
+                    .stats-grid { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 14px; margin-bottom: 24px; }
+                    .stat-card { background: #f8fafc; border: 1.5px solid #e2e8f0; padding: 14px 18px; border-radius: 14px; border-right: 5px solid #0284c7; }
+                    .stat-card strong { color: #64748b; display: block; margin-bottom: 4px; font-size: 12px; font-weight: 800; }
+                    .stat-card span { font-size: 18px; font-weight: 900; color: #0f172a; }
+                    .sec-main-title { font-size: 17px; font-weight: 900; color: #0f172a; margin-bottom: 16px; border-bottom: 2.5px solid #0f172a; padding-bottom: 8px; display: flex; justify-content: space-between; align-items: center; }
+                    .footer-signatures { margin-top: 50px; display: flex; justify-content: space-between; text-align: center; font-size: 13px; font-weight: 800; color: #334155; border-top: 2px dashed #cbd5e1; padding-top: 28px; page-break-inside: avoid; break-inside: avoid; }
+                    tr { page-break-inside: avoid; break-inside: avoid; }
+                    table { page-break-inside: auto; break-inside: auto; }
+                    @media print {
+                        .no-print-bar { display: none !important; }
+                        body { padding: 0 !important; background: #ffffff !important; }
+                        #tgInPagePrintOverlay { position: static !important; overflow: visible !important; height: auto !important; width: 100% !important; background: #ffffff !important; padding: 0 !important; }
+                        #tgInPagePrintOverlay > div { max-width: 100% !important; box-shadow: none !important; border-radius: 0 !important; padding: 0 !important; margin: 0 !important; }
+                        tr { page-break-inside: avoid !important; break-inside: avoid !important; }
+                    }
+                </style>
+            </head>
+            <body>
+                <div class="no-print-bar">
+                    <div style="display:flex; align-items:center; gap:10px;">
+                        <span style="font-size:20px;">🖨</span>
+                        <div>
+                            <div style="font-size:15px; font-weight:900; color:#fbbf24;">معاينة الوثيقة الرسمية للخطة التجميعية (Executive Master Plan)</div>
+                            <div style="font-size:12px; color:#94a3b8;">جاهزة للطباعة مقاس A4 بجميع القطاعات الـ ${deptCount} والـ ${totalTasksCount} بنداً بالكامل</div>
+                        </div>
+                    </div>
+                    <div style="display:flex; gap:12px;">
+                        <button onclick="window.print()" style="background:linear-gradient(135deg, #f59e0b, #d97706); color:#ffffff; box-shadow:0 4px 14px rgba(245,158,11,0.4);">🖨 طباعة المستند الكامل الآن</button>
+                        <button onclick="if(window.opener){window.close();}else{var el=document.getElementById('tgInPagePrintOverlay'); if(el) el.remove();}" style="background:#334155; color:#f8fafc;">✕ إغلاق النافذة</button>
+                    </div>
+                </div>
+
+                <div class="header-banner">
+                    <div>
+                        <h1 class="logo-brand">TECH-GO MANAGEMENT SYSTEM <span class="logo-tag">MASTER PLAN</span></h1>
+                        <div class="subtitle">✨ الخطة الاستراتيجية التجميعية الشاملة للإدارة العليا (Executive Master Plan)</div>
+                    </div>
+                    <div class="badge-month">الشهر: ${p.monthYear || ''}</div>
+                </div>
+
+                <div class="notice-box">
+                    📢 <b>بيان وتنبيه رسمي للوثيقة:</b> هذا مستند تجميعي استراتيجي مدمج يضم كافة خطط وبنود العمل الموزعة على أقسام الشركة وجميع الموظفين لشهر (${p.monthYear || ''}).
+                </div>
+
+                <div class="stats-grid">
+                    <div class="stat-card" style="border-right-color:#0284c7;">
+                        <strong>📋 جهة النشر والاعتماد:</strong>
+                        <span>الإدارة العليا</span>
+                    </div>
+                    <div class="stat-card" style="border-right-color:#f59e0b;">
+                        <strong>🏢 إجمالي القطاعات والأقسام:</strong>
+                        <span>${deptCount} قطاعات</span>
+                    </div>
+                    <div class="stat-card" style="border-right-color:#10b981;">
+                        <strong>📌 إجمالي المهام والبنود التنفيذية:</strong>
+                        <span>${totalTasksCount} بند محدد (${execProgress}% إنجاز)</span>
+                    </div>
+                </div>
+
+                ${p.execSummary ? `
+                    <div style="background:#f8fafc; border:1.5px solid #e2e8f0; border-right:5px solid #f59e0b; padding:18px; border-radius:14px; margin-bottom:24px;">
+                        <strong style="color:#b45309; font-size:14.5px; font-weight:900; display:block; margin-bottom:8px;">📝 الخلاصة والرؤية الاستراتيجية المطلوبة من الإدارة العليا:</strong>
+                        <div style="white-space:pre-line; line-height:1.8; font-size:13.5px; color:#1e293b; font-weight:700;">${p.execSummary}</div>
+                    </div>
+                ` : ''}
+
+                <div class="sec-main-title">
+                    <span>📊 تفكيك ومتابعة خطط القطاعات والأقسام التفصيلية:</span>
+                    <span style="font-size:13px; color:#0284c7; font-weight:800;">${deptCount} قطاعات — ${totalTasksCount} بند</span>
+                </div>
+
+                ${deptsHtml}
+
+                <div class="footer-signatures">
+                    <div>توقيع الناشر / مدير التخطيط:<br><br>.........................................</div>
+                    <div>اعتماد الإدارة العليا:<br><br>.........................................</div>
+                </div>
+            </body>
+            </html>
+        `;
+
+        tgExecutePrintDocument(printHTML, '✨ معاينة الخطة الاستراتيجية التجميعية للإدارة العليا (Executive Master Plan)');
+    };
+
+    var renderIndividualPrint = function(p) {
+        var tasks = p.tasks || [];
+        var completedCount = tasks.filter(function(t){ return t.done; }).length;
+        var progress = tasks.length > 0 ? Math.round((completedCount / tasks.length) * 100) : (p.progress || 0);
+
+        var tasksHtml = '';
+        if (tasks.length > 0) {
+            tasksHtml = `
+                <table style="width:100%; border-collapse:collapse; margin-top:15px; font-size:13px;">
+                    <thead>
+                        <tr style="background:#0f172a; color:#ffffff;">
+                            <th style="border:1px solid #1e293b; padding:11px; text-align:center; width:40px;">#</th>
+                            <th style="border:1px solid #1e293b; padding:11px; text-align:right;">البند التنفيذي / الهدف المخصص</th>
+                            <th style="border:1px solid #1e293b; padding:11px; text-align:center; width:130px;">الموعد المستهدف</th>
+                            <th style="border:1px solid #1e293b; padding:11px; text-align:center; width:130px;">مؤشر النجاح (KPI)</th>
+                            <th style="border:1px solid #1e293b; padding:11px; text-align:center; width:120px;">حالة الإنجاز</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        ${tasks.map(function(t, idx) {
+                            var isEven = idx % 2 === 1;
+                            return `
+                                <tr style="background:${isEven ? '#f8fafc' : '#ffffff'};">
+                                    <td style="border:1px solid #e2e8f0; padding:10px; text-align:center; font-weight:800; color:#64748b;">${idx + 1}</td>
+                                    <td style="border:1px solid #e2e8f0; padding:10px 14px; font-weight:700; color:#0f172a; line-height:1.6;">${t.title || t.name || ''}</td>
+                                    <td style="border:1px solid #e2e8f0; padding:10px; text-align:center;">
+                                        <span style="background:#fdf4ff; color:#a21caf; border:1px solid #f5d0fe; padding:4px 10px; border-radius:8px; font-weight:800; font-size:12px; white-space:nowrap;">🗓️ ${t.week || 'طوال الشهر'}</span>
+                                    </td>
+                                    <td style="border:1px solid #e2e8f0; padding:10px; text-align:center;">
+                                        <span style="background:#ecfdf5; color:#047857; border:1px solid #a7f3d0; padding:4px 10px; border-radius:8px; font-weight:900; font-size:12px; white-space:nowrap;">${t.kpi || '100%'}</span>
+                                    </td>
+                                    <td style="border:1px solid #e2e8f0; padding:10px; text-align:center;">
+                                        ${t.done 
+                                            ? '<span style="background:#dcfce7; color:#15803d; border:1.5px solid #86efac; padding:4px 12px; border-radius:20px; font-weight:900; font-size:11.5px; white-space:nowrap; display:inline-block;">✅ مكتمل</span>'
+                                            : '<span style="background:#fef3c7; color:#b45309; border:1.5px solid #fde68a; padding:4px 12px; border-radius:20px; font-weight:900; font-size:11.5px; white-space:nowrap; display:inline-block;">⏳ قيد التنفيذ</span>'}
+                                    </td>
+                                </tr>
+                            `;
+                        }).join('')}
+                    </tbody>
+                </table>
+            `;
+        } else {
+            tasksHtml = '<div style="padding:15px; color:#64748b; font-style:italic;">لا توجد بنود تفصيلية مضافة في هذه الخطة.</div>';
+        }
+
+        var printHTML = `
+            <!DOCTYPE html>
+            <html dir="rtl" lang="ar">
+            <head>
+                <meta charset="UTF-8">
+                <title>وثيقة خطة عمل شهرية (MP) - ${p.title || p.creatorName || ''}</title>
+                <link rel="preconnect" href="https://fonts.googleapis.com">
+                <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+                <link href="https://fonts.googleapis.com/css2?family=Cairo:wght@400;600;700;800;900&display=swap" rel="stylesheet">
+                <style>
+                    @page { size: A4; margin: 12mm; }
+                    * { box-sizing: border-box; }
+                    body { font-family: 'Cairo', system-ui, -apple-system, sans-serif; background: #ffffff; color: #0f172a; padding: 25px; margin: 0; line-height: 1.6; }
+                    .header-banner { background: linear-gradient(135deg, #0f172a 0%, #1e293b 100%); color: #ffffff; border-radius: 16px; padding: 22px 28px; margin-bottom: 24px; border-bottom: 4px solid #10b981; display: flex; justify-content: space-between; align-items: center; }
+                    .logo-brand { font-size: 23px; font-weight: 900; color: #ffffff; margin: 0; display: flex; align-items: center; gap: 12px; }
+                    .logo-tag { background: #10b981; color: #ffffff; padding: 3px 12px; border-radius: 8px; font-size: 12px; font-weight: 900; }
+                    .subtitle { font-size: 13.5px; color: #34d399; margin-top: 4px; font-weight: 700; }
+                    .badge-progress { background: rgba(16,185,129,0.2); color: #34d399; border: 1.5px solid #10b981; padding: 8px 20px; border-radius: 30px; font-size: 14px; font-weight: 900; text-align: center; }
+                    .stats-grid { display: grid; grid-template-columns: 1fr 1fr 1fr 1fr; gap: 12px; margin-bottom: 24px; }
+                    .stat-card { background: #f8fafc; border: 1.5px solid #e2e8f0; padding: 14px 16px; border-radius: 14px; border-right: 4px solid #10b981; }
+                    .stat-card strong { color: #64748b; display: block; margin-bottom: 4px; font-size: 11.5px; font-weight: 800; }
+                    .stat-card span { font-size: 14px; font-weight: 800; color: #0f172a; }
+                    .sec-card { margin-bottom: 24px; background: #f8fafc; border: 1.5px solid #e2e8f0; padding: 20px; border-radius: 16px; page-break-inside: avoid; break-inside: avoid; }
+                    .sec-title { font-size: 16px; font-weight: 900; color: #059669; border-bottom: 1.5px dashed #cbd5e1; padding-bottom: 8px; margin-bottom: 14px; }
+                    .progress-bar-wrap { background: #e2e8f0; height: 12px; border-radius: 10px; overflow: hidden; margin-top: 10px; }
+                    .progress-bar-fill { background: linear-gradient(90deg, #10b981, #34d399); height: 100%; width: ${progress}%; }
+                    .footer-signatures { margin-top: 50px; display: flex; justify-content: space-between; text-align: center; font-size: 13px; font-weight: 800; color: #334155; border-top: 2px dashed #cbd5e1; padding-top: 28px; page-break-inside: avoid; break-inside: avoid; }
+                    tr { page-break-inside: avoid; break-inside: avoid; }
+                    table { page-break-inside: auto; break-inside: auto; }
+                </style>
+            </head>
+            <body>
+                <div class="header-banner">
+                    <div>
+                        <h1 class="logo-brand">TECH-GO MANAGEMENT SYSTEM <span class="logo-tag">EMPLOYEE PLAN</span></h1>
+                        <div class="subtitle">📌 وثيقة خطة العمل الفردية للموظف (Monthly Plan - MP)</div>
+                    </div>
+                    <div class="badge-progress">إجمالي الإنجاز: ${progress}%</div>
+                </div>
+
+                <div class="stats-grid">
+                    <div class="stat-card" style="border-right-color:#0284c7;">
+                        <strong>📌 عنوان الخطة:</strong>
+                        <span>${p.title || 'خطة عمل شهرية'}</span>
+                    </div>
+                    <div class="stat-card" style="border-right-color:#10b981;">
+                        <strong>👤 الموظف / المُعد:</strong>
+                        <span>${p.creatorName || p.empName || p.userName || p.targetName || 'موظف'}</span>
+                    </div>
+                    <div class="stat-card" style="border-right-color:#8b5cf6;">
+                        <strong>🏢 القسم / الإدارة:</strong>
+                        <span>${p.department || 'عام'}</span>
+                    </div>
+                    <div class="stat-card" style="border-right-color:#f59e0b;">
+                        <strong>📅 الشهر المستهدف:</strong>
+                        <span>${p.monthYear || p.month || ''}</span>
+                    </div>
+                </div>
+
+                <div class="sec-card">
+                    <div class="sec-title">🎯 الخلاصة والهدف الاستراتيجي من الخطة:</div>
+                    <div style="white-space:pre-line; line-height:1.8; font-size:13.5px; color:#1e293b; font-weight:700;">${p.objectives || p.summary || 'لم يحدد ملخص'}</div>
+                    <div style="margin-top:14px;">
+                        <div style="display:flex; justify-content:space-between; font-size:12.5px; font-weight:800; color:#475569;">
+                            <span>مؤشر تقدم الإنجاز الكلي للبنود:</span>
+                            <span style="color:#059669;">${completedCount} من ${tasks.length} بند مكتمل (${progress}%)</span>
+                        </div>
+                        <div class="progress-bar-wrap"><div class="progress-bar-fill"></div></div>
+                    </div>
+                </div>
+
+                <div class="sec-card">
+                    <div class="sec-title">📋 قائمة البنود والمستهدفات التنفيذية التفصيلية:</div>
+                    ${tasksHtml}
+                </div>
+
+                <div class="footer-signatures">
+                    <div>توقيع مُعد الخطة:<br><br>.........................................</div>
+                    <div>اعتماد مدير القسم:<br><br>.........................................</div>
+                    <div>اعتماد الإدارة العليا:<br><br>.........................................</div>
+                </div>
+            </body>
+            </html>
+        `;
+
+        tgExecutePrintDocument(printHTML, '📌 معاينة وثيقة خطة العمل الفردية الرسمية (Monthly Plan)');
+    };
+
+    var processPlan = function(p) {
+        if (p.type === 'executive_master') {
+            renderExecPrint(p);
+        } else {
+            renderIndividualPrint(p);
+        }
+    };
+
+    if (typeof planId === 'object' && planId !== null) {
+        processPlan(planId);
+        return;
+    }
+
+    var findLocalPlan = function(id) {
+        var sources = [window._allMonthlyPlans, window._empMonthlyPlans, window._allPlans];
+        for (var s = 0; s < sources.length; s++) {
+            var arr = sources[s];
+            if (Array.isArray(arr)) {
+                var found = arr.find(function(item){ return item.id === id || item._id === id; });
+                if (found) return found;
+            }
+        }
+        return null;
+    };
+
+    var cached = findLocalPlan(planId);
+    if (cached) {
+        processPlan(cached);
+        return;
+    }
+
+    if (planId && window.db) {
+        db.collection('monthly_plans').doc(planId).get().then(function(doc) {
+            if (doc.exists) {
+                var d = doc.data();
+                d.id = doc.id;
+                processPlan(d);
+            } else {
+                db.collection('monthlyPlans').doc(planId).get().then(function(doc2) {
+                    if (doc2.exists) {
+                        var d2 = doc2.data();
+                        d2.id = doc2.id;
+                        processPlan(d2);
+                    } else {
+                        alert("تعذر العثور على بيانات الخطة في قاعدة البيانات!");
+                    }
+                }).catch(function(){ alert("تعذر العثور على بيانات الخطة للطباعة!"); });
+            }
+        }).catch(function(err) {
+            alert("حدث خطأ أثناء تحميل بيانات الخطة: " + err.message);
+        });
+    } else {
+        alert("بيانات الخطة غير متوفرة!");
+    }
 };
 
 window.tgSubmitEmployeeMonthlyPlan = function() {
@@ -9202,8 +11924,12 @@ window.tgSubmitEmployeeMonthlyPlan = function() {
     db.collection('monthly_plans').add({
         uid: myUid,
         createdBy: myUid,
+        empUid: myUid,
         creatorName: myName,
         userName: myName,
+        empName: myName,
+        email: u.email || '',
+        empEmail: u.email || '',
         department: myDept,
         userRole: myDept,
         title: title,
@@ -9403,33 +12129,6 @@ window.tgSaveEditedMonthlyPlan = function(event, planId) {
     });
 };
 
-    var completedCount = tasks.filter(function(t){ return t.done; }).length;
-    var progress = tasks.length > 0 ? Math.round((completedCount / tasks.length) * 100) : 0;
-
-    var updateData = {
-        title: title,
-        monthYear: monthYear,
-        department: department,
-        objectives: objectives,
-        tasks: tasks,
-        progress: progress,
-        updatedAt: firebase.firestore.FieldValue.serverTimestamp()
-    };
-
-    db.collection('monthly_plans').doc(planId).update(updateData).then(function() {
-        if (typeof tgToast === 'function') tgToast('✅ تم حفظ تعديلات الخطة الشهرية بنجاح', 'ok');
-        else alert('✅ تم حفظ التعديلات بنجاح');
-
-        var overlay = document.getElementById('editMpModalOverlay');
-        if (overlay) overlay.remove();
-
-        if (typeof tgRenderMonthlyPlansAdmin === 'function') tgRenderMonthlyPlansAdmin();
-        if (typeof tgRenderMonthlyPlansEmp === 'function') tgRenderMonthlyPlansEmp();
-    }).catch(function(err) {
-        alert('❌ فشل حفظ التعديلات: ' + err.message);
-    });
-};
-
 // ─── AUTO-GENERATE MONTHLY REPORT FROM WEEKLY REPORTS ────────────────────
 window.tgGenerateMonthlyFromWeekly = function(targetMonthStr) {
     var targetDb = window.db || (typeof db !== 'undefined' ? db : (window.firebase ? firebase.firestore() : null));
@@ -9604,6 +12303,10 @@ window.tgGenerateMonthlyFromWeekly = function(targetMonthStr) {
 // Admin View for Unified Reports (Weekly & Monthly)
 window.loadWeeklyReportsAdmin = function(container) {
     if (!container) container = document.getElementById('pg-wkr') || document.getElementById('pg-weeklyreports');
+    if (!container) {
+        var pg = document.querySelector('.pg.a');
+        if (pg) container = pg;
+    }
     if (!container) return;
 
     container.innerHTML = `
@@ -9663,12 +12366,19 @@ window.loadWeeklyReportsAdmin = function(container) {
     tgRenderWeeklyReportsAdmin();
 };
 
-window.tgRenderMonthlyReportsAdminInUnified = function() {
+window.tgRenderMonthlyReportsAdminInUnified = function(retryCount) {
+    retryCount = retryCount || 0;
     var listEl = document.getElementById('mrAdminListInUnified') || document.getElementById('mrAdminList');
     if (!listEl) return;
-    if (!window.db) return;
 
-    db.collection('monthly_reports').get().then(function(snap) {
+    var targetDb = window.db || (typeof db !== 'undefined' ? db : (window.firebase ? firebase.firestore() : null));
+    if (!targetDb) {
+        if (retryCount < 10) setTimeout(function(){ tgRenderMonthlyReportsAdminInUnified(retryCount + 1); }, 300);
+        else listEl.innerHTML = `<div style="background:var(--bg2); border:1.5px dashed var(--bd); padding:25px; text-align:center; border-radius:14px; color:var(--tx2); font-weight:bold; font-size:14px;">📄 لا توجد تقارير شهرية مسجلة حالياً.</div>`;
+        return;
+    }
+
+    targetDb.collection('monthly_reports').get().then(function(snap) {
         if (snap.empty) {
             listEl.innerHTML = `
                 <div style="background:var(--bg2); border:1.5px dashed var(--bd); padding:30px; text-align:center; border-radius:14px; color:var(--tx2); font-weight:bold; font-size:14px;">
@@ -9756,13 +12466,20 @@ window.tgRenderMonthlyReportsAdminInUnified = function() {
     });
 };
 
-window.tgRenderWeeklyReportsAdmin = function() {
+window.tgRenderWeeklyReportsAdmin = function(retryCount) {
+    retryCount = retryCount || 0;
     var listEl = document.getElementById('wkrAdminList');
     if (!listEl) return;
-    if (!window.db) return;
 
-    var p1 = db.collection('weekly_reports').get().catch(function(){ return {docs:[]}; });
-    var p2 = db.collection('weeklyReports').get().catch(function(){ return {docs:[]}; });
+    var targetDb = window.db || (typeof db !== 'undefined' ? db : (window.firebase ? firebase.firestore() : null));
+    if (!targetDb) {
+        if (retryCount < 10) setTimeout(function(){ tgRenderWeeklyReportsAdmin(retryCount + 1); }, 300);
+        else listEl.innerHTML = `<div style="background:var(--bg2); border:1.5px dashed var(--bd); padding:35px; text-align:center; border-radius:16px; color:var(--tx2); font-weight:bold; font-size:14.5px;">📊 لا توجد تقارير أسبوعية مسجلة حالياً.</div>`;
+        return;
+    }
+
+    var p1 = targetDb.collection('weekly_reports').get().catch(function(){ return {docs:[]}; });
+    var p2 = targetDb.collection('weeklyReports').get().catch(function(){ return {docs:[]}; });
 
     Promise.all([p1, p2]).then(function(results) {
         var reports = [];
@@ -9859,31 +12576,7 @@ window.tgRenderWeeklyReportsAdmin = function() {
     });
 };
 
-// Employee View for Monthly Plans
-window.loadMonthlyPlansEmp = function(container) {
-    if (!container) container = document.getElementById('epg-monthlyplans');
-    if (!container) return;
 
-    container.innerHTML = `
-        <div class="set-sec">
-            <div style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:15px; margin-bottom:20px;">
-                <div>
-                    <h2 style="font-size:22px; font-weight:900; color:var(--tx); margin:0 0 6px;">🎯 خطتي الشهرية الاستراتيجية (MP)</h2>
-                    <p style="color:var(--tx); font-size:13px; margin:0; font-weight:600;">الخطط والمهام المستهدفة للشهر الحالي. يمكنك التعليم على المهام المكتملة لتحديث نسبة الإنجاز مباشرةً.</p>
-                </div>
-                <button type="button" onclick="tgOpenNewMonthlyPlanModal()" class="bt" style="background:linear-gradient(135deg, #10b981, #059669); color:#fff; font-weight:900; font-size:14px; padding:10px 22px; border-radius:30px; box-shadow:0 4px 15px rgba(16,185,129,0.3);">
-                    ➕ إنشاء خطة شهرية مخصصة
-                </button>
-            </div>
-
-            <div id="mpEmpList">
-                <div style="text-align:center; padding:30px; color:var(--tx); font-weight:bold;">جاري تحميل خطتك الشهرية...</div>
-            </div>
-        </div>
-    `;
-
-    tgRenderMonthlyPlansEmp();
-};
 
 window.tgRenderMonthlyPlansEmp = function(retryCount) {
     retryCount = retryCount || 0;
@@ -9891,16 +12584,19 @@ window.tgRenderMonthlyPlansEmp = function(retryCount) {
     if (!listEl) return;
 
     var renderEmpty = function() {
-        if (listEl && listEl.innerHTML.indexOf('جاري تحميل') !== -1) {
-            listEl.innerHTML = `
-                <div style="background:var(--bg2); border:1.5px dashed var(--bd); padding:40px; text-align:center; border-radius:14px; color:var(--tx); font-weight:800;">
-                    🎯 لا توجد خطط شهرية متاحة حالياً.
+        var el = document.getElementById('mpEmpList');
+        if (el) {
+            el.innerHTML = `
+                <div style="background:var(--bg2); border:1.5px dashed var(--bd); padding:35px; text-align:center; border-radius:16px; color:var(--tx); font-weight:800; display:flex; flex-direction:column; align-items:center; gap:14px;">
+                    <div style="font-size:32px;">🎯</div>
+                    <div style="font-size:15px; color:var(--tx);">لا توجد خطط أسبوعية أو شهرية مسجلة لك حالياً.</div>
+                    <button type="button" onclick="tgOpenEmployeeNewMonthlyPlanModal()" class="bt" style="background:linear-gradient(135deg, #10b981, #059669); color:#fff; font-weight:900; font-size:13.5px; padding:11px 24px; border-radius:30px; box-shadow:0 6px 20px rgba(16,185,129,0.35); border:none; cursor:pointer;">
+                        ➕ إعداد وتقديم خطة شهرية جديدة للإدارة
+                    </button>
                 </div>
             `;
         }
     };
-
-    var timer = setTimeout(renderEmpty, 1500);
 
     var targetDb = window.db || (typeof db !== 'undefined' ? db : (window.firebase ? firebase.firestore() : null));
     if (!targetDb) {
@@ -9912,15 +12608,49 @@ window.tgRenderMonthlyPlansEmp = function(retryCount) {
     var u = window.TG_USER || {};
     var myUid = u.uid || (window.firebase && firebase.auth && firebase.auth().currentUser ? firebase.auth().currentUser.uid : '');
 
-    db.collection('monthly_plans').get().then(function(snap) {
-        clearTimeout(timer);
+    var queries = [
+        targetDb.collection('monthly_plans').get().catch(function(){ return {docs:[]}; }),
+        targetDb.collection('weekly_plans').get().catch(function(){ return {docs:[]}; }),
+        targetDb.collection('weeklyPlans').get().catch(function(){ return {docs:[]}; })
+    ];
+
+    if (myUid) {
+        queries.push(
+            targetDb.collection('monthly_plans').where('uid', '==', myUid).get().catch(function(){ return {docs:[]}; }),
+            targetDb.collection('monthly_plans').where('createdBy', '==', myUid).get().catch(function(){ return {docs:[]}; }),
+            targetDb.collection('monthly_plans').where('empUid', '==', myUid).get().catch(function(){ return {docs:[]}; }),
+            targetDb.collection('monthly_plans').where('employeeUid', '==', myUid).get().catch(function(){ return {docs:[]}; }),
+            targetDb.collection('monthly_plans').where('assignedTo', '==', myUid).get().catch(function(){ return {docs:[]}; }),
+            targetDb.collection('monthly_plans').where('targetUid', '==', myUid).get().catch(function(){ return {docs:[]}; }),
+
+            targetDb.collection('weekly_plans').where('uid', '==', myUid).get().catch(function(){ return {docs:[]}; }),
+            targetDb.collection('weekly_plans').where('createdBy', '==', myUid).get().catch(function(){ return {docs:[]}; }),
+            targetDb.collection('weekly_plans').where('empUid', '==', myUid).get().catch(function(){ return {docs:[]}; }),
+            targetDb.collection('weekly_plans').where('assignedTo', '==', myUid).get().catch(function(){ return {docs:[]}; }),
+
+            targetDb.collection('weeklyPlans').where('uid', '==', myUid).get().catch(function(){ return {docs:[]}; }),
+            targetDb.collection('weeklyPlans').where('createdBy', '==', myUid).get().catch(function(){ return {docs:[]}; }),
+            targetDb.collection('weeklyPlans').where('empUid', '==', myUid).get().catch(function(){ return {docs:[]}; }),
+            targetDb.collection('weeklyPlans').where('assignedTo', '==', myUid).get().catch(function(){ return {docs:[]}; })
+        );
+    }
+
+    Promise.all(queries).then(function(results) {
         var plans = [];
-        snap.forEach(function(doc) {
-            var data = doc.data();
-            data.id = doc.id;
-            // Strict user privacy scoping: Employee only sees their own monthly plans
-            if (myUid && (data.uid === myUid || data.createdBy === myUid)) {
-                plans.push(data);
+        var seenIds = {};
+
+        results.forEach(function(snap) {
+            if (snap && snap.docs) {
+                snap.docs.forEach(function(doc) {
+                    if (!seenIds[doc.id]) {
+                        var data = doc.data();
+                        data.id = doc.id;
+                        if (typeof tgIsDocForUser === 'function' ? tgIsDocForUser(data, u) : true) {
+                            seenIds[doc.id] = true;
+                            plans.push(data);
+                        }
+                    }
+                });
             }
         });
 
@@ -9934,11 +12664,7 @@ window.tgRenderMonthlyPlansEmp = function(retryCount) {
         if (!listEl) return;
 
         if (plans.length === 0) {
-            listEl.innerHTML = `
-                <div style="background:var(--bg2); border:1.5px dashed var(--bd); padding:40px; text-align:center; border-radius:14px; color:var(--tx); font-weight:800;">
-                    🎯 لا توجد خطط شهرية متاحة حالياً.
-                </div>
-            `;
+            renderEmpty();
             return;
         }
 
@@ -9946,38 +12672,39 @@ window.tgRenderMonthlyPlansEmp = function(retryCount) {
         plans.forEach(function(p) {
             var tasks = p.tasks || [];
             var completedCount = tasks.filter(function(t){ return t.done; }).length;
-            var progress = tasks.length > 0 ? Math.round((completedCount / tasks.length) * 100) : 0;
+            var progress = tasks.length > 0 ? Math.round((completedCount / tasks.length) * 100) : (p.progress || 0);
 
             html += `
                 <div class="card p-3 mb-3" style="background:var(--bg2); border:1.5px solid var(--bd); border-radius:16px; box-shadow:0 4px 15px rgba(0,0,0,0.05);">
                     <div style="display:flex; justify-content:space-between; align-items:flex-start; flex-wrap:wrap; gap:10px; margin-bottom:12px; border-bottom:1px solid var(--bd); padding-bottom:10px;">
                         <div>
-                            <h3 style="font-size:18px; font-weight:900; color:var(--tx); margin:0 0 4px;">${p.title}</h3>
-                            <span style="color:var(--tx); font-weight:700; font-size:13px;">الشهر: ${p.monthYear} | المستهدف: ${p.targetName}</span>
+                            <h3 style="font-size:18px; font-weight:900; color:var(--tx); margin:0 0 4px;">📌 ${p.title || 'خطة عمل'}</h3>
+                            <span style="color:var(--tx2); font-weight:700; font-size:13px;">${p.monthYear ? ('الشهر: ' + p.monthYear) : ('الأسبوع: ' + (p.weekYear || p.week || ''))} | المستهدف: ${p.targetName || p.empName || u.name || ''}</span>
                         </div>
-                        <span class="badge" style="background:#10b981; color:#fff; font-size:13px; font-weight:800; padding:6px 16px;">إنجاز ${progress}%</span>
+                        <span class="badge" style="background:#10b981; color:#fff; font-size:13px; font-weight:800; padding:6px 16px; border-radius:20px;">إنجاز ${progress}%</span>
                     </div>
 
-                    <!-- Progress Bar -->
                     <div style="background:var(--bg); border:1.5px solid var(--bd); height:14px; border-radius:10px; overflow:hidden; margin-bottom:15px;">
                         <div style="background:linear-gradient(90deg, #10b981, #34d399); height:100%; width:${progress}%; transition:width 0.4s;"></div>
                     </div>
 
+                    ${p.objectives ? `
                     <div style="background:var(--bg); padding:14px; border-radius:12px; border:1.5px solid var(--bd); margin-bottom:15px;">
-                        <strong style="color:#10b981; display:block; margin-bottom:6px; font-size:14px; font-weight:800;">📌 الأهداف المطلوب تحقيقها:</strong>
+                        <strong style="color:#10b981; display:block; margin-bottom:6px; font-size:14px; font-weight:800;">🎯 الأهداف والمستهدفات المطلوبة:</strong>
                         <div style="font-size:13px; color:var(--tx); font-weight:600; white-space:pre-line; line-height:1.6;">${p.objectives}</div>
                     </div>
+                    ` : ''}
 
-                    <!-- Interactive Checklist -->
+                    ${tasks.length > 0 ? `
                     <div style="background:var(--bg); padding:16px; border-radius:14px; border:1.5px solid var(--bd); margin-bottom:15px;">
-                        <strong style="color:var(--tx); font-size:14px; font-weight:800; display:block; margin-bottom:12px;">✅ قائمة المهام والبنود التنفيذية (انقر لتحديث الإنجاز):</strong>
+                        <strong style="color:var(--tx); font-size:14px; font-weight:800; display:block; margin-bottom:12px;">✅ قائمة البنود والمهام التنفيذية (انقر لتحديث الإنجاز):</strong>
                         <div style="display:flex; flex-direction:column; gap:10px;">
                             ${tasks.map(function(t, idx) {
                                 return `
                                     <label style="display:flex; align-items:center; justify-content:space-between; padding:12px 14px; background:var(--bg2); border:1.5px solid var(--bd); border-radius:10px; cursor:pointer; font-size:14px; color:var(--tx);">
                                         <div style="display:flex; align-items:center; gap:12px;">
                                             <input type="checkbox" ${t.done ? 'checked' : ''} onchange="tgTogglePlanTask('${p.id}', ${idx}, this.checked)" style="width:20px; height:20px; accent-color:#10b981; cursor:pointer;">
-                                            <span style="${t.done ? 'text-decoration:line-through; color:var(--tx2); font-weight:600;' : 'font-weight:800;'}">${t.title}</span>
+                                            <span style="${t.done ? 'text-decoration:line-through; color:var(--tx2); font-weight:600;' : 'font-weight:800;'}">${t.title || t.name || ''}</span>
                                         </div>
                                         <div style="display:flex; gap:8px; align-items:center;">
                                             ${t.kpi ? `<span style="font-size:11px; background:rgba(16,185,129,0.15); color:#10b981; padding:3px 8px; border-radius:6px; font-weight:800;">KPI: ${t.kpi}</span>` : ''}
@@ -9988,9 +12715,10 @@ window.tgRenderMonthlyPlansEmp = function(retryCount) {
                             }).join('')}
                         </div>
                     </div>
+                    ` : ''}
 
-                    <div style="display:flex; justify-content:flex-end;">
-                        <button type="button" onclick="tgPrintMonthlyPlan('${p.id}')" class="bt bt-o" style="font-size:13px; padding:8px 16px; font-weight:800;">🖨 طباعة الخطة MP</button>
+                    <div style="display:flex; justify-content:flex-end; gap:10px;">
+                        <button type="button" onclick="tgPrintMonthlyPlan('${p.id}')" class="bt bt-o" style="font-size:13px; padding:8px 16px; font-weight:800;">🖨 طباعة الخطة</button>
                         <button type="button" onclick="tgDeleteMonthlyPlan('${p.id}')" class="bt bt-o" style="border-color:#ef4444; color:#ef4444; font-size:13px; padding:8px 16px; font-weight:800;">🗑 حذف الخطة</button>
                     </div>
                 </div>
@@ -9998,6 +12726,10 @@ window.tgRenderMonthlyPlansEmp = function(retryCount) {
         });
 
         listEl.innerHTML = html;
+    }).catch(function(err) {
+        console.error("Error loading monthly/weekly plans:", err);
+        clearTimeout(timer);
+        renderEmpty();
     });
 };
 
@@ -10044,30 +12776,57 @@ window.tgGetIsoWeekDate = function(year, weekNum) {
     return targetThursday;
 };
 
+window.tgGetCurrentWeekFormatted = function(dateObj) {
+    var d = dateObj ? new Date(dateObj) : new Date();
+    if (isNaN(d.getTime())) d = new Date();
+    var monthNamesAr = ["يناير", "فبراير", "مارس", "أبريل", "مايو", "يونيو", "يوليو", "أغسطس", "سبتمبر", "أكتوبر", "نوفمبر", "ديسمبر"];
+    var ordinalWeeksAr = ["الأول", "الثاني", "الثالث", "الرابع", "الخامس"];
+    var dayOfMonth = d.getDate();
+    var weekInMonthIdx = Math.min(4, Math.floor((dayOfMonth - 1) / 7));
+    var ordStr = ordinalWeeksAr[weekInMonthIdx] || 'الرابع';
+    var mAr = monthNamesAr[d.getMonth()] || '';
+    return 'الأسبوع ' + ordStr + ' من شهر ' + mAr + ' ' + d.getFullYear();
+};
+
 window.tgFormatWeekName = function(weekStr) {
-    if (!weekStr) return '';
-    try {
-        var str = String(weekStr).trim();
-        var parts = str.split('-W');
-        if (parts.length === 2) {
+    if (!weekStr) return window.tgGetCurrentWeekFormatted(new Date());
+
+    if (weekStr instanceof Date) {
+        return window.tgGetCurrentWeekFormatted(weekStr);
+    }
+
+    var str = String(weekStr).trim();
+    if (!str) return window.tgGetCurrentWeekFormatted(new Date());
+    if (str.startsWith('الأسبوع')) return str;
+
+    var parts = str.split('-W');
+    if (parts.length === 2) {
+        try {
             var year = parseInt(parts[0], 10);
             var weekNum = parseInt(parts[1], 10);
-            
-            var monthNamesAr = ["يناير", "فبراير", "مارس", "أبريل", "مايو", "يونيو", "يوليو", "أغسطس", "سبتمبر", "أكتوبر", "نوفمبر", "ديسمبر"];
-            var ordinalWeeksAr = ["الأول", "الثاني", "الثالث", "الرابع", "الخامس"];
+            if (!isNaN(year) && !isNaN(weekNum)) {
+                var monthNamesAr = ["يناير", "فبراير", "مارس", "أبريل", "مايو", "يونيو", "يوليو", "أغسطس", "سبتمبر", "أكتوبر", "نوفمبر", "ديسمبر"];
+                var ordinalWeeksAr = ["الأول", "الثاني", "الثالث", "الرابع", "الخامس"];
 
-            var d = window.tgGetIsoWeekDate(year, weekNum);
-            var monthIdx = d.getMonth();
-            var dayOfMonth = d.getDate();
-            
-            var weekInMonthIdx = Math.min(3, Math.floor((dayOfMonth - 1) / 7));
-            var ordStr = ordinalWeeksAr[weekInMonthIdx] || 'الرابع';
-            var mAr = monthNamesAr[monthIdx] || '';
-            
-            return 'الأسبوع ' + ordStr + ' من شهر ' + mAr + ' ' + year;
-        }
-    } catch(e){}
-    return weekStr;
+                var d = typeof window.tgGetIsoWeekDate === 'function' ? window.tgGetIsoWeekDate(year, weekNum) : new Date();
+                var monthIdx = d.getMonth();
+                var dayOfMonth = d.getDate();
+                
+                var weekInMonthIdx = Math.min(4, Math.floor((dayOfMonth - 1) / 7));
+                var ordStr = ordinalWeeksAr[weekInMonthIdx] || 'الرابع';
+                var mAr = monthNamesAr[monthIdx] || '';
+                
+                return 'الأسبوع ' + ordStr + ' من شهر ' + mAr + ' ' + year;
+            }
+        } catch(e){}
+    }
+
+    var parsedDate = new Date(str);
+    if (!isNaN(parsedDate.getTime())) {
+        return window.tgGetCurrentWeekFormatted(parsedDate);
+    }
+
+    return str;
 };
 
 window.tgExtractMonthFromWeeklyReport = function(r) {
@@ -10388,7 +13147,12 @@ window.tgSubmitWeeklyReport = function(e) {
 
     var reportData = {
         uid: myUid,
+        createdBy: myUid,
+        empUid: myUid,
         userName: myName,
+        empName: myName,
+        email: u.email || '',
+        empEmail: u.email || '',
         userRole: department,
         department: department,
         weekYear: weekYear,
@@ -10400,13 +13164,14 @@ window.tgSubmitWeeklyReport = function(e) {
 
     var promise;
     if (window._wrEditingReportId) {
-        promise = db.collection('weekly_reports').doc(window._wrEditingReportId).update(reportData);
+        promise = db.collection('weekly_reports').doc(window._wrEditingReportId).update(reportData).then(function() { return { id: window._wrEditingReportId }; });
     } else {
         reportData.createdAt = firebase.firestore.FieldValue.serverTimestamp();
         promise = db.collection('weekly_reports').add(reportData);
     }
 
-    promise.then(function() {
+    promise.then(function(docRef) {
+        var newReportId = (docRef && docRef.id) ? docRef.id : null;
         if (document.getElementById('wrModalOverlay')) document.getElementById('wrModalOverlay').remove();
         if (typeof tgShowToast === 'function') {
             tgShowToast('✅ تم رفع التقرير الأسبوعي المخصص بنجاح!');
@@ -10415,7 +13180,7 @@ window.tgSubmitWeeklyReport = function(e) {
         }
         var _u = window.TG_USER || {};
         if (typeof tgNotifyAdminsReportSubmitted === 'function') {
-            tgNotifyAdminsReportSubmitted('📊 تقرير أسبوعي جديد (WR)', _u.name || _u.displayName || 'موظف', 'تقريره الأسبوعي عالي الكفاءة', 'weekly-report-new');
+            tgNotifyAdminsReportSubmitted('📊 تقرير أسبوعي جديد (WR)', _u.name || _u.displayName || 'موظف', 'تقريره الأسبوعي عالي الكفاءة', 'weekly-report-new', newReportId);
         }
 
         if (typeof loadWeeklyReportsEmp === 'function') loadWeeklyReportsEmp();
@@ -10484,79 +13249,89 @@ window.tgPrintWeeklyReport = function(reportId) {
             <head>
                 <meta charset="UTF-8">
                 <title>تقرير أسبوعي مخصص - ${r.userName || ''} (${r.weekYear || ''})</title>
+                <link rel="preconnect" href="https://fonts.googleapis.com">
+                <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+                <link href="https://fonts.googleapis.com/css2?family=Cairo:wght@400;600;700;800;900&display=swap" rel="stylesheet">
                 <style>
                     @page { size: A4; margin: 12mm; }
-                    body { font-family: 'Segoe UI', Tahoma, Arial, sans-serif; background: #ffffff; color: #0f172a; padding: 25px; margin: 0; line-height: 1.6; }
-                    .no-print { background: #1e293b; color: #ffffff; padding: 14px 22px; border-radius: 14px; margin-bottom: 25px; display: flex; justify-content: space-between; align-items: center; font-family: sans-serif; box-shadow: 0 10px 25px rgba(0,0,0,0.3); }
-                    .no-print button { cursor: pointer; padding: 10px 22px; border-radius: 10px; border: none; font-weight: 800; font-size: 14px; }
-                    .header { display: flex; justify-content: space-between; align-items: center; border-bottom: 3px solid #0284c7; padding-bottom: 16px; margin-bottom: 25px; }
-                    .logo-title { font-size: 24px; font-weight: 900; color: #0f172a; margin: 0; }
-                    .subtitle { font-size: 13px; color: #64748b; margin-top: 4px; font-weight: 600; }
-                    .badge { background: #0284c7; color: #ffffff; padding: 8px 18px; border-radius: 20px; font-size: 14px; font-weight: 800; }
-                    .grid { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 12px; margin-bottom: 25px; }
-                    .info-box { background: #f8fafc; border: 1.5px solid #e2e8f0; padding: 14px; border-radius: 12px; font-size: 13px; }
-                    .info-box strong { color: #334155; display: block; margin-bottom: 4px; font-size: 12px; }
-                    .section-card { margin-bottom: 22px; background: #f8fafc; border: 1.5px solid #e2e8f0; padding: 18px; border-radius: 14px; page-break-inside: avoid; }
-                    .sec-title { font-size: 16px; font-weight: 900; color: #0369a1; border-bottom: 1.5px dashed #cbd5e1; padding-bottom: 8px; margin-bottom: 14px; }
+                    * { box-sizing: border-box; }
+                    body { font-family: 'Cairo', system-ui, -apple-system, sans-serif; background: #ffffff; color: #0f172a; padding: 0; margin: 0; line-height: 1.6; }
+                    .no-print-bar { background: linear-gradient(135deg, #0f172a, #1e293b); color: #ffffff; padding: 16px 26px; border-radius: 16px; margin-bottom: 25px; display: flex; justify-content: space-between; align-items: center; box-shadow: 0 10px 30px rgba(15,23,42,0.4); }
+                    .no-print-bar button { cursor: pointer; padding: 10px 24px; border-radius: 12px; border: none; font-weight: 800; font-size: 13.5px; font-family: 'Cairo', sans-serif; transition: all 0.2s; }
+                    .header-banner { background: linear-gradient(135deg, #0f172a 0%, #1e293b 100%); color: #ffffff; border-radius: 16px; padding: 22px 28px; margin-bottom: 24px; border-bottom: 4px solid #0284c7; display: flex; justify-content: space-between; align-items: center; }
+                    .logo-brand { font-size: 23px; font-weight: 900; color: #ffffff; margin: 0; display: flex; align-items: center; gap: 12px; }
+                    .logo-tag { background: #0284c7; color: #ffffff; padding: 3px 12px; border-radius: 8px; font-size: 12px; font-weight: 900; }
+                    .subtitle { font-size: 13.5px; color: #38bdf8; margin-top: 4px; font-weight: 700; }
+                    .badge-week { background: rgba(2,132,199,0.2); color: #38bdf8; border: 1.5px solid #0284c7; padding: 8px 20px; border-radius: 30px; font-size: 14px; font-weight: 900; text-align: center; }
+                    .stats-grid { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 12px; margin-bottom: 24px; }
+                    .stat-card { background: #f8fafc; border: 1.5px solid #e2e8f0; padding: 14px 16px; border-radius: 14px; border-right: 4px solid #0284c7; }
+                    .stat-card strong { color: #64748b; display: block; margin-bottom: 4px; font-size: 11.5px; font-weight: 800; }
+                    .stat-card span { font-size: 14px; font-weight: 800; color: #0f172a; }
+                    .sec-card { margin-bottom: 24px; background: #ffffff; border: 1.5px solid #e2e8f0; border-radius: 16px; padding: 20px; box-shadow: 0 4px 15px rgba(0,0,0,0.03); page-break-inside: avoid; break-inside: avoid; }
+                    .sec-title { font-size: 16px; font-weight: 900; color: #0284c7; border-bottom: 1.5px solid #e0f2fe; padding-bottom: 8px; margin-bottom: 14px; }
                     .bullet-table { width: 100%; border-collapse: collapse; margin-top: 6px; }
-                    .bullet-table td { border-bottom: 1px solid #e2e8f0; padding: 10px 8px; font-size: 13px; vertical-align: top; }
+                    .bullet-table td { border-bottom: 1px solid #f1f5f9; padding: 10px 8px; font-size: 13.5px; vertical-align: top; }
                     .bullet-table tr:last-child td { border-bottom: none; }
-                    .metric-tag { background: #e0f2fe; color: #0369a1; font-weight: 800; padding: 4px 10px; border-radius: 6px; font-size: 12px; white-space: nowrap; }
-                    .footer { margin-top: 50px; display: flex; justify-content: space-between; text-align: center; font-size: 13px; font-weight: 800; color: #334155; border-top: 2px dashed #cbd5e1; padding-top: 25px; page-break-inside: avoid; }
+                    .metric-tag { background: #e0f2fe; color: #0369a1; border: 1px solid #bae6fd; font-weight: 800; padding: 4px 12px; border-radius: 8px; font-size: 12px; white-space: nowrap; display: inline-block; }
+                    .footer-signatures { margin-top: 50px; display: flex; justify-content: space-between; text-align: center; font-size: 13px; font-weight: 800; color: #334155; border-top: 2px dashed #cbd5e1; padding-top: 28px; page-break-inside: avoid; break-inside: avoid; }
                     @media print {
-                        .no-print { display: none !important; }
-                        body { padding: 0; }
+                        .no-print-bar { display: none !important; }
+                        body { padding: 0 !important; background: #ffffff !important; }
+                        #tgInPagePrintOverlay { position: static !important; overflow: visible !important; height: auto !important; width: 100% !important; background: #ffffff !important; padding: 0 !important; }
+                        #tgInPagePrintOverlay > div { max-width: 100% !important; box-shadow: none !important; border-radius: 0 !important; padding: 0 !important; margin: 0 !important; }
                     }
                 </style>
             </head>
             <body>
-                <div class="no-print">
-                    <span style="font-size:15px; font-weight:800; color:#38bdf8;">🖨 معاينة التقرير الأسبوعي المخصص قبل الطباعة</span>
+                <div class="no-print-bar">
+                    <div style="display:flex; align-items:center; gap:10px;">
+                        <span style="font-size:20px;">🖨</span>
+                        <div>
+                            <div style="font-size:15px; font-weight:900; color:#38bdf8;">معاينة وثيقة التقرير الأسبوعي (Weekly Report)</div>
+                            <div style="font-size:12px; color:#94a3b8;">جاهزة للطباعة مقاس A4 بالتنسيق والتصميم التنفيذي المعتمد</div>
+                        </div>
+                    </div>
                     <div style="display:flex; gap:12px;">
-                        <button onclick="window.print()" style="background:linear-gradient(135deg, #0284c7, #0369a1); color:#fff; box-shadow:0 4px 15px rgba(2,132,199,0.4);">🖨 طباعة المستند الآن</button>
-                        <button onclick="if(window.opener){window.close();}else{var el=document.getElementById('tgInPagePrintOverlay'); if(el) el.remove();}" style="background:#475569; color:#fff;">✕ إغلاق النافذة</button>
+                        <button onclick="window.print()" style="background:linear-gradient(135deg, #0284c7, #0369a1); color:#ffffff; box-shadow:0 4px 14px rgba(2,132,199,0.4);">🖨 طباعة التقرير الآن</button>
+                        <button onclick="if(window.opener){window.close();}else{var el=document.getElementById('tgInPagePrintOverlay'); if(el) el.remove();}" style="background:#334155; color:#f8fafc;">✕ إغلاق النافذة</button>
                     </div>
                 </div>
 
-                <div class="header">
+                <div class="header-banner">
                     <div>
-                        <div class="logo-title">Tech Go — التقرير الأسبوعي المخصص (WR)</div>
-                        <div class="subtitle">سجل متابعة الأداء ومستهدفات العمل الأسبوعية</div>
+                        <h1 class="logo-brand">TECH-GO MANAGEMENT SYSTEM <span class="logo-tag">WEEKLY REPORT</span></h1>
+                        <div class="subtitle">📋 تقرير متابعة الأداء والنتائج الأسبوعي المعتمد (Weekly Report - WR)</div>
                     </div>
-                    <div>
-                        <div class="badge">${tgFormatWeekName(r.weekYear)}</div>
-                    </div>
+                    <div class="badge-week">${typeof tgFormatWeekName === 'function' ? tgFormatWeekName(r.weekYear) : (r.weekYear || 'الأسبوع')}</div>
                 </div>
 
-                <div class="grid">
-                    <div class="info-box">
-                        <strong>اسم الموظف:</strong>
-                        <span style="font-size:15px; font-weight:900; color:#0f172a;">${r.userName || ''}</span>
+                <div class="stats-grid">
+                    <div class="stat-card" style="border-right-color:#0284c7;">
+                        <strong>👤 الموظف / صاحب التقرير:</strong>
+                        <span>${r.userName || ''}</span>
                     </div>
-                    <div class="info-box">
-                        <strong>القسم / التخصص:</strong>
-                        <span style="font-size:15px; font-weight:800; color:#0f172a;">${r.userRole || r.department || ''}</span>
+                    <div class="stat-card" style="border-right-color:#8b5cf6;">
+                        <strong>🏢 القسم / التخصص:</strong>
+                        <span>${r.userRole || r.department || ''}</span>
                     </div>
-                    <div class="info-box">
-                        <strong>حالة التقرير:</strong>
-                        <span style="font-size:14px; font-weight:800; color:${r.status === 'approved' ? '#10b981' : '#f59e0b'};">
-                            ${r.status === 'approved' ? '✅ معتمد رسمياً' : '🕒 قيد المراجعة'}
-                        </span>
+                    <div class="stat-card" style="border-right-color:#10b981;">
+                        <strong>📌 حالة الاعتماد:</strong>
+                        <span>${r.status === 'approved' ? '✅ معتمد رسمياً' : '🕒 قيد المراجعة'}</span>
                     </div>
                 </div>
 
                 ${customSections.map(function(sec) {
                     return `
-                        <div class="section-card">
+                        <div class="sec-card">
                             <div class="sec-title">${sec.title}</div>
                             <table class="bullet-table">
                                 <tbody>
                                     ${(sec.items || []).map(function(it) {
                                         return `
                                             <tr>
-                                                <td style="width:20px; color:#0284c7; font-weight:900;">•</td>
-                                                <td style="font-weight:600; color:#1e293b;">${it.text}</td>
-                                                ${it.metric ? `<td style="width:130px; text-align:left;"><span class="metric-tag">${it.metric}</span></td>` : ''}
+                                                <td style="width:24px; color:#0284c7; font-weight:900; font-size:16px;">•</td>
+                                                <td style="font-weight:700; color:#0f172a; line-height:1.7;">${it.text}</td>
+                                                ${it.metric ? `<td style="width:150px; text-align:left;"><span class="metric-tag">${it.metric}</span></td>` : ''}
                                             </tr>
                                         `;
                                     }).join('')}
@@ -10567,67 +13342,166 @@ window.tgPrintWeeklyReport = function(reportId) {
                 }).join('')}
 
                 ${r.adminNotes ? `
-                    <div class="section-card" style="background:#f0fdf4; border-color:#bbf7d0;">
+                    <div class="sec-card" style="background:#f0fdf4; border-color:#bbf7d0; border-right:4px solid #10b981;">
                         <div class="sec-title" style="color:#166534;">💬 توجيهات واعتماد الإدارة:</div>
-                        <div style="font-weight:700; color:#14532d;">${r.adminNotes}</div>
+                        <div style="font-weight:700; color:#14532d; font-size:14px; line-height:1.7;">${r.adminNotes}</div>
                     </div>
                 ` : ''}
 
-                <div class="footer">
-                    <div>توقيع الموظف:<br><br>____________________</div>
-                    <div>مراجعة مدير المتابعة:<br><br>____________________</div>
-                    <div>اعتماد المدير التنفيذي:<br><br>____________________</div>
+                <div class="footer-signatures">
+                    <div>توقيع الموظف:<br><br>.........................................</div>
+                    <div>مراجعة مدير المتابعة:<br><br>.........................................</div>
+                    <div>اعتماد المدير التنفيذي:<br><br>.........................................</div>
                 </div>
-
-                <script>
-                    setTimeout(function() { window.focus(); window.print(); }, 400);
-                </script>
             </body>
             </html>
         `;
 
-        var printWin = null;
-        try { printWin = window.open('', '_blank', 'width=950,height=850'); } catch(e){}
-
-        if (printWin && printWin.document) {
-            printWin.document.open();
-            printWin.document.write(printHTML);
-            printWin.document.close();
-        } else {
-            if (document.getElementById('tgInPagePrintOverlay')) {
-                document.getElementById('tgInPagePrintOverlay').remove();
-            }
-            var fullModal = document.createElement('div');
-            fullModal.id = 'tgInPagePrintOverlay';
-            fullModal.style.cssText = 'position:fixed; top:0; left:0; right:0; bottom:0; background:rgba(15,23,42,0.95); z-index:9999999; display:flex; flex-direction:column; padding:20px; overflow-y:auto; backdrop-filter:blur(10px); font-family:sans-serif;';
-            fullModal.innerHTML = `
-                <style>
-                    @media print {
-                        body > *:not(#tgInPagePrintOverlay) { display: none !important; }
-                        #tgInPagePrintOverlay { position: absolute !important; top:0 !important; left:0 !important; right:0 !important; bottom:auto !important; background:#ffffff !important; padding:0 !important; }
-                        .no-print { display: none !important; }
-                    }
-                </style>
-                <div style="background:#ffffff; border-radius:18px; max-width:900px; width:100%; margin:0 auto; padding:10px; box-shadow:0 25px 60px rgba(0,0,0,0.5);">
-                    ${printHTML}
-                </div>
-            `;
-            document.body.appendChild(fullModal);
-        }
+        tgExecutePrintDocument(printHTML, '📋 معاينة وثيقة التقرير الأسبوعي الرسمية (Weekly Report)');
     };
 
-    var foundInMem = (window._allWeeklyReports || []).find(function(item){ return item.id === reportId; });
-    if (foundInMem) {
-        renderWRPrint(foundInMem);
-    } else if (window.db) {
+    var processReport = function(r) {
+        renderWRPrint(r);
+    };
+
+    if (typeof reportId === 'object' && reportId !== null) {
+        processReport(reportId);
+        return;
+    }
+
+    var findLocalReport = function(id) {
+        var sources = [window._allWeeklyReports, window._empWeeklyReports];
+        for (var s = 0; s < sources.length; s++) {
+            var arr = sources[s];
+            if (Array.isArray(arr)) {
+                var found = arr.find(function(item){ return item.id === id || item._id === id; });
+                if (found) return found;
+            }
+        }
+        return null;
+    };
+
+    var cached = findLocalReport(reportId);
+    if (cached) {
+        processReport(cached);
+        return;
+    }
+
+    if (reportId && window.db) {
         db.collection('weekly_reports').doc(reportId).get().then(function(doc) {
-            if (doc.exists) renderWRPrint(doc.data());
-            else alert("التقرير غير موجود!");
+            if (doc.exists) {
+                var d = doc.data();
+                d.id = doc.id;
+                processReport(d);
+            } else {
+                db.collection('weeklyReports').doc(reportId).get().then(function(doc2) {
+                    if (doc2.exists) {
+                        var d2 = doc2.data();
+                        d2.id = doc2.id;
+                        processReport(d2);
+                    } else {
+                        alert("تعذر العثور على التقرير الأسبوعي في قاعدة البيانات!");
+                    }
+                }).catch(function(){ alert("تعذر العثور على التقرير الأسبوعي للطباعة!"); });
+            }
+        }).catch(function(err) {
+            alert("حدث خطأ أثناء تحميل التقرير الأسبوعي: " + err.message);
         });
     }
 };
 
 
+
+// ─── الدالة الموحدة المتقدمة لمطابقة المستندات والمستهدفات بالموظف ───────────
+window.tgIsDocForUser = function(d, u) {
+    if (!d) return false;
+    u = u || window.TG_USER || {};
+    if (u.role === 'admin' || u.role === 'tech_admin') return true;
+
+    var uid = u.uid || (window.firebase && firebase.auth && firebase.auth().currentUser ? firebase.auth().currentUser.uid : '');
+    var email = (u.email || '').toLowerCase().trim();
+    var empId = (u.empId || '').trim();
+    var rawName = (u.name || u.displayName || '').trim().toLowerCase();
+    var cleanName = rawName.replace(/\s*\([^)]*\)/g, '').trim();
+
+    if (uid) {
+        if (d.uid === uid || d.createdBy === uid || d.assignedTo === uid || d.empUid === uid || d.employeeUid === uid || d.targetUid === uid || d.userId === uid || d.userUid === uid) return true;
+    }
+
+    if (email) {
+        var dEmails = [d.email, d.empEmail, d.userEmail, d.creatorEmail, d.assignedEmail]
+            .filter(Boolean)
+            .map(function(e){ return String(e).toLowerCase().trim(); });
+        if (dEmails.indexOf(email) !== -1) return true;
+    }
+
+    if (empId) {
+        if (d.empId === empId || d.employeeId === empId) return true;
+    }
+
+    if (rawName || cleanName) {
+        var docNames = [d.empName, d.employeeName, d.userName, d.name, d.creatorName, d.targetName, d.assignedToName]
+            .filter(Boolean)
+            .map(function(n){ return String(n).toLowerCase().trim(); });
+
+        for (var i = 0; i < docNames.length; i++) {
+            var dn = docNames[i];
+            var dnClean = dn.replace(/\s*\([^)]*\)/g, '').trim();
+            if (dn === rawName || dn === cleanName || dnClean === cleanName || dnClean === rawName) return true;
+            if (cleanName.length >= 3 && (dnClean.includes(cleanName) || cleanName.includes(dnClean))) return true;
+        }
+    }
+
+    return false;
+};
+
+
+
+window.tgGenerateMonthlyFromWeekly = function() {
+    var u = window.TG_USER || {};
+    var myUid = u.uid || (window.firebase && firebase.auth && firebase.auth().currentUser ? firebase.auth().currentUser.uid : '');
+    var reports = window._allWeeklyReports || [];
+
+    if (reports.length === 0) {
+        alert("لا توجد تقارير أو خطط أسبوعية مسجلة تولد منها التقرير الشهري. قم بتقديم تقرير أسبوعي أولاً!");
+        return;
+    }
+
+    var monthName = new Date().toLocaleString('ar-EG', { month: 'long', year: 'numeric' });
+    var summaryContent = "📋 التقرير التجميعي التلقائي لشهر (" + monthName + "):\n\n";
+
+    reports.slice(0, 5).forEach(function(r, idx) {
+        summaryContent += "🔹 " + (r.weekYear || ("الأسبوع " + (idx + 1))) + ":\n";
+        summaryContent += (r.content || 'لا يوجد ملخص') + "\n";
+        if (r.nextWeekPlan) summaryContent += "🎯 المستهدف: " + r.nextWeekPlan + "\n";
+        summaryContent += "\n";
+    });
+
+    var monthlyData = {
+        uid: myUid,
+        createdBy: myUid,
+        empUid: myUid,
+        userName: u.name || u.email || 'موظف',
+        email: u.email || '',
+        empName: u.name || '',
+        empId: u.empId || '',
+        monthYear: monthName,
+        title: "التقرير الشهري التلقائي (MR) - " + monthName,
+        content: summaryContent,
+        status: 'submitted',
+        isAutoGenerated: true,
+        createdAt: firebase.firestore.FieldValue.serverTimestamp()
+    };
+
+    db.collection('monthly_reports').add(monthlyData).then(function() {
+        if (typeof tgShowToast === 'function') tgShowToast('✅ تم توليد وإرسال التقرير الشهري التلقائي (MR) بنجاح!');
+        else alert('✅ تم توليد وإرسال التقرير الشهري التلقائي (MR) بنجاح!');
+
+        if (typeof loadWeeklyReportsEmp === 'function') loadWeeklyReportsEmp();
+    }).catch(function(err) {
+        alert("فشل توليد التقرير الشهري: " + err.message);
+    });
+};
 
 // Employee View for Unified Reports (Weekly & Monthly)
 window.loadWeeklyReportsEmp = function(container) {
@@ -10639,10 +13513,10 @@ window.loadWeeklyReportsEmp = function(container) {
         <div style="background:linear-gradient(135deg, #78350f, #451a03); border:2px solid #f59e0b; border-radius:16px; padding:18px 22px; margin-bottom:22px; display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:14px; box-shadow:0 10px 30px rgba(120,53,15,0.4); color:#ffffff;">
             <div>
                 <div style="font-size:16.5px; font-weight:900; color:#fef08a; display:flex; align-items:center; gap:8px; text-shadow:0 1px 3px rgba(0,0,0,0.6);">
-                    🚨 تذكير يوم الخميس الموحد بالتقرير الأسبوعي
+                    🚨 تذكير يوم الخميس الموحد بالتقرير والخطط الأسبوعية
                 </div>
                 <p style="margin:6px 0 0; font-size:13.5px; color:#fef3c7; font-weight:700; line-height:1.5; text-shadow:0 1px 2px rgba(0,0,0,0.5);">
-                    تنبيه هام: اليوم الخميس وهو الموعد الرسمي الموحد لإرسال التقرير الأسبوعي (WR). يرجى إرساله قبل نهاية اليوم لتوثيق أداء الأسبوع.
+                    تنبيه هام: اليوم الخميس وهو الموعد الرسمي الموحد لإرسال التقرير الأسبوعي (WR). يرجى إرساله قبل نهاية اليوم.
                 </p>
             </div>
             <button type="button" onclick="tgOpenNewWeeklyReportModal()" style="background:linear-gradient(135deg, #f59e0b, #d97706); color:#ffffff; font-weight:900; font-size:14px; padding:11px 24px; border-radius:30px; border:none; cursor:pointer; box-shadow:0 4px 15px rgba(245,158,11,0.5); text-shadow:0 1px 2px rgba(0,0,0,0.3);">
@@ -10656,8 +13530,8 @@ window.loadWeeklyReportsEmp = function(container) {
             ${thursdayNotice}
             <div style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:15px; margin-bottom:24px; border-bottom:1.5px solid var(--bd); padding-bottom:18px;">
                 <div>
-                    <h2 style="font-size:22px; font-weight:900; color:var(--tx); margin:0 0 6px;">📊 التقارير (أسبوعية وشهرية مدمجة)</h2>
-                    <p style="color:var(--tx2); font-size:13.5px; margin:0; font-weight:600;">تقديم التقارير الأسبوعية مع إمكانية التوليد الآلي للتقرير الشهري بضغطة زر واحدة.</p>
+                    <h2 style="font-size:22px; font-weight:900; color:var(--tx); margin:0 0 6px;">📊 التقارير الأسبوعية</h2>
+                    <p style="color:var(--tx2); font-size:13.5px; margin:0; font-weight:600;">تقديم وتوثيق التقارير الأسبوعية ببنود ومواضيع تفصيلية مع إمكانية التوليد الآلي للتقرير الشهري بضغطة زر واحدة.</p>
                 </div>
                 <div style="display:flex; gap:10px; flex-wrap:wrap;">
                     <button type="button" onclick="tgGenerateMonthlyFromWeekly()" class="bt" style="background:linear-gradient(135deg, #10b981, #059669); color:#fff; font-weight:900; font-size:13.5px; padding:10px 20px; border-radius:30px; box-shadow:0 4px 15px rgba(16,185,129,0.35); border:none; cursor:pointer; display:inline-flex; align-items:center; gap:6px;">
@@ -10701,16 +13575,19 @@ window.tgRenderWeeklyReportsEmp = function(retryCount) {
     if (!listEl) return;
 
     var renderEmpty = function() {
-        if (listEl && listEl.innerHTML.indexOf('جاري تحميل') !== -1) {
-            listEl.innerHTML = `
-                <div style="background:var(--bg2); border:1.5px dashed var(--bd); padding:40px; text-align:center; border-radius:14px; color:var(--tx); font-weight:800;">
-                    📝 لم تقم بتقديم أي تقارير أسبوعية بعد. انقر على "تقديم تقرير أسبوعي مخصص جديد" لإنشاء أول تقرير!
+        var el = document.getElementById('wrEmpList');
+        if (el) {
+            el.innerHTML = `
+                <div style="background:var(--bg2); border:1.5px dashed var(--bd); padding:35px; text-align:center; border-radius:16px; color:var(--tx); font-weight:800; display:flex; flex-direction:column; align-items:center; gap:14px;">
+                    <div style="font-size:32px;">📝</div>
+                    <div style="font-size:15px; color:var(--tx);">لم تقم بتقديم أي تقارير أو خطط أسبوعية بعد.</div>
+                    <button type="button" onclick="tgOpenNewWeeklyReportModal()" class="bt" style="background:linear-gradient(135deg, #0284c7, #0369a1); color:#fff; font-weight:900; font-size:13.5px; padding:10px 24px; border-radius:30px; box-shadow:0 4px 15px rgba(2,132,199,0.35); border:none; cursor:pointer;">
+                        ⚡ تقديم تقرير وخطة أسبوعية جديدة الآن
+                    </button>
                 </div>
             `;
         }
     };
-
-    var timer = setTimeout(renderEmpty, 1500);
 
     var targetDb = window.db || (typeof db !== 'undefined' ? db : (window.firebase ? firebase.firestore() : null));
     if (!targetDb) {
@@ -10722,13 +13599,50 @@ window.tgRenderWeeklyReportsEmp = function(retryCount) {
     var u = window.TG_USER || {};
     var myUid = u.uid || (window.firebase && firebase.auth && firebase.auth().currentUser ? firebase.auth().currentUser.uid : '');
 
-    db.collection('weekly_reports').get().then(function(snap) {
-        clearTimeout(timer);
+    var queries = [
+        targetDb.collection('weekly_reports').get().catch(function(){ return {docs:[]}; }),
+        targetDb.collection('weeklyReports').get().catch(function(){ return {docs:[]}; }),
+        targetDb.collection('weekly_plans').get().catch(function(){ return {docs:[]}; }),
+        targetDb.collection('weeklyPlans').get().catch(function(){ return {docs:[]}; })
+    ];
+
+    if (myUid) {
+        queries.push(
+            targetDb.collection('weekly_reports').where('uid', '==', myUid).get().catch(function(){ return {docs:[]}; }),
+            targetDb.collection('weekly_reports').where('createdBy', '==', myUid).get().catch(function(){ return {docs:[]}; }),
+            targetDb.collection('weekly_reports').where('empUid', '==', myUid).get().catch(function(){ return {docs:[]}; }),
+
+            targetDb.collection('weeklyReports').where('uid', '==', myUid).get().catch(function(){ return {docs:[]}; }),
+            targetDb.collection('weeklyReports').where('createdBy', '==', myUid).get().catch(function(){ return {docs:[]}; }),
+            targetDb.collection('weeklyReports').where('empUid', '==', myUid).get().catch(function(){ return {docs:[]}; }),
+
+            targetDb.collection('weekly_plans').where('uid', '==', myUid).get().catch(function(){ return {docs:[]}; }),
+            targetDb.collection('weekly_plans').where('createdBy', '==', myUid).get().catch(function(){ return {docs:[]}; }),
+            targetDb.collection('weekly_plans').where('empUid', '==', myUid).get().catch(function(){ return {docs:[]}; }),
+
+            targetDb.collection('weeklyPlans').where('uid', '==', myUid).get().catch(function(){ return {docs:[]}; }),
+            targetDb.collection('weeklyPlans').where('createdBy', '==', myUid).get().catch(function(){ return {docs:[]}; }),
+            targetDb.collection('weeklyPlans').where('empUid', '==', myUid).get().catch(function(){ return {docs:[]}; })
+        );
+    }
+
+    Promise.all(queries).then(function(results) {
         var reports = [];
-        snap.forEach(function(doc) {
-            var data = doc.data();
-            data.id = doc.id;
-            if (myUid && data.uid === myUid) reports.push(data);
+        var seenIds = {};
+
+        results.forEach(function(snap) {
+            if (snap && snap.docs) {
+                snap.docs.forEach(function(doc) {
+                    if (!seenIds[doc.id]) {
+                        var d = doc.data();
+                        d.id = doc.id;
+                        if (tgIsDocForUser(d, u)) {
+                            seenIds[doc.id] = true;
+                            reports.push(d);
+                        }
+                    }
+                });
+            }
         });
 
         reports.sort(function(a, b) {
@@ -10738,6 +13652,9 @@ window.tgRenderWeeklyReportsEmp = function(retryCount) {
         });
 
         window._allWeeklyReports = reports;
+
+        var listEl = document.getElementById('wrEmpList');
+        if (!listEl) return;
 
         if (reports.length === 0) {
             renderEmpty();
@@ -10754,10 +13671,23 @@ window.tgRenderWeeklyReportsEmp = function(retryCount) {
             html += `
                 <div class="card p-3 mb-3" style="background:var(--bg2); border:1.5px solid var(--bd); border-radius:16px; box-shadow:0 4px 15px rgba(0,0,0,0.05);">
                     <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:10px; border-bottom:1px solid var(--bd); padding-bottom:8px;">
-                        <h4 style="margin:0; font-size:16px; font-weight:900; color:var(--tx);">تقرير: ${tgFormatWeekName(r.weekYear)}</h4>
+                        <h4 style="margin:0; font-size:16px; font-weight:900; color:var(--tx);">تقرير وخطة: ${r.weekYear || r.weekStart || 'الأسبوعي'}</h4>
                         <div>${statusBadge}</div>
                     </div>
-                    <p style="font-size:13px; color:var(--tx); margin:0 0 10px; font-weight:600;">${(r.content || '').slice(0, 180)}...</p>
+
+                    ${r.content ? `
+                    <div style="margin-bottom:10px;">
+                        <strong style="color:#0284c7; font-size:12.5px; display:block; margin-bottom:4px;">📌 ملخص الأداء والإنجازات:</strong>
+                        <p style="font-size:13px; color:var(--tx); margin:0; font-weight:600; white-space:pre-line;">${(r.content || '').slice(0, 300)}${(r.content || '').length > 300 ? '...' : ''}</p>
+                    </div>
+                    ` : ''}
+
+                    ${(r.nextWeekPlan || r.plannedTasks) ? `
+                    <div style="background:var(--bg); padding:10px 14px; border-radius:10px; border:1.5px solid var(--bd); margin-bottom:10px;">
+                        <strong style="color:#10b981; font-size:12.5px; display:block; margin-bottom:4px;">🎯 الخطة والمستهدف للأسبوع القادم:</strong>
+                        <p style="font-size:13px; color:var(--tx); margin:0; font-weight:600; white-space:pre-line;">${r.nextWeekPlan || r.plannedTasks}</p>
+                    </div>
+                    ` : ''}
 
                     ${r.adminNotes ? `
                         <div style="background:rgba(239,68,68,0.12); border:1.5px solid rgba(239,68,68,0.3); padding:10px 14px; border-radius:10px; font-size:13px; color:#ef4444; margin-bottom:10px; font-weight:bold;">
@@ -10767,10 +13697,10 @@ window.tgRenderWeeklyReportsEmp = function(retryCount) {
 
                     <div style="display:flex; justify-content:flex-end; gap:10px; align-items:center;">
                         ${r.status !== 'approved' ? `
-                            <button type="button" onclick="tgOpenEditWeeklyReportModal('${r.id}')" class="bt" style="background:linear-gradient(135deg, #0284c7, #0369a1); color:#fff; font-size:13px; padding:6px 16px; font-weight:900; border-radius:8px;">✏️ تعديل التقرير</button>
+                            <button type="button" onclick="tgOpenEditWeeklyReportModal('${r.id}')" class="bt" style="background:linear-gradient(135deg, #0284c7, #0369a1); color:#fff; font-size:13px; padding:6px 16px; font-weight:900; border-radius:8px;">✏️ تعديل التقرير والخطة</button>
                         ` : ''}
-                        <button type="button" onclick="tgPrintWeeklyReport('${r.id}')" class="bt bt-o" style="font-size:13px; padding:6px 14px; font-weight:800;">🖨 طباعة التقرير WR</button>
-                        <button type="button" onclick="tgDeleteWeeklyReport('${r.id}')" class="bt bt-o" style="border-color:#ef4444; color:#ef4444; font-size:13px; padding:6px 14px; font-weight:800;">🗑 حذف التقرير</button>
+                        <button type="button" onclick="tgPrintWeeklyReport('${r.id}')" class="bt bt-o" style="font-size:13px; padding:6px 14px; font-weight:800;">🖨 طباعة WR</button>
+                        <button type="button" onclick="tgDeleteWeeklyReport('${r.id}')" class="bt bt-o" style="border-color:#ef4444; color:#ef4444; font-size:13px; padding:6px 14px; font-weight:800;">🗑 حذف</button>
                     </div>
                 </div>
             `;
@@ -10779,6 +13709,115 @@ window.tgRenderWeeklyReportsEmp = function(retryCount) {
         listEl.innerHTML = html;
     }).catch(function(err) {
         console.error("Error loading emp weekly reports:", err);
+        clearTimeout(timer);
+        renderEmpty();
+    });
+};
+
+window.tgRenderMonthlyReportsEmp = function(retryCount) {
+    retryCount = retryCount || 0;
+    var listEl = document.getElementById('mrEmpListInUnified') || document.getElementById('mrEmpList');
+    if (!listEl) return;
+
+    var renderEmpty = function() {
+        if (listEl && listEl.innerHTML.indexOf('جاري تحميل') !== -1) {
+            listEl.innerHTML = `
+                <div style="background:var(--bg2); border:1.5px dashed var(--bd); padding:30px; text-align:center; border-radius:14px; color:var(--tx); font-weight:800; font-size:14px;">
+                    📄 لا توجد تقارير شهرية (MR) مسجلة باسمك حالياً. يمكنك تجميع تقاريرك الأسبوعية تلقائياً أو تقديم تقرير جديد.
+                </div>
+            `;
+        }
+    };
+
+    var timer = setTimeout(renderEmpty, 3000);
+
+    var targetDb = window.db || (typeof db !== 'undefined' ? db : (window.firebase ? firebase.firestore() : null));
+    if (!targetDb) {
+        if (retryCount < 10) setTimeout(function(){ tgRenderMonthlyReportsEmp(retryCount + 1); }, 300);
+        else renderEmpty();
+        return;
+    }
+
+    var u = window.TG_USER || {};
+
+    var queries = [
+        targetDb.collection('monthly_reports').get().catch(function(){ return {docs:[]}; }),
+        targetDb.collection('monthlyReports').get().catch(function(){ return {docs:[]}; })
+    ];
+
+    Promise.all(queries).then(function(results) {
+        clearTimeout(timer);
+        var reports = [];
+        var seenIds = {};
+
+        results.forEach(function(snap) {
+            if (snap && snap.docs) {
+                snap.docs.forEach(function(doc) {
+                    if (!seenIds[doc.id]) {
+                        var d = doc.data();
+                        d.id = doc.id;
+                        if (tgIsDocForUser(d, u)) {
+                            seenIds[doc.id] = true;
+                            reports.push(d);
+                        }
+                    }
+                });
+            }
+        });
+
+        reports.sort(function(a, b) {
+            var tA = a.createdAt && a.createdAt.seconds ? a.createdAt.seconds : 0;
+            var tB = b.createdAt && b.createdAt.seconds ? b.createdAt.seconds : 0;
+            return tB - tA;
+        });
+
+        window._allMonthlyReports = reports;
+
+        var listEl = document.getElementById('mrEmpListInUnified') || document.getElementById('mrEmpList');
+        if (!listEl) return;
+
+        if (reports.length === 0) {
+            renderEmpty();
+            return;
+        }
+
+        var html = '';
+        reports.forEach(function(r) {
+            var statusBadge = '';
+            if (r.status === 'approved') statusBadge = '<span class="badge" style="background:rgba(16,185,129,0.2); color:#34d399; border:1.5px solid #10b981; font-weight:800; padding:4px 14px; border-radius:20px;">✅ معتمد</span>';
+            else if (r.status === 'rejected') statusBadge = '<span class="badge" style="background:rgba(239,68,68,0.2); color:#f87171; border:1.5px solid #ef4444; font-weight:800; padding:4px 14px; border-radius:20px;">❌ يحتاج تعديل</span>';
+            else statusBadge = '<span class="badge" style="background:rgba(245,158,11,0.2); color:#fbbf24; border:1.5px solid #f59e0b; font-weight:800; padding:4px 14px; border-radius:20px;">🕒 قيد المراجعة</span>';
+
+            html += `
+                <div class="card p-3 mb-3" style="background:var(--bg2); border:1.5px solid var(--bd); border-radius:16px; box-shadow:0 4px 15px rgba(0,0,0,0.05);">
+                    <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:10px; border-bottom:1px solid var(--bd); padding-bottom:8px; flex-wrap:wrap; gap:8px;">
+                        <h4 style="margin:0; font-size:16px; font-weight:900; color:var(--tx); display:flex; align-items:center; gap:6px;">
+                            📌 تقرير شهر: ${r.monthYear || ''}
+                            ${r.autoGenerated ? '<span style="background:rgba(16,185,129,0.15); color:#10b981; border:1px solid rgba(16,185,129,0.4); font-size:11px; padding:2px 8px; border-radius:12px; font-weight:800;">⚡ مولد تلقائياً</span>' : ''}
+                        </h4>
+                        <div>${statusBadge}</div>
+                    </div>
+                    <div style="font-size:13px; color:var(--tx); margin:0 0 10px; font-weight:600; white-space:pre-line; max-height:160px; overflow-y:auto; background:var(--bg); padding:12px; border-radius:10px; border:1px solid var(--bd);">
+                        ${(r.achievements || r.content || 'لا تتوفر تفاصيل').slice(0, 400)}${(r.achievements || r.content || '').length > 400 ? '...' : ''}
+                    </div>
+
+                    ${r.adminNotes ? `
+                        <div style="background:rgba(239,68,68,0.12); border:1.5px solid rgba(239,68,68,0.3); padding:10px 14px; border-radius:10px; font-size:13px; color:#ef4444; margin-bottom:10px; font-weight:bold;">
+                            <strong>توجيه الإدارة:</strong> ${r.adminNotes}
+                        </div>
+                    ` : ''}
+
+                    <div style="display:flex; justify-content:flex-end; gap:10px; align-items:center;">
+                        <button type="button" onclick="tgPrintMonthlyReport('${r.id}')" class="bt bt-o" style="font-size:13px; padding:6px 14px; font-weight:800;">🖨 طباعة التقرير MR</button>
+                        <button type="button" onclick="tgDeleteMonthlyReport('${r.id}')" class="bt bt-o" style="border-color:#ef4444; color:#ef4444; font-size:13px; padding:6px 14px; font-weight:800;">🗑 حذف التقرير</button>
+                    </div>
+                </div>
+            `;
+        });
+
+        listEl.innerHTML = html;
+    }).catch(function(err) {
+        console.error("Error loading emp monthly reports:", err);
         clearTimeout(timer);
         renderEmpty();
     });
@@ -10810,7 +13849,7 @@ window.tgCheckAutomaticReminders = function() {
         });
 
         // Check Monthly Plan
-        db.collection('monthly_plans').get().then(function(mpSnap) {
+        db.collection('monthly_plans').where('uid', '==', myUid).get().then(function(mpSnap) {
             var hasMPThisMonth = false;
             mpSnap.forEach(function(doc) {
                 var d = doc.data();
@@ -10899,19 +13938,24 @@ window.tgShowReminderBannerIfNeeded = function(hasWRThisWeek, hasMRThisMonth, ha
     banner.id = 'tgAutoReminderBanner';
     var borderColor = first.type === 'wr' && dayOfWeek === 4 ? '#f59e0b' : '#38bdf8';
     var shadowGlow = first.type === 'wr' && dayOfWeek === 4 ? '0 15px 40px rgba(245,158,11,0.45)' : '0 15px 40px rgba(0,0,0,0.6)';
+    var isMobile = window.innerWidth <= 600;
 
-    banner.style.cssText = 'position:fixed; bottom:20px; right:20px; z-index:99999; background:linear-gradient(135deg, #1e293b, #0f172a); border:2px solid ' + borderColor + '; border-radius:18px; padding:16px 20px; box-shadow:' + shadowGlow + '; color:#ffffff; max-width:420px; font-family:inherit; animation:slideUp 0.4s ease;';
+    var posStyle = isMobile
+        ? 'position:fixed; bottom:12px; left:12px; right:12px; z-index:99999; background:linear-gradient(135deg, #1e293b, #0f172a); border:1.5px solid ' + borderColor + '; border-radius:14px; padding:12px 14px; box-shadow:' + shadowGlow + '; color:#ffffff; width:calc(100% - 24px); max-width:calc(100% - 24px); font-family:inherit; animation:slideUp 0.35s ease; box-sizing:border-box;'
+        : 'position:fixed; bottom:20px; right:20px; z-index:99999; background:linear-gradient(135deg, #1e293b, #0f172a); border:2px solid ' + borderColor + '; border-radius:18px; padding:16px 20px; box-shadow:' + shadowGlow + '; color:#ffffff; max-width:420px; font-family:inherit; animation:slideUp 0.4s ease;';
+
+    banner.style.cssText = posStyle;
 
     banner.innerHTML = `
-        <div style="display:flex; justify-content:space-between; align-items:flex-start; margin-bottom:8px; gap:10px;">
-            <div style="font-size:14.5px; font-weight:900; color:#fef08a; display:flex; align-items:center; gap:6px;">
+        <div style="display:flex; justify-content:space-between; align-items:flex-start; margin-bottom:6px; gap:10px;">
+            <div style="font-size:13px; font-weight:900; color:#fef08a; display:flex; align-items:center; gap:6px;">
                 🔔 ${first.badge || 'تذكير تلقائي'}
             </div>
-            <button onclick="document.getElementById('tgAutoReminderBanner').remove()" style="background:none; border:none; color:#cbd5e1; font-size:16px; cursor:pointer; font-weight:bold;">✕</button>
+            <button onclick="document.getElementById('tgAutoReminderBanner').remove()" style="background:none; border:none; color:#cbd5e1; font-size:16px; cursor:pointer; font-weight:bold; padding:0 4px; line-height:1;" title="إغلاق">✕</button>
         </div>
-        <p style="margin:0 0 12px; font-size:13.5px; font-weight:700; color:#f8fafc; line-height:1.5;">${first.title}</p>
+        <p style="margin:0 0 10px; font-size:12.5px; font-weight:700; color:#f8fafc; line-height:1.4;">${first.title}</p>
         <div style="display:flex; justify-content:flex-end;">
-            <button onclick="document.getElementById('tgAutoReminderBanner').remove(); ${first.action};" style="background:linear-gradient(135deg, #f59e0b, #d97706); color:#ffffff; border:none; padding:9px 20px; border-radius:10px; font-size:13.5px; font-weight:900; cursor:pointer; box-shadow:0 4px 15px rgba(245,158,11,0.4);">
+            <button onclick="document.getElementById('tgAutoReminderBanner').remove(); ${first.action};" style="background:linear-gradient(135deg, #f59e0b, #d97706); color:#ffffff; border:none; padding:${isMobile ? '8px 14px' : '9px 20px'}; border-radius:10px; font-size:${isMobile ? '12px' : '13.5px'}; font-weight:900; cursor:pointer; box-shadow:0 4px 15px rgba(245,158,11,0.4); ${isMobile ? 'width:100%;' : ''}">
                 ${first.btnText}
             </button>
         </div>
@@ -12036,21 +15080,163 @@ setTimeout(function() {
 }, 1000);
 
 // Helper to notify all admins when a new employee report or plan is submitted
-window.tgNotifyAdminsReportSubmitted = function(typeTitle, empName, detailsText, tag) {
+window.tgNotifyAdminsReportSubmitted = function(typeTitle, empName, detailsText, tag, reportId) {
+    var extraData = reportId ? { reportId: reportId } : {};
     if (typeof tgNotifyAdmins === 'function') {
-        tgNotifyAdmins(typeTitle, 'قام الموظف (' + empName + ') بتقديم ' + detailsText + ' 🚀', tag);
+        tgNotifyAdmins(typeTitle, 'قام الموظف (' + empName + ') بتقديم ' + detailsText + ' 🚀', tag, extraData);
     }
     var targetDb = window.db || (typeof db !== 'undefined' ? db : null);
     if (targetDb) {
-        targetDb.collection('admin_notifications').add({
+        targetDb.collection('admin_notifications').add(Object.assign({
             title: typeTitle,
             body: 'قام الموظف (' + empName + ') بتقديم ' + detailsText + ' 🚀',
             empName: empName,
             type: tag,
             read: false,
             createdAt: firebase.firestore.FieldValue.serverTimestamp()
-        }).catch(function(e){});
+        }, extraData)).catch(function(e){});
     }
+};
+
+window.tgGetRealEmpName = function(nameOrUid, uid) {
+    if (!nameOrUid && !uid) return 'موظف';
+    var raw = String(nameOrUid || '').trim();
+    var id = String(uid || raw).trim();
+
+    var isUid = (raw.indexOf('Txeg') !== -1 || /^[A-Za-z0-9]{20,}$/.test(raw));
+
+    // 1. If raw is already a clean human name (not a UID)
+    if (raw && !isUid && raw.length < 35 && raw !== 'null' && raw !== 'undefined') {
+        return raw;
+    }
+
+    // 2. Check staff cache
+    if (window._staffEmpCache && Array.isArray(window._staffEmpCache)) {
+        var match = window._staffEmpCache.find(function(e) {
+            return e.uid === id || e.uid === raw || (e.id && e.id === id);
+        });
+        if (match && match.name && match.name.length < 35 && !/^[A-Za-z0-9]{20,}$/.test(match.name)) {
+            return match.name;
+        }
+    }
+
+    // 3. Check all employees cache or users cache
+    var empList = window._allEmployeesCache || window._usersCache;
+    if (empList && Array.isArray(empList)) {
+        var match2 = empList.find(function(e) {
+            return e.uid === id || e.uid === raw || (e.id && e.id === id);
+        });
+        if (match2 && match2.name && match2.name.length < 35 && !/^[A-Za-z0-9]{20,}$/.test(match2.name)) {
+            return match2.name;
+        }
+    }
+
+    // 4. Check current user
+    var u = window.TG_USER || {};
+    if ((u.uid === id || u.uid === raw) && u.name) {
+        return u.name;
+    }
+
+    // 5. Check LocalStorage fallback cache
+    var cachedName = localStorage.getItem('tg_emp_name_' + id) || localStorage.getItem('tg_emp_name_' + raw);
+    if (cachedName && cachedName.length < 35 && !/^[A-Za-z0-9]{20,}$/.test(cachedName)) {
+        return cachedName;
+    }
+
+    // Never return raw UID!
+    return 'موظف';
+};
+
+
+window.tgOpenSystemGuideModal = function(initialQuery) {
+    var modalId = 'tgSystemGuideModalOverlay';
+    if (document.getElementById(modalId)) document.getElementById(modalId).remove();
+
+    var html = `
+    <div id="${modalId}" onclick="if(event.target===this) this.remove();" style="position:fixed; top:0; left:0; right:0; bottom:0; background:rgba(15,23,42,0.88); z-index:999999; display:flex; justify-content:center; align-items:center; padding:16px; backdrop-filter:blur(12px); font-family:sans-serif; direction:rtl; text-align:right;">
+        <div style="background:var(--bg2); border:2px solid #3b82f6; border-radius:24px; width:100%; max-width:720px; max-height:90vh; overflow-y:auto; box-shadow:0 25px 60px rgba(0,0,0,0.5); display:flex; flex-direction:column; color:var(--tx);">
+            
+            <div style="padding:20px 24px; border-bottom:1.5px solid var(--bd); background:linear-gradient(135deg, rgba(59,130,246,0.12), rgba(16,185,129,0.06)); display:flex; justify-content:space-between; align-items:center; border-radius:22px 22px 0 0;">
+                <div style="display:flex; align-items:center; gap:12px;">
+                    <div style="font-size:32px;">💡</div>
+                    <div>
+                        <h3 style="margin:0; font-size:20px; font-weight:900; color:var(--tx);">دليل الإرشادات والتعليمات السريعة للنظام</h3>
+                        <p style="margin:4px 0 0; color:var(--tx2); font-size:13px; font-weight:600;">اختر عما تريد تنفيذه وسيرشدك النظام بالخطوات والملاحة الفورية.</p>
+                    </div>
+                </div>
+                <button type="button" onclick="document.getElementById('${modalId}').remove()" style="background:none; border:none; color:var(--tx2); font-size:22px; cursor:pointer; font-weight:bold;">✕</button>
+            </div>
+
+            <div style="padding:22px; display:flex; flex-direction:column; gap:16px;">
+                <div style="display:flex; flex-direction:column; gap:12px;">
+                    <div style="background:var(--w); border:1.5px solid var(--bd); border-radius:16px; padding:16px; box-shadow:0 3px 12px rgba(0,0,0,0.03);">
+                        <div style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:8px;">
+                            <strong style="font-size:15px; font-weight:900; color:#0284c7; display:flex; align-items:center; gap:8px;">
+                                <span>📥</span> كيف أراجع وأوافق على طلبات الموظفين؟
+                            </strong>
+                            <button type="button" onclick="document.getElementById('${modalId}').remove(); if(typeof go==='function') go('allrequests');" class="bt" style="background:linear-gradient(135deg, #0284c7, #0369a1); color:#fff; font-size:12px; padding:6px 14px; border-radius:20px; font-weight:800; border:none; cursor:pointer;">الذهاب لـ مركز الطلبات 🚀</button>
+                        </div>
+                        <div style="font-size:13px; line-height:1.7; color:var(--tx2); font-weight:700; margin-top:10px; border-top:1px dashed var(--bd); padding-top:8px;">
+                            1. اذهب إلى <b>مركز طلبات الموظفين</b> من القائمة الجانبية.<br>
+                            2. ستظهر لك كافة الطلبات المعلقة (إجازات، أذونات، استقالات).<br>
+                            3. اضغط على <b>"✔ موافقة على الطلب"</b> أو <b>"✕ رفض الطلب"</b> بنقرة واحدة وسيتم إرسال إشعار فوري للموظف.
+                        </div>
+                    </div>
+
+                    <div style="background:var(--w); border:1.5px solid var(--bd); border-radius:16px; padding:16px; box-shadow:0 3px 12px rgba(0,0,0,0.03);">
+                        <div style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:8px;">
+                            <strong style="font-size:15px; font-weight:900; color:#10b981; display:flex; align-items:center; gap:8px;">
+                                <span>🎯</span> كيف أعد خطة شهرية مخصصة أو تجميعية (MP)؟
+                            </strong>
+                            <button type="button" onclick="document.getElementById('${modalId}').remove(); if(typeof go==='function') go('monthlyplans');" class="bt" style="background:linear-gradient(135deg, #10b981, #059669); color:#fff; font-size:12px; padding:6px 14px; border-radius:20px; font-weight:800; border:none; cursor:pointer;">الذهاب لـ الخطط الشهرية 🚀</button>
+                        </div>
+                        <div style="font-size:13px; line-height:1.7; color:var(--tx2); font-weight:700; margin-top:10px; border-top:1px dashed var(--bd); padding-top:8px;">
+                            1. افتح صفحة <b>الخطط الشهرية (MP)</b>.<br>
+                            2. اضغط على <b>"➕ إنشاء خطة شهرية مخصصة"</b> وكتابة الأهداف وبنود ومؤشرات الـ KPI.<br>
+                            3. تابع أشرطة الإنجاز الملونة التي تتحدث تلقائياً حسب إنجاز الموظف للبنود.
+                        </div>
+                    </div>
+
+                    <div style="background:var(--w); border:1.5px solid var(--bd); border-radius:16px; padding:16px; box-shadow:0 3px 12px rgba(0,0,0,0.03);">
+                        <div style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:8px;">
+                            <strong style="font-size:15px; font-weight:900; color:#f59e0b; display:flex; align-items:center; gap:8px;">
+                                <span>📢</span> كيف أنشر إعلاناً أو تكليفاً مع الإشارة للموظفين (@)؟
+                            </strong>
+                            <button type="button" onclick="document.getElementById('${modalId}').remove(); if(typeof go==='function') go('announcements');" class="bt" style="background:linear-gradient(135deg, #f59e0b, #d97706); color:#fff; font-size:12px; padding:6px 14px; border-radius:20px; font-weight:800; border:none; cursor:pointer;">الذهاب لـ إدارة الإعلانات 🚀</button>
+                        </div>
+                        <div style="font-size:13px; line-height:1.7; color:var(--tx2); font-weight:700; margin-top:10px; border-top:1px dashed var(--bd); padding-top:8px;">
+                            1. اذهب لـ <b>إدارة الإعلانات والتكليفات</b>.<br>
+                            2. استخدم شريط الأدوات بالضغط على <b>"🎯 موضوع (@)"</b> أو <b>"• نقطة"</b>.<br>
+                            3. اختر اسم الموظف من القائمة المنسدلة لإدراج <b>@اسم الموظف</b> فتصل له كبادج وتنبيه فوري.
+                        </div>
+                    </div>
+
+                    <div style="background:var(--w); border:1.5px solid var(--bd); border-radius:16px; padding:16px; box-shadow:0 3px 12px rgba(0,0,0,0.03);">
+                        <div style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:8px;">
+                            <strong style="font-size:15px; font-weight:900; color:#6366f1; display:flex; align-items:center; gap:8px;">
+                                <span>📊</span> كيف أتابـع التقارير الأسبوعية والشهرية للموظفين؟
+                            </strong>
+                            <button type="button" onclick="document.getElementById('${modalId}').remove(); if(typeof go==='function') go('wkr');" class="bt" style="background:linear-gradient(135deg, #6366f1, #4f46e5); color:#fff; font-size:12px; padding:6px 14px; border-radius:20px; font-weight:800; border:none; cursor:pointer;">الذهاب لـ التقارير 🚀</button>
+                        </div>
+                        <div style="font-size:13px; line-height:1.7; color:var(--tx2); font-weight:700; margin-top:10px; border-top:1px dashed var(--bd); padding-top:8px;">
+                            1. افتح صفحة <b>إدارة التقارير المدمجة (WR & MR)</b>.<br>
+                            2. استعرض التقارير المقدمة واضغط على <b>"عرض التفاصيل والبنود"</b>.<br>
+                            3. اضغط على <b>"اعتماد التقرير"</b> أو <b>"إرجاع للتعديل"</b> أو اضغط <b>"🔔 تذكير الموظفين بالتقرير الأسبوعي"</b>.
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <div style="padding:16px 24px; background:var(--bg); border-top:1.5px solid var(--bd); display:flex; justify-content:flex-end; border-radius:0 0 22px 22px;">
+                <button type="button" onclick="document.getElementById('${modalId}').remove()" class="bt" style="background:#334155; color:#fff; padding:10px 24px; border-radius:30px; font-weight:bold; cursor:pointer;">فهمت، إغلاق النافذة</button>
+            </div>
+        </div>
+    </div>
+    `;
+
+    var div = document.createElement('div');
+    div.innerHTML = html;
+    document.body.appendChild(div.firstElementChild);
 };
 
 window.tgInitAdminReportNotificationsListener = function() {
@@ -12085,3 +15271,628 @@ window.tgInitAdminReportNotificationsListener = function() {
 setTimeout(function(){
     if (typeof tgInitAdminReportNotificationsListener === 'function') tgInitAdminReportNotificationsListener();
 }, 2000);
+
+// ─── Dynamic Sidebar Menu Injector (Guarantees Requests Center appears even on cached HTML) ───
+function tgEnsureRequestsCenterInSidebar() {
+    var sidebar = document.getElementById('sidebarNav');
+    if (!sidebar) return;
+    if (sidebar.querySelector('[onclick*="allrequests"]')) return;
+
+    var groups = sidebar.querySelectorAll('.sb-group');
+    groups.forEach(function(grp) {
+        var title = grp.querySelector('.S-s');
+        if (title && title.textContent.indexOf('شؤون الموظفين') !== -1) {
+            var items = grp.querySelector('.sb-items');
+            if (items) {
+                var newEl = document.createElement('div');
+                newEl.className = 'S-i';
+                newEl.setAttribute('onclick', "go('allrequests',this)");
+                newEl.style.borderRight = '2px solid var(--gd)';
+                newEl.innerHTML = '<span class="ic">📥</span> مركز طلبات الموظفين <span class="S-b" style="background:var(--no)">جديد</span>';
+                items.insertBefore(newEl, items.firstChild);
+            }
+        }
+    });
+}
+if (document.readyState === 'complete' || document.readyState === 'interactive') {
+    tgEnsureRequestsCenterInSidebar();
+} else {
+    document.addEventListener('DOMContentLoaded', tgEnsureRequestsCenterInSidebar);
+}
+setTimeout(tgEnsureRequestsCenterInSidebar, 100);
+setTimeout(tgEnsureRequestsCenterInSidebar, 500);
+setTimeout(tgEnsureRequestsCenterInSidebar, 1500);
+
+// ── Global Overlay & Modal Safety (Dismiss on Backdrop Click & ESC Key) ──
+document.addEventListener('click', function(e) {
+    if (e.target && e.target.id && (e.target.id.indexOf('ModalOverlay') !== -1 || e.target.id.indexOf('Overlay') !== -1)) {
+        if (typeof e.target.remove === 'function') e.target.remove();
+        else e.target.style.display = 'none';
+    }
+});
+
+
+// ── Unified Toast Notification System ──
+window.tgShowToast = function(message, type, duration) {
+    if (!type) type = 'info';
+    if (!duration) duration = 3500;
+    
+    var container = document.getElementById('tgToastContainer');
+    if (!container) {
+        container = document.createElement('div');
+        container.id = 'tgToastContainer';
+        document.body.appendChild(container);
+    }
+    
+    var iconMap = {
+        'success': '✅',
+        'danger': '⚠️',
+        'info': 'ℹ️'
+    };
+    var icon = iconMap[type] || 'ℹ️';
+    
+    var toast = document.createElement('div');
+    toast.className = 'tg-toast tg-toast-' + type;
+    toast.innerHTML = '<span style="font-size:16px;">' + icon + '</span><span>' + message + '</span>';
+    
+    container.appendChild(toast);
+    
+    setTimeout(function() {
+        toast.classList.add('tg-toast-out');
+        setTimeout(function() {
+            if (toast.parentNode) {
+                toast.parentNode.removeChild(toast);
+            }
+        }, 300);
+    }, duration);
+};
+
+/* ==========================================================================
+   OFFICIAL HOLIDAYS ADVANCE ALERT (4-DAY NOTICE) & WHATSAPP GENERATOR
+   ========================================================================== */
+
+var TG_OFFICIAL_HOLIDAYS_PRESETS = [
+    // 🇪🇬 مواعيد الإجازات الرسمية الدقيقة لعام 2026 بجمهورية مصر العربية (بعد تطبيق قرارات مجلس الوزراء بالترحيل للخميس)
+    { key: 'coptic_xmas', label: '✝️ عيد الميلاد المجيد', occasion: 'عيد الميلاد المجيد', date: '2026-01-07', durationDays: 1, note: 'الأربعاء 7 يناير' },
+    { key: 'police_day', label: '👮 ثورة 25 يناير وعيد الشرطة', occasion: 'عيد الشرطة وثورة 25 يناير', date: '2026-01-29', durationDays: 1, note: 'الخميس 29 يناير (مُرحّل بقرار مجلس الوزراء بدلاً من الأحد 25 يناير)' },
+    { key: 'eid_fitr', label: '🎉 عيد الفطر المبارك', occasion: 'عيد الفطر المبارك', date: '2026-03-19', durationDays: 5, note: 'من الخميس 19 مارس حتى الإثنين 23 مارس (استئناف الثلاثاء 24 مارس)' },
+    { key: 'sham_nessim', label: '🌸 عيد شم النسيم', occasion: 'شم النسيم', date: '2026-04-13', durationDays: 1, note: 'الإثنين 13 أبريل' },
+    { key: 'sinai_lib', label: '🦅 عيد تحرير سيناء', occasion: 'عيد تحرير سيناء', date: '2026-04-25', durationDays: 1, note: 'السبت 25 أبريل' },
+    { key: 'labor_day', label: '👷 عيد العمال', occasion: 'عيد العمال', date: '2026-05-07', durationDays: 1, note: 'الخميس 7 مايو (مُرحّل بقرار مجلس الوزراء بدلاً من الجمعة 1 مايو)' },
+    { key: 'eid_adha', label: '🐑 وقفة وعيد الأضحى المبارك', occasion: 'عيد الأضحى المبارك', date: '2026-05-26', durationDays: 6, note: 'من الثلاثاء 26 مايو حتى الأحد 31 مايو (استئناف الإثنين 1 يونيو)' },
+    { key: 'islamic_ny', label: '🌙 رأس السنة الهجرية', occasion: 'رأس السنة الهجرية', date: '2026-06-18', durationDays: 1, note: 'الخميس 18 يونيو (مُرحّل بقرار مجلس الوزراء بدلاً من الأربعاء 17 يونيو)' },
+    { key: 'rev_30_june', label: '🇪🇬 ثورة ٣٠ يونيو', occasion: 'ثورة 30 يونيو', date: '2026-07-02', durationDays: 1, note: 'الخميس 2 يوليو (مُرحّل بقرار مجلس الوزراء بدلاً من الثلاثاء 30 يونيو)' },
+    { key: 'rev_23_july', label: '🇪🇬 ثورة ٢٣ يوليو', occasion: 'ثورة 23 يوليو', date: '2026-07-23', durationDays: 1, note: 'الخميس 23 يوليو' },
+    { key: 'prophet_bday', label: '🕌 المولد النبوي الشريف', occasion: 'المولد النبوي الشريف', date: '2026-08-27', durationDays: 1, note: 'الخميس 27 أغسطس (مُرحّل بقرار مجلس الوزراء بدلاً من الثلاثاء 25 أغسطس)' },
+    { key: 'oct_6', label: '⚔️ عيد القوات المسلحة (٦ أكتوبر)', occasion: 'عيد القوات المسلحة (ذكرى نصر 6 أكتوبر)', date: '2026-10-08', durationDays: 1, note: 'الخميس 8 أكتوبر (مُرحّل بقرار مجلس الوزراء بدلاً من الثلاثاء 6 أكتوبر)' },
+
+    // 🇪🇬 مواعيد الإجازات الرسمية لعام 2027
+    { key: 'coptic_xmas_2027', label: '✝️ عيد الميلاد المجيد 2027', occasion: 'عيد الميلاد المجيد', date: '2027-01-07', durationDays: 1 },
+    { key: 'police_day_2027', label: '👮 عيد الشرطة 2027', occasion: 'عيد الشرطة وثورة 25 يناير', date: '2027-01-28', durationDays: 1 },
+    { key: 'eid_fitr_2027', label: '🎉 عيد الفطر المبارك 2027', occasion: 'عيد الفطر المبارك', date: '2027-03-09', durationDays: 5 },
+    { key: 'sham_nessim_2027', label: '🌸 شم النسيم 2027', occasion: 'شم النسيم', date: '2027-05-03', durationDays: 1 },
+    { key: 'sinai_lib_2027', label: '🦅 عيد تحرير سيناء 2027', occasion: 'عيد تحرير سيناء', date: '2027-04-29', durationDays: 1 },
+    { key: 'labor_day_2027', label: '👷 عيد العمال 2027', occasion: 'عيد العمال', date: '2027-05-06', durationDays: 1 },
+    { key: 'eid_adha_2027', label: '🐑 عيد الأضحى المبارك 2027', occasion: 'عيد الأضحى المبارك', date: '2027-05-16', durationDays: 5 },
+    { key: 'islamic_ny_2027', label: '🌙 رأس السنة الهجرية 2027', occasion: 'رأس السنة الهجرية', date: '2027-06-10', durationDays: 1 },
+    { key: 'rev_30_june_2027', label: '🇪🇬 ثورة ٣٠ يونيو 2027', occasion: 'ثورة 30 يونيو', date: '2027-07-01', durationDays: 1 },
+    { key: 'rev_23_july_2027', label: '🇪🇬 ثورة ٢٣ يوليو 2027', occasion: 'ثورة 23 يوليو', date: '2027-07-29', durationDays: 1 },
+    { key: 'prophet_bday_2027', label: '🕌 المولد النبوي الشريف 2027', occasion: 'المولد النبوي الشريف', date: '2027-08-19', durationDays: 1 },
+    { key: 'oct_6_2027', label: '⚔️ عيد القوات المسلحة 2027', occasion: 'عيد القوات المسلحة (ذكرى نصر 6 أكتوبر)', date: '2027-10-07', durationDays: 1 }
+];
+window.TG_OFFICIAL_HOLIDAYS_PRESETS = TG_OFFICIAL_HOLIDAYS_PRESETS;
+
+var TG_ARABIC_DAYS = ['الأحد', 'الاثنين', 'الثلاثاء', 'الأربعاء', 'الخميس', 'الجمعة', 'السبت'];
+window.TG_ARABIC_DAYS = TG_ARABIC_DAYS;
+
+var TG_ARABIC_MONTHS = ['يناير', 'فبراير', 'مارس', 'أبريل', 'مايو', 'يونيو', 'يوليو', 'أغسطس', 'سبتمبر', 'أكتوبر', 'نوفمبر', 'ديسمبر'];
+window.TG_ARABIC_MONTHS = TG_ARABIC_MONTHS;
+
+window.tgGetArabicDayName = function(d) {
+    if (!d) return '';
+    var dateObj = (typeof d === 'string') ? new Date(d + 'T12:00:00') : d;
+    return TG_ARABIC_DAYS[dateObj.getDay()] || '';
+};
+
+window.tgFormatArabicDateFull = function(d) {
+    if (!d) return '';
+    var dateObj = (typeof d === 'string') ? new Date(d + 'T12:00:00') : d;
+    var day = dateObj.getDate();
+    var month = TG_ARABIC_MONTHS[dateObj.getMonth()];
+    var year = dateObj.getFullYear();
+    return day + ' ' + month + ' ' + year;
+};
+
+window.tgGetResumeWorkingDateObj = function(startDateObj, durationDays) {
+    var dur = durationDays || 1;
+    var d = new Date(startDateObj.getTime());
+    // إضافة عدد أيام الإجازة
+    d.setDate(d.getDate() + dur);
+    // إذا وافق يوم عطلة نهاية الأسبوع (جمعة أو سبت)، ننتقل ليوم الأحد
+    while (d.getDay() === 5 || d.getDay() === 6) {
+        d.setDate(d.getDate() + 1);
+    }
+    return d;
+};
+
+// ── فحص المناسبات القادمة خلال الـ 4 أيام القادمة وتوليد البانر التنبيهي ──
+window.tgCheckUpcomingHolidays = function() {
+    var container = document.getElementById('tgHolidayAlertBannerContainer');
+    if (!container) return;
+
+    var today = new Date();
+    today.setHours(0, 0, 0, 0);
+
+    // جمع الأعياد من القائمة المسبقة ومن LocalStorage إن وجدت
+    var allHolidays = [...TG_OFFICIAL_HOLIDAYS_PRESETS];
+    try {
+        var localHols = JSON.parse(localStorage.getItem('officialHolidays') || '[]');
+        localHols.forEach(function(lh) {
+            if (lh.date && !allHolidays.some(function(h){ return h.date === lh.date; })) {
+                allHolidays.push({
+                    key: 'custom_' + lh.date,
+                    label: lh.label || 'إجازة رسمية',
+                    occasion: (lh.label || 'إجازة رسمية').replace(/^[^\w\u0600-\u06FF]+/g, ''),
+                    date: lh.date,
+                    durationDays: 1
+                });
+            }
+        });
+    } catch(e) {}
+
+    // البحث عن الأعياد في نطاق الـ 4 أيام القادمة (0 إلى 4 أيام)
+    var upcoming = [];
+    allHolidays.forEach(function(h) {
+        if (!h.date) return;
+        var hDate = new Date(h.date + 'T00:00:00');
+        var diffMs = hDate.getTime() - today.getTime();
+        var diffDays = Math.round(diffMs / (1000 * 60 * 60 * 24));
+        if (diffDays >= 0 && diffDays <= 4) {
+            upcoming.push(Object.assign({}, h, { diffDays: diffDays, holidayDateObj: hDate }));
+        }
+    });
+
+    if (!upcoming.length) {
+        container.innerHTML = '';
+        return;
+    }
+
+    // فرز المناسبات الأقرب فالأقرب
+    upcoming.sort(function(a, b) { return a.diffDays - b.diffDays; });
+    var target = upcoming[0];
+
+    var daysLabel = '';
+    if (target.diffDays === 0) daysLabel = 'اليوم!';
+    else if (target.diffDays === 1) daysLabel = 'غداً (بعد يوم واحد)';
+    else if (target.diffDays === 2) daysLabel = 'بعد يومين';
+    else daysLabel = 'بعد ' + target.diffDays + ' أيام';
+
+    var hDayName = tgGetArabicDayName(target.holidayDateObj);
+    var hFormatted = tgFormatArabicDateFull(target.holidayDateObj);
+
+    window._currentUpcomingHoliday = target;
+
+    var bannerHTML = 
+        '<div class="tg-holiday-alert-card">' +
+        '  <div class="tg-holiday-alert-content">' +
+        '    <div class="tg-holiday-alert-icon-wrap">🎊</div>' +
+        '    <div>' +
+        '      <div class="tg-holiday-alert-title">' +
+        '        <span>🔔 تنبيه موعد مناسبة وإجازة رسمية: <strong>' + escH(target.occasion) + '</strong></span>' +
+        '        <span class="tg-holiday-badge-days">' + daysLabel + '</span>' +
+        '      </div>' +
+        '      <div class="tg-holiday-alert-desc">' +
+        '        يوم الإجازة: <strong>' + hDayName + ' ' + hFormatted + '</strong> — وفق المادة 129 من اللائحة التنظيمية. يرجى إخطار الموظفين برعاية الإدارة.' +
+        '      </div>' +
+        '    </div>' +
+        '  </div>' +
+        '  <div class="tg-holiday-alert-actions">' +
+        '    <button type="button" class="tg-holiday-btn-action" onclick="tgOpenHolidayNoticeModal(\'' + escH(target.key || '') + '\')">' +
+        '      <span>📢</span> تجهيز رسالة الواتساب للموظفين' +
+        '    </button>' +
+        '    <button type="button" class="bt bt-o" onclick="document.getElementById(\'tgHolidayAlertBannerContainer\').innerHTML=\'\'" style="padding:8px 14px; font-size:12px; color:var(--tx2);">' +
+        '      تجاهل مؤقت' +
+        '    </button>' +
+        '  </div>' +
+        '</div>';
+
+    container.innerHTML = bannerHTML;
+};
+
+// ── فتح نافذة مولّد الإشعارات وتجهيز البيانات ──
+window.tgOpenHolidayNoticeModal = function(presetData) {
+    var modal = document.getElementById('tgHolidayNoticeModal');
+    if (!modal) return;
+
+    var today = new Date();
+    var defaultDateObj = new Date();
+    defaultDateObj.setDate(defaultDateObj.getDate() + 4); // 4 أيام قدام كافتراضي إذا لم يُحدد
+
+    var occasion = 'عيد العمال';
+    var holidayDateObj = defaultDateObj;
+    var durationDays = 1;
+
+    // إذا تم تمرير مفتاح نصي (string key)
+    if (typeof presetData === 'string' && presetData) {
+        var found = TG_OFFICIAL_HOLIDAYS_PRESETS.find(function(h){ return h.key === presetData; });
+        if (found) {
+            presetData = found;
+        } else if (window._currentUpcomingHoliday && window._currentUpcomingHoliday.key === presetData) {
+            presetData = window._currentUpcomingHoliday;
+        }
+    }
+
+    if (presetData && typeof presetData === 'object' && presetData.occasion) {
+        occasion = presetData.occasion;
+        if (presetData.date) holidayDateObj = new Date(presetData.date + 'T12:00:00');
+        if (presetData.durationDays) durationDays = presetData.durationDays;
+    } else if (window._currentUpcomingHoliday && window._currentUpcomingHoliday.occasion) {
+        occasion = window._currentUpcomingHoliday.occasion;
+        if (window._currentUpcomingHoliday.date) holidayDateObj = new Date(window._currentUpcomingHoliday.date + 'T12:00:00');
+        if (window._currentUpcomingHoliday.durationDays) durationDays = window._currentUpcomingHoliday.durationDays;
+    } else {
+        // فحص تلقائي لأقرب مناسبة قادمة
+        var allHols = [...TG_OFFICIAL_HOLIDAYS_PRESETS];
+        var upcoming = allHols.filter(function(h) {
+            var d = new Date(h.date + 'T12:00:00');
+            return d.getTime() >= (today.getTime() - 24*3600*1000);
+        }).sort(function(a,b){ return a.date.localeCompare(b.date); });
+
+        if (upcoming.length) {
+            occasion = upcoming[0].occasion;
+            holidayDateObj = new Date(upcoming[0].date + 'T12:00:00');
+            durationDays = upcoming[0].durationDays || 1;
+        }
+    }
+
+    var yyyy = holidayDateObj.getFullYear();
+    var mm = ('0' + (holidayDateObj.getMonth() + 1)).slice(-2);
+    var dd = ('0' + holidayDateObj.getDate()).slice(-2);
+    var dateIso = yyyy + '-' + mm + '-' + dd;
+
+    var resumeDateObj = tgGetResumeWorkingDateObj(holidayDateObj, durationDays);
+
+    var occInp = document.getElementById('tgHolOccasion');
+    var dateInp = document.getElementById('tgHolHolidayDateInput');
+    var hDayInp = document.getElementById('tgHolHolidayDay');
+    var hDateInp = document.getElementById('tgHolHolidayDateFormatted');
+    var rDayInp = document.getElementById('tgHolResumeDay');
+    var rDateInp = document.getElementById('tgHolResumeDate');
+    var workTimeInp = document.getElementById('tgHolWorkStartTime');
+    var issueDateInp = document.getElementById('tgHolIssueDate');
+
+    if (occInp) occInp.value = occasion;
+    if (dateInp) dateInp.value = dateIso;
+    if (hDayInp) hDayInp.value = tgGetArabicDayName(holidayDateObj);
+    if (hDateInp) hDateInp.value = tgFormatArabicDateFull(holidayDateObj);
+    if (rDayInp) rDayInp.value = tgGetArabicDayName(resumeDateObj);
+    if (rDateInp) rDateInp.value = tgFormatArabicDateFull(resumeDateObj);
+    if (workTimeInp && !workTimeInp.value) workTimeInp.value = 'الساعة 10:00 صباحًا';
+    if (issueDateInp) issueDateInp.value = tgFormatArabicDateFull(today);
+
+    tgUpdateHolidayLivePreview();
+    tgRenderSavedHolidayList();
+
+    modal.style.display = 'flex';
+    modal.style.zIndex = '99999999';
+};
+
+window.tgCloseHolidayNoticeModal = function() {
+    var modal = document.getElementById('tgHolidayNoticeModal');
+    if (modal) modal.style.display = 'none';
+};
+
+window.tgApplyHolidayPreset = function(key) {
+    var item = TG_OFFICIAL_HOLIDAYS_PRESETS.find(function(h){ return h.key === key; });
+    if (item) {
+        tgOpenHolidayNoticeModal(item);
+    }
+};
+
+window.tgOnHolidayDateChange = function(dateIso) {
+    if (!dateIso) return;
+    var d = new Date(dateIso + 'T12:00:00');
+    var hDayInp = document.getElementById('tgHolHolidayDay');
+    var hDateInp = document.getElementById('tgHolHolidayDateFormatted');
+    var rDayInp = document.getElementById('tgHolResumeDay');
+    var rDateInp = document.getElementById('tgHolResumeDate');
+
+    if (hDayInp) hDayInp.value = tgGetArabicDayName(d);
+    if (hDateInp) hDateInp.value = tgFormatArabicDateFull(d);
+
+    var resumeObj = tgGetResumeWorkingDateObj(d, 1);
+    if (rDayInp) rDayInp.value = tgGetArabicDayName(resumeObj);
+    if (rDateInp) rDateInp.value = tgFormatArabicDateFull(resumeObj);
+
+    tgUpdateHolidayLivePreview();
+};
+
+window.tgShiftCurrentHolidayToThursday = function() {
+    var dateInp = document.getElementById('tgHolHolidayDateInput');
+    if (!dateInp || !dateInp.value) {
+        alert('الرجاء اختيار تاريخ أولاً');
+        return;
+    }
+    var d = new Date(dateInp.value + 'T12:00:00');
+    var dayOfWeek = d.getDay(); // 0=Sun, 1=Mon, 2=Tue, 3=Wed, 4=Thu, 5=Fri, 6=Sat
+    if (dayOfWeek === 4) {
+        tgShowToast('ℹ️ التاريخ يوافق يوم الخميس بالفعل', 'info');
+        return;
+    }
+    // ترحيل إلى يوم الخميس من نفس الأسبوع أو الأسبوع التالي
+    var diffToThu = (4 - dayOfWeek + 7) % 7;
+    if (diffToThu === 0) diffToThu = 7;
+    d.setDate(d.getDate() + diffToThu);
+
+    var yyyy = d.getFullYear();
+    var mm = ('0' + (d.getMonth() + 1)).slice(-2);
+    var dd = ('0' + d.getDate()).slice(-2);
+    var shiftedIso = yyyy + '-' + mm + '-' + dd;
+
+    dateInp.value = shiftedIso;
+    tgOnHolidayDateChange(shiftedIso);
+    tgShowToast('⚡ تم ترحيل الإجازة ليوم الخميس (' + tgFormatArabicDateFull(d) + ') بقرار مجلس الوزراء', 'success');
+};
+
+window.tgBuildHolidayMsg = function() {
+    var occ = (document.getElementById('tgHolOccasion') ? document.getElementById('tgHolOccasion').value : '').trim() || 'المناسبة الرسمية';
+    var hday = (document.getElementById('tgHolHolidayDay') ? document.getElementById('tgHolHolidayDay').value : '').trim() || 'الخميس';
+    var hdate = (document.getElementById('tgHolHolidayDateFormatted') ? document.getElementById('tgHolHolidayDateFormatted').value : '').trim() || '';
+    var rday = (document.getElementById('tgHolResumeDay') ? document.getElementById('tgHolResumeDay').value : '').trim() || 'الأحد';
+    var rdate = (document.getElementById('tgHolResumeDate') ? document.getElementById('tgHolResumeDate').value : '').trim() || '';
+    var workTime = (document.getElementById('tgHolWorkStartTime') ? document.getElementById('tgHolWorkStartTime').value : '').trim() || 'الساعة 10:00 صباحًا';
+    var idate = (document.getElementById('tgHolIssueDate') ? document.getElementById('tgHolIssueDate').value : '').trim() || tgFormatArabicDateFull(new Date());
+
+    return "🟢 *إشعار إجازة رسمية | شركة تيك - جو*\n\n" +
+           "تُحيط إدارة الشركة جميع الموظفين الكرام بأن يوم *" + hday + " الموافق " + hdate + "* سيكون إجازة رسمية مدفوعة الأجر بمناسبة " + occ + ".\n\n" +
+           "━━━━━━━━━━━━━━\n" +
+           "📅 *تفاصيل الإجازة*\n" +
+           "• المناسبة: " + occ + "\n" +
+           "• تاريخ الإجازة: " + hday + " " + hdate + "\n" +
+           "• استئناف العمل: " + rday + " " + rdate + "\n" +
+           "• موعد الحضور: " + workTime + "\n\n" +
+           "━━━━━━━━━━━━━━\n" +
+           "📋 *الأساس القانوني*\n" +
+           "وفقًا للمادة 129 من اللائحة التنظيمية للشركة، يحق للعامل إجازة بأجر في العطلات والأعياد والمناسبات الرسمية.\n\n" +
+           "━━━━━━━━━━━━━━\n" +
+           "⚠️ *تنبيهات هامة*\n" +
+           "• في حال اقتضت ظروف العمل الحضور، يستحق الموظف ضعف أجر اليوم أو يوم بديل وفق المادة 129\n" +
+           "• يُرجى الالتزام بتسجيل الحضور عبر جهاز البصمة عند العودة\n" +
+           "• أي استفسارات يُرجى التواصل مع المدير الإداري\n\n" +
+           "كل عام وأنتم بخير 🌿\n\n" +
+           "_إدارة شركة تيك - جو_\n" +
+           "_بتاريخ: " + idate + "_";
+};
+
+window.tgUpdateHolidayLivePreview = function() {
+    var el = document.getElementById('tgHolPreviewMsg');
+    if (el) {
+        el.textContent = tgBuildHolidayMsg();
+    }
+};
+
+window.tgCopyHolidayMsg = function(btn) {
+    if (!btn) btn = document.getElementById('tgHolCopyBtn');
+    var pre = document.getElementById('tgHolPreviewMsg');
+    var msg = (pre ? pre.textContent : '') || tgBuildHolidayMsg();
+
+    // 1. تحديد النص تلقائياً داخل الصندوق ليرى المستخدم أن النص محدد
+    if (pre && window.getSelection) {
+        try {
+            var range = document.createRange();
+            range.selectNodeContents(pre);
+            var sel = window.getSelection();
+            sel.removeAllRanges();
+            sel.addRange(range);
+        } catch(e) {}
+    }
+
+    // 2. التنفيذ الفعلي للنسخ
+    if (navigator.clipboard && navigator.clipboard.writeText) {
+        navigator.clipboard.writeText(msg).then(function() {
+            tgOnCopySuccess(btn);
+        }).catch(function() {
+            tgExecCommandCopy(msg, btn);
+        });
+    } else {
+        tgExecCommandCopy(msg, btn);
+    }
+    tgSaveHolidayHistory(false);
+};
+
+function tgExecCommandCopy(text, btn) {
+    try {
+        var ta = document.createElement('textarea');
+        ta.value = text;
+        ta.style.position = 'fixed';
+        ta.style.top = '0';
+        ta.style.left = '0';
+        ta.style.opacity = '0.01';
+        document.body.appendChild(ta);
+        ta.focus();
+        ta.select();
+        document.execCommand('copy');
+        document.body.removeChild(ta);
+        tgOnCopySuccess(btn);
+    } catch (e) {
+        tgOnCopySuccess(btn);
+    }
+}
+
+function tgOnCopySuccess(btn) {
+    // 1. تغيير شكل وزر النسخ لإعطاء استجابة بصرية فورية
+    if (btn) {
+        var origHtml = btn.getAttribute('data-orig-html') || btn.innerHTML;
+        btn.setAttribute('data-orig-html', origHtml);
+        btn.innerHTML = '<span>✓</span> تم النسخ بنجاح!';
+        btn.style.background = 'linear-gradient(135deg, #10b981, #059669)';
+        setTimeout(function() {
+            btn.innerHTML = origHtml;
+            btn.style.background = '';
+        }, 3000);
+    }
+
+    // 2. إظهار البانر/التوست التنبيهي الصريح داخل النافذة
+    var modalToast = document.getElementById('tgHolidayModalToast');
+    if (modalToast) {
+        modalToast.style.display = 'block';
+        setTimeout(function() { modalToast.style.display = 'none'; }, 3000);
+    }
+
+    if (typeof tgShowToast === 'function') {
+        tgShowToast('✅ تم نسخ رسالة إشعار الإجازة بنجاح — جاهزة للصق في الواتساب', 'success');
+    }
+}
+
+window.tgSendHolidayWhatsApp = function() {
+    try {
+        var msg = tgBuildHolidayMsg();
+        var url = 'https://api.whatsapp.com/send?text=' + encodeURIComponent(msg);
+        var a = document.createElement('a');
+        a.href = url;
+        a.target = '_blank';
+        a.rel = 'noopener noreferrer';
+        document.body.appendChild(a);
+        a.click();
+        setTimeout(function(){ if (a.parentNode) a.parentNode.removeChild(a); }, 100);
+        tgSaveHolidayHistory(false);
+        if (typeof tgShowToast === 'function') tgShowToast('💬 جاري فتح الواتساب...', 'success');
+    } catch(e) {
+        console.error('WhatsApp send error:', e);
+        window.open('https://api.whatsapp.com/send?text=' + encodeURIComponent(tgBuildHolidayMsg()), '_blank');
+    }
+};
+
+window.tgPublishHolidayAnnouncement = async function() {
+    var occ = (document.getElementById('tgHolOccasion') ? document.getElementById('tgHolOccasion').value : '').trim() || 'مناسبة رسمية';
+    var msg = tgBuildHolidayMsg();
+
+    if (!confirm('هل تريد نشر هذا الإشعار كـ "إعلان رسمي" يظهر فوراً في بوابات جميع الموظفين وإرسال تنبيه لهم؟')) return;
+
+    try {
+        if (typeof tgShowToast === 'function') tgShowToast('⏳ جاري النشر وإرسال الإشعارات للموظفين...', 'info');
+
+        if (window.db) {
+            await db.collection('announcements').add({
+                title: '🎉 إشعار إجازة رسمية | ' + occ,
+                content: msg,
+                type: 'urgent',
+                audience: 'all',
+                authorName: (window.TG_USER ? TG_USER.name : 'الإدارة العامة'),
+                authorUid: (window.TG_USER ? TG_USER.uid : 'admin'),
+                createdAt: firebase.firestore.FieldValue.serverTimestamp(),
+                pinned: true
+            });
+
+            // إرسال Push Notification لجميع الموظفين
+            try {
+                var usersSnap = await db.collection('users').where('role', '==', 'employee').get();
+                var batch = db.batch();
+                usersSnap.forEach(function(doc) {
+                    var notifRef = db.collection('notifications').doc();
+                    batch.set(notifRef, {
+                        toUid: doc.id,
+                        title: '🎉 إشعار إجازة رسمية: ' + occ,
+                        body: 'أصدرت الإدارة إشعار إجازة رسمية بمناسبة ' + occ + '. اضغط للاطلاع.',
+                        tag: 'announcement-new',
+                        read: false,
+                        seen: false,
+                        createdAt: firebase.firestore.FieldValue.serverTimestamp()
+                    });
+                });
+                await batch.commit();
+            } catch(nErr) {
+                console.warn('Batch notification send warning:', nErr);
+            }
+
+            if (typeof tgShowToast === 'function') tgShowToast('✅ تم نشر إشعار الإجازة كإعلان رسمي وتنبيه جميع الموظفين بنجاح!', 'success');
+            else alert('✅ تم نشر إشعار الإجازة كإعلان رسمي وتنبيه جميع الموظفين بنجاح!');
+        } else {
+            if (typeof tgShowToast === 'function') tgShowToast('⚠️ تعذر الاتصال بقاعدة البيانات', 'danger');
+            else alert('⚠️ تعذر الاتصال بقاعدة البيانات');
+        }
+    } catch(e) {
+        console.error('Publish holiday announcement error:', e);
+        if (typeof tgShowToast === 'function') tgShowToast('❌ حدث خطأ أثناء النشر: ' + e.message, 'danger');
+        else alert('❌ حدث خطأ أثناء النشر: ' + e.message);
+    }
+};
+
+window.tgSaveHolidayHistory = function(showAlert) {
+    var entry = {
+        occasion: (document.getElementById('tgHolOccasion') ? document.getElementById('tgHolOccasion').value : '').trim(),
+        dateIso: (document.getElementById('tgHolHolidayDateInput') ? document.getElementById('tgHolHolidayDateInput').value : '').trim(),
+        holidayDay: (document.getElementById('tgHolHolidayDay') ? document.getElementById('tgHolHolidayDay').value : '').trim(),
+        holidayDateFormatted: (document.getElementById('tgHolHolidayDateFormatted') ? document.getElementById('tgHolHolidayDateFormatted').value : '').trim(),
+        resumeDay: (document.getElementById('tgHolResumeDay') ? document.getElementById('tgHolResumeDay').value : '').trim(),
+        resumeDate: (document.getElementById('tgHolResumeDate') ? document.getElementById('tgHolResumeDate').value : '').trim(),
+        workTime: (document.getElementById('tgHolWorkStartTime') ? document.getElementById('tgHolWorkStartTime').value : '').trim(),
+        issueDate: (document.getElementById('tgHolIssueDate') ? document.getElementById('tgHolIssueDate').value : '').trim(),
+        savedAt: tgFormatArabicDateFull(new Date())
+    };
+
+    var list = [];
+    try { list = JSON.parse(localStorage.getItem('tg_holiday_notices_history') || '[]'); } catch(e){}
+    list = list.filter(function(i){ return i.holidayDateFormatted !== entry.holidayDateFormatted || i.occasion !== entry.occasion; });
+    list.unshift(entry);
+    if (list.length > 20) list = list.slice(0, 20);
+    localStorage.setItem('tg_holiday_notices_history', JSON.stringify(list));
+
+    tgRenderSavedHolidayList();
+    if (showAlert) tgShowToast('💾 تم حفظ بيانات الإشعار في السجل بنجاح', 'success');
+};
+
+window.tgRenderSavedHolidayList = function() {
+    var sec = document.getElementById('tgHolSavedSection');
+    var listEl = document.getElementById('tgHolSavedList');
+    if (!sec || !listEl) return;
+
+    var list = [];
+    try { list = JSON.parse(localStorage.getItem('tg_holiday_notices_history') || '[]'); } catch(e){}
+
+    if (!list.length) {
+        sec.style.display = 'none';
+        return;
+    }
+
+    sec.style.display = 'block';
+    var h = '';
+    list.forEach(function(item, idx) {
+        h += '<div class="tg-holiday-saved-item" onclick="tgLoadSavedHolidayEntry(' + idx + ')">' +
+             '  <div>' +
+             '    <div style="font-size:13px; font-weight:bold; color:var(--tx);">' + escH(item.occasion) + '</div>' +
+             '    <div style="font-size:11.5px; color:var(--tx2); margin-top:2px;">' + escH(item.holidayDay) + ' ' + escH(item.holidayDateFormatted) + ' (الاستئناف: ' + escH(item.resumeDay) + ' ' + escH(item.resumeDate) + ')</div>' +
+             '  </div>' +
+             '  <div style="font-size:10.5px; color:var(--tx3);">' + escH(item.savedAt) + ' ↗</div>' +
+             '</div>';
+    });
+    listEl.innerHTML = h;
+};
+
+window.tgLoadSavedHolidayEntry = function(idx) {
+    var list = [];
+    try { list = JSON.parse(localStorage.getItem('tg_holiday_notices_history') || '[]'); } catch(e){}
+    var item = list[idx];
+    if (!item) return;
+
+    if (document.getElementById('tgHolOccasion')) document.getElementById('tgHolOccasion').value = item.occasion || '';
+    if (document.getElementById('tgHolHolidayDateInput')) document.getElementById('tgHolHolidayDateInput').value = item.dateIso || '';
+    if (document.getElementById('tgHolHolidayDay')) document.getElementById('tgHolHolidayDay').value = item.holidayDay || '';
+    if (document.getElementById('tgHolHolidayDateFormatted')) document.getElementById('tgHolHolidayDateFormatted').value = item.holidayDateFormatted || '';
+    if (document.getElementById('tgHolResumeDay')) document.getElementById('tgHolResumeDay').value = item.resumeDay || '';
+    if (document.getElementById('tgHolResumeDate')) document.getElementById('tgHolResumeDate').value = item.resumeDate || '';
+    if (document.getElementById('tgHolWorkStartTime')) document.getElementById('tgHolWorkStartTime').value = item.workTime || 'الساعة 10:00 صباحًا';
+    if (document.getElementById('tgHolIssueDate')) document.getElementById('tgHolIssueDate').value = item.issueDate || tgFormatArabicDateFull(new Date());
+
+    tgUpdateHolidayLivePreview();
+    tgShowToast('📂 تم استرجاع بيانات إشعار: ' + item.occasion, 'info');
+};
+
+window.tgClearHolidayHistory = function() {
+    if (!confirm('هل تريد مسح كل الإشعارات المحفوظة في السجل؟')) return;
+    localStorage.removeItem('tg_holiday_notices_history');
+    tgRenderSavedHolidayList();
+    tgShowToast('🗑 تم مسح السجل بنجاح', 'info');
+};
+
+
