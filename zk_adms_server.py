@@ -26,10 +26,11 @@ if sys.platform == 'win32':
         pass
 
 PORT = 8081
+BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 FIREBASE_PROJECT_ID = "tech-go-system"
 FIREBASE_API_KEY = "AIzaSyDyyl6cHWGh838xZ6epbUSwL2qmDgLsIwM"
-LOGS_FILE = os.path.join(os.path.dirname(__file__), "attlog.dat")
-JSON_DB_FILE = os.path.join(os.path.dirname(__file__), "attendance_records.json")
+LOGS_FILE = os.path.join(BASE_DIR, "attlog.dat")
+JSON_DB_FILE = os.path.join(BASE_DIR, "attendance_records.json")
 
 recent_logs = []
 connected_devices = {}
@@ -120,18 +121,47 @@ class ZKTecoADMSHandler(BaseHTTPRequestHandler):
             return
 
         if path == "/download/attlog.dat":
+            content = b""
             if os.path.exists(LOGS_FILE):
                 with open(LOGS_FILE, "rb") as f:
                     content = f.read()
-                self.send_response(200)
-                self.send_header("Content-Type", "application/octet-stream")
-                self.send_header("Content-Disposition", 'attachment; filename="attlog.dat"')
-                self.send_header("Content-Length", str(len(content)))
-                self.end_headers()
-                self.wfile.write(content)
-            else:
-                self._send_plain("لا توجد سجلات بعد.", 404)
+            self.send_response(200)
+            self.send_header("Content-Type", "application/octet-stream")
+            self.send_header("Content-Disposition", 'attachment; filename="attlog.dat"')
+            self.send_header("Content-Length", str(len(content)))
+            self.send_header("Access-Control-Allow-Origin", "*")
+            self.end_headers()
+            self.wfile.write(content)
             return
+
+        # ── خدمة ملفات البرنامج محلياً (attendance.html, styles.css, app.js) ──
+        clean_path = path.lstrip("/").split("?")[0]
+        local_file = os.path.join(BASE_DIR, clean_path)
+        if clean_path and os.path.isfile(local_file):
+            content_types = {
+                ".html": "text/html; charset=utf-8",
+                ".css": "text/css; charset=utf-8",
+                ".js": "application/javascript; charset=utf-8",
+                ".json": "application/json; charset=utf-8",
+                ".png": "image/png",
+                ".jpg": "image/jpeg",
+                ".ico": "image/x-icon",
+                ".dat": "text/plain; charset=utf-8"
+            }
+            ext = os.path.splitext(local_file)[1].lower()
+            ct = content_types.get(ext, "application/octet-stream")
+            try:
+                with open(local_file, "rb") as f:
+                    data = f.read()
+                self.send_response(200)
+                self.send_header("Content-Type", ct)
+                self.send_header("Content-Length", str(len(data)))
+                self.send_header("Access-Control-Allow-Origin", "*")
+                self.end_headers()
+                self.wfile.write(data)
+                return
+            except Exception as e:
+                pass
 
         # ── ZKTeco Handshake & Push Config (جميع مسارات ZKTeco الممكنة) ──
         if "cdata" in path or "ping" in path or "registry" in path or "push" in path or "options" in parsed.query.lower():
