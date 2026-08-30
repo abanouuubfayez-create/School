@@ -17,6 +17,14 @@ import urllib.parse
 from http.server import HTTPServer, BaseHTTPRequestHandler
 from datetime import datetime
 
+# Fix Windows console UTF-8 output
+if sys.platform == 'win32':
+    try:
+        sys.stdout.reconfigure(encoding='utf-8', errors='replace')
+        sys.stderr.reconfigure(encoding='utf-8', errors='replace')
+    except Exception:
+        pass
+
 PORT = 8081
 FIREBASE_PROJECT_ID = "tech-go-system"
 FIREBASE_API_KEY = "AIzaSyDyyl6cHWGh838xZ6epbUSwL2qmDgLsIwM"
@@ -314,22 +322,22 @@ class ZKTecoADMSHandler(BaseHTTPRequestHandler):
 
 def run_server():
     local_ip = get_local_ip()
-    print("═" * 70)
-    print(" 🚀 Tech Go System — ZKTeco ADMS Fingerprint Server")
-    print("═" * 70)
-    print(f" [+] عنوان السيرفر المحلي:  {local_ip}")
-    print(f" [+] المنفذ (Port):          {PORT}")
-    print(f" [+] لوحة المراقبة بالمتصفح: http://{local_ip}:{PORT}  أو  http://localhost:{PORT}")
-    print(f" [+] مسار ملف البصمة:       {LOGS_FILE}")
-    print("─" * 70)
-    print(" 📝 اكتب البيانات التالية في شاشة ماكينة البصمة (Cloud Server Setting):")
-    print(f"    • Server Mode:     ADMS")
-    print(f"    • Enable Domain:   OFF")
-    print(f"    • Server Address:  {local_ip}")
-    print(f"    • Server Port:     {PORT}")
-    print(f"    • HTTPS:           OFF")
-    print("═" * 70)
-    print(" ⏳ في انتظار اتصال الماكينة واستقبال البصمات...\n")
+    print("=" * 70)
+    print(" Tech Go System - ZKTeco ADMS Fingerprint Server")
+    print("=" * 70)
+    print(f" [+] Local Server IP:   {local_ip}")
+    print(f" [+] Port:              {PORT}")
+    print(f" [+] Web Dashboard:     http://{local_ip}:{PORT} or http://localhost:{PORT}")
+    print(f" [+] Attlog Data File:  {LOGS_FILE}")
+    print("-" * 70)
+    print(" [i] Cloud Server Settings in ZKTeco Terminal:")
+    print(f"     * Server Mode:     ADMS")
+    print(f"     * Enable Domain:   OFF")
+    print(f"     * Server Address:  {local_ip}")
+    print(f"     * Server Port:     {PORT}")
+    print(f"     * HTTPS:           OFF")
+    print("=" * 70)
+    print(" [*] Waiting for fingerprint terminal connection...\n")
 
     server_address = ("0.0.0.0", PORT)
     httpd = HTTPServer(server_address, ZKTecoADMSHandler)
