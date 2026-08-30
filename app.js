@@ -2598,6 +2598,7 @@ function tgChatMount(){
               '</div>'+
             '</div>'+
             '<div class="tg-chat-panel-h-r">'+
+              '<button type="button" class="tg-chat-h-btn" onclick="tgChatPopout()" title="فتح في نافذة خارجية عائمة (ماسنجر)">↗️</button>'+
               '<button type="button" class="tg-chat-h-btn" id="tgChatMuteBtn" onclick="tgChatToggleMute()" title="كتم/تشغيل صوت الإشعارات">🔔</button>'+
               '<button type="button" class="tg-chat-h-btn" onclick="tgChatToggle(false)" title="تصغير">➖</button>'+
               '<button type="button" class="tg-chat-h-btn tg-chat-h-close" onclick="tgChatToggle(false)" title="إغلاق">✕</button>'+
@@ -2642,6 +2643,9 @@ function tgChatMount(){
             tgChatToggle(false);
         }
     });
+
+    var bEl = document.getElementById('tgChatBubble');
+    if (bEl) tgInitDraggableBubble(bEl);
 
     setTimeout(function(){
         var picker = document.querySelector('emoji-picker');
@@ -2700,6 +2704,186 @@ function tgChatToggle(force){
         tgChatMarkRead();
         setTimeout(function(){ var inp=document.getElementById('tgChatInput'); if(inp) inp.focus(); },80);
     }
+}
+
+// ─── Messenger Pop-out Window (Picture-in-Picture / Standalone Floating Window) ───
+window.tgChatPopout = async function() {
+    var panel = document.getElementById('tgChatPanel');
+    if (!panel) return;
+    
+    // 1. Modern Document Picture-in-Picture API (Chrome/Edge: Floats above ALL other apps & windows!)
+    if ('documentPictureInPicture' in window) {
+        try {
+            const pipWindow = await window.documentPictureInPicture.requestWindow({
+                width: 400,
+                height: 600
+            });
+            
+            [...document.styleSheets].forEach(styleSheet => {
+                try {
+                    const cssRules = [...styleSheet.cssRules].map(rule => rule.cssText).join('');
+                    const style = document.createElement('style');
+                    style.textContent = cssRules;
+                    pipWindow.document.head.appendChild(style);
+                } catch (e) {
+                    const link = document.createElement('link');
+                    link.rel = 'stylesheet';
+                    link.href = styleSheet.href;
+                    pipWindow.document.head.appendChild(link);
+                }
+            });
+            
+            pipWindow.document.title = '💬 الشات العام - Tech Go';
+            pipWindow.document.body.style.margin = '0';
+            pipWindow.document.body.style.background = '#0f172a';
+            pipWindow.document.body.style.direction = 'rtl';
+            pipWindow.document.body.style.fontFamily = "'Cairo', 'Tajawal', sans-serif";
+            
+            panel.style.position = 'static';
+            panel.style.width = '100%';
+            panel.style.height = '100vh';
+            panel.style.maxHeight = '100vh';
+            panel.style.maxWidth = '100vw';
+            panel.style.borderRadius = '0';
+            panel.classList.add('open');
+            pipWindow.document.body.appendChild(panel);
+            _chatWidgetOpen = true;
+            
+            pipWindow.addEventListener('pagehide', () => {
+                var wrap = document.getElementById('tgChatWidgetWrap');
+                if (wrap) {
+                    panel.style.position = '';
+                    panel.style.width = '';
+                    panel.style.height = '';
+                    panel.style.maxHeight = '';
+                    panel.style.maxWidth = '';
+                    panel.style.borderRadius = '';
+                    wrap.insertBefore(panel, wrap.firstChild);
+                    _chatWidgetOpen = false;
+                    panel.classList.remove('open');
+                }
+            });
+            return;
+        } catch(e) {
+            console.log('PiP fallback:', e);
+        }
+    }
+    
+    // 2. Standalone Pop-up Window Fallback
+    var pop = window.open('', 'TechGoChatPopout', 'width=420,height=640,resizable=yes,scrollbars=no,status=no,toolbar=no,menubar=no,location=no');
+    if (pop) {
+        pop.document.write('<!DOCTYPE html><html dir="rtl"><head><meta charset="utf-8"><title>💬 الشات العام - Tech Go</title><meta name="viewport" content="width=device-width, initial-scale=1.0"></head><body style="margin:0;background:#0f172a;"></body></html>');
+        pop.document.close();
+        [...document.styleSheets].forEach(styleSheet => {
+            try {
+                const cssRules = [...styleSheet.cssRules].map(rule => rule.cssText).join('');
+                const style = pop.document.createElement('style');
+                style.textContent = cssRules;
+                pop.document.head.appendChild(style);
+            } catch (e) {
+                const link = pop.document.createElement('link');
+                link.rel = 'stylesheet';
+                link.href = styleSheet.href;
+                pop.document.head.appendChild(link);
+            }
+        });
+        panel.style.position = 'static';
+        panel.style.width = '100%';
+        panel.style.height = '100vh';
+        panel.style.maxHeight = '100vh';
+        panel.style.maxWidth = '100vw';
+        panel.style.borderRadius = '0';
+        panel.classList.add('open');
+        pop.document.body.appendChild(panel);
+        
+        pop.addEventListener('beforeunload', () => {
+            var wrap = document.getElementById('tgChatWidgetWrap');
+            if (wrap) {
+                panel.style.position = '';
+                panel.style.width = '';
+                panel.style.height = '';
+                panel.style.maxHeight = '';
+                panel.style.maxWidth = '';
+                panel.style.borderRadius = '';
+                wrap.insertBefore(panel, wrap.firstChild);
+                _chatWidgetOpen = false;
+                panel.classList.remove('open');
+            }
+        });
+    }
+};
+
+// ─── Messenger Draggable Chat Head Logic ───
+function tgInitDraggableBubble(bubble) {
+    if (!bubble) return;
+    var isDragging = false;
+    var startX, startY, origLeft, origBottom;
+    var hasMoved = false;
+
+    function onStart(e) {
+        if (e.target.closest && e.target.closest('#tgChatBubbleBadge')) return;
+        var clientX = e.touches ? e.touches[0].clientX : e.clientX;
+        var clientY = e.touches ? e.touches[0].clientY : e.clientY;
+        startX = clientX;
+        startY = clientY;
+        var rect = bubble.getBoundingClientRect();
+        origLeft = rect.left;
+        origBottom = window.innerHeight - rect.bottom;
+        hasMoved = false;
+        isDragging = true;
+        bubble.style.transition = 'none';
+        
+        document.addEventListener(e.touches ? 'touchmove' : 'mousemove', onMove, {passive: false});
+        document.addEventListener(e.touches ? 'touchend' : 'mouseup', onEnd);
+    }
+
+    function onMove(e) {
+        if (!isDragging) return;
+        var clientX = e.touches ? e.touches[0].clientX : e.clientX;
+        var clientY = e.touches ? e.touches[0].clientY : e.clientY;
+        var dx = clientX - startX;
+        var dy = clientY - startY;
+        if (Math.abs(dx) > 5 || Math.abs(dy) > 5) {
+            hasMoved = true;
+            if (e.cancelable) e.preventDefault();
+        }
+        var newLeft = Math.max(10, Math.min(window.innerWidth - 65, origLeft + dx));
+        var newBottom = Math.max(70, Math.min(window.innerHeight - 70, origBottom - dy));
+        bubble.style.left = newLeft + 'px';
+        bubble.style.bottom = newBottom + 'px';
+    }
+
+    function onEnd() {
+        if (!isDragging) return;
+        isDragging = false;
+        bubble.style.transition = 'transform 0.25s cubic-bezier(0.34, 1.56, 0.64, 1), left 0.3s ease, bottom 0.3s ease';
+        document.removeEventListener('touchmove', onMove);
+        document.removeEventListener('mousemove', onMove);
+        document.removeEventListener('touchend', onEnd);
+        document.removeEventListener('mouseup', onEnd);
+        
+        if (hasMoved) {
+            var rect = bubble.getBoundingClientRect();
+            var centerX = rect.left + rect.width / 2;
+            if (centerX < window.innerWidth / 2) {
+                bubble.style.left = '16px';
+            } else {
+                bubble.style.left = (window.innerWidth - rect.width - 16) + 'px';
+            }
+        }
+    }
+
+    bubble.addEventListener('mousedown', onStart);
+    bubble.addEventListener('touchstart', onStart, {passive: true});
+    
+    var origClick = bubble.onclick;
+    bubble.onclick = function(e) {
+        if (hasMoved) {
+            hasMoved = false;
+            return;
+        }
+        if (origClick) origClick.call(this, e);
+    };
 }
 
 function tgChatKeydown(e){
