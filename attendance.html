@@ -2914,6 +2914,7 @@
             });
             const primaryYm = Object.keys(monthCounts).sort((a,b) => monthCounts[b] - monthCounts[a])[0] || '2026-07';
             const [pYear, pMonth] = primaryYm.split('-');
+            const currentYearNum = parseInt(pYear, 10) || 2026;
             const monthNum = parseInt(pMonth, 10);
             const monthNameAr = _MONTH_NAMES_AR[monthNum - 1] || pMonth;
             
@@ -3071,7 +3072,6 @@
 
                 // Calculate full-year leave days consumed (طوال السنة حتى الشهر الحالي)
                 // طبقاً للائحة الشركة وقانون العمل (مادة 124): 15 يوماً للسنة الأولى (2026)، و21 يوماً بدءاً من السنة الثانية (2027 وما بعدها)
-                const currentYearNum = parseInt(pYear, 10) || 2026;
                 let baseTotal = currentYearNum >= 2027 ? 21 : 15;
                 let totalUsedLeaves = 0;
                 let totalCasualLeaves = 0;
@@ -3973,7 +3973,7 @@
         syncApprovedEmployeeRequests();
         initAttendanceArchive();
     </script>
-    <script src="theme.js?v=1788179539"></script>
-    <script src="pwa-install.js?v=1788179539"></script>
+    <script src="theme.js?v=1788179710"></script>
+    <script src="pwa-install.js?v=1788179710"></script>
 </body>
 </html>
