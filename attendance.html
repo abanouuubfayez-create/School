@@ -833,9 +833,14 @@
                         <div class="card-table-title">
                             🎫 سجل أذونات الحضور والانصراف
                         </div>
-                        <button class="btn-action btn-perm-action" onclick="openNewPermDialog()">
-                            ➕ تسجيل إذن جديد
-                        </button>
+                        <div style="display:flex; gap:6px; flex-wrap:wrap;">
+                            <button class="btn-action" style="background:linear-gradient(135deg,#6366f1 0%,#4f46e5 100%); color:#fff; border:none; padding:6px 10px; border-radius:8px; font-weight:700; cursor:pointer;" onclick="openNewGroupLateExemptionDialog()">
+                                👥 استثناء تأخير لجميع الموظفين
+                            </button>
+                            <button class="btn-action btn-perm-action" onclick="openNewPermDialog()">
+                                ➕ إذن فردي
+                            </button>
+                        </div>
                     </div>
                     <div style="overflow-x: auto;">
                         <table class="admin-table">
@@ -1023,7 +1028,6 @@
                 '8': 'م/ مرقس مدحت',
                 '7': 'باسل',
                 '4': 'أبانوب فايز',
-                '5': 'إبراهيم',
                 '6': 'يوستينا',
                 '10': 'كيرلس'
             },
@@ -1033,10 +1037,13 @@
             }
         };
 
-        let inactiveEmployees = ['5']; // إبراهيم معطل / غير نشط (يتم استبعاده تلقائياً من الكشوفات)
+        let inactiveEmployees = ['5', '9']; // إبراهيم وموظف 9 محذوفان ومستبعدان نهائياً من كافة الكشوفات
         try {
             const rawInact = localStorage.getItem('techgo_inactive_employees');
-            if (rawInact) inactiveEmployees = JSON.parse(rawInact);
+            if (rawInact) {
+                const parsed = JSON.parse(rawInact);
+                if (Array.isArray(parsed)) inactiveEmployees = Array.from(new Set([...inactiveEmployees, ...parsed]));
+            }
         } catch(e){}
 
         let employeeNames = Object.assign({}, _SAVED_DATA.empNames);
@@ -1055,7 +1062,11 @@
 
         try {
             const sn = localStorage.getItem('empNames');
-            if (sn) Object.assign(employeeNames, JSON.parse(sn));
+            if (sn) {
+                Object.assign(employeeNames, JSON.parse(sn));
+                delete employeeNames['5'];
+                delete employeeNames['9'];
+            }
             const sp = localStorage.getItem('techgo_employee_permissions');
             if (sp) Object.assign(employeePermissions, JSON.parse(sp));
             const sml = localStorage.getItem('techgo_manual_leaves');
@@ -1523,13 +1534,29 @@
             return null;
         }
 
-        function saveManualLeavesToStorage() {
-            try { localStorage.setItem('techgo_manual_leaves', JSON.stringify(employeeManualLeaves)); } catch(e){}
-        }
-
         function getPermissionForDate(empId, dateStr) {
+            // 1. Check general/group late exemption for all employees on this date
+            const allList = employeePermissions['all'] || [];
+            const allPerm = allList.find(p => p.date === dateStr);
+            if (allPerm) {
+                return {
+                    ...allPerm,
+                    source: allPerm.source || 'manual',
+                    sourceTag: 'استثناء جماعي للجميع',
+                    isAll: true
+                };
+            }
+
+            // 2. Check individual employee permission
             const list = employeePermissions[empId] || [];
-            return list.find(p => p.date === dateStr) || null;
+            const found = list.find(p => p.date === dateStr);
+            if (!found) return null;
+            const isManual = (found.source !== 'employee_request');
+            return {
+                ...found,
+                source: found.source || 'manual',
+                sourceTag: isManual ? 'تسجيل يدوي' : 'طلب موظف معتمد'
+            };
         }
 
         function getPersonalLeaveForDate(empId, dateStr) {
@@ -2046,8 +2073,30 @@
             tbody.innerHTML = '';
 
             let hasRecords = false;
+
+            // 1. Group exemptions first
+            const groupList = employeePermissions['all'] || [];
+            groupList.forEach((p, pIdx) => {
+                hasRecords = true;
+                const tr = document.createElement('tr');
+                tr.style.background = 'rgba(99, 102, 241, 0.08)';
+                tr.innerHTML = `
+                    <td style="font-weight:bold; color:var(--primary-light);">👥 جميع الموظفين (استثناء جماعي)</td>
+                    <td style="color:var(--primary-light); font-weight:bold; text-align:center;">الكل</td>
+                    <td>📅 ${p.date}</td>
+                    <td><span class="status-badge badge-perm" style="background:#e0e7ff; color:#3730a3; border:1px solid #c7d2fe;">👥 استثناء تأخير جماعي</span></td>
+                    <td><span class="status-badge" style="background:#f1f5f9; color:#475569; border:1px solid #cbd5e1; font-size:0.75rem;">✍️ تسجيل يدوي (إدارة)</span></td>
+                    <td style="color:var(--text); font-weight:600;">${p.note || 'استثناء تأخير معتمد لكافة الموظفين'}</td>
+                    <td>
+                        <button class="btn-action btn-ghost" onclick="deletePerm('all', ${pIdx})" style="color:var(--danger-light);padding:2px 8px;">✕ حذف</button>
+                    </td>
+                `;
+                tbody.appendChild(tr);
+            });
+
+            // 2. Individual employee permissions
             Object.keys(employeePermissions).forEach(empId => {
-                if (inactiveEmployees.includes(empId)) return;
+                if (empId === 'all' || inactiveEmployees.includes(empId)) return;
                 const list = employeePermissions[empId] || [];
                 const name = getDisplayName(empId);
                 list.forEach((p, pIdx) => {
@@ -2139,7 +2188,7 @@
 
         function openNewPermDialog() {
             const sel = document.getElementById('modalPermEmpSel');
-            sel.innerHTML = '';
+            sel.innerHTML = '<option value="all" style="font-weight:bold; color:var(--primary-light);">👥 جميع الموظفين (استثناء تأخير جماعي)</option>';
             Object.keys(employeeNames).forEach(id => {
                 if (inactiveEmployees.includes(id)) return; // استبعاد الموظفين المعطلين
                 sel.innerHTML += `<option value="${id}">${employeeNames[id]} (كود ${id})</option>`;
@@ -2147,6 +2196,13 @@
             document.getElementById('modalPermDate').value = new Date().toISOString().slice(0, 10);
             document.getElementById('modalPermNote').value = '';
             document.getElementById('permModal').classList.remove('hidden');
+        }
+
+        function openNewGroupLateExemptionDialog() {
+            openNewPermDialog();
+            document.getElementById('modalPermEmpSel').value = 'all';
+            document.getElementById('modalPermType').value = 'late';
+            document.getElementById('modalPermNote').value = 'استثناء تأخير جماعي معتمد لكافة الموظفين';
         }
 
         function openNewPermForEmp(empId) {
@@ -2167,7 +2223,13 @@
             if (!empId || !date) { alert('يرجى اختيار الموظف والتاريخ'); return; }
 
             if (!employeePermissions[empId]) employeePermissions[empId] = [];
-            employeePermissions[empId].push({ date, type, note, source: 'manual' });
+            employeePermissions[empId].push({
+                date,
+                type,
+                note: note || (empId === 'all' ? 'استثناء تأخير جماعي معتمد' : ''),
+                source: 'manual',
+                isAll: (empId === 'all')
+            });
             savePermissionsToStorage();
 
             closePermModal();
@@ -2175,6 +2237,9 @@
                 renderExecutiveOverview();
                 renderTimesheets();
                 renderPermissionsTable();
+            }
+            if (empId === 'all') {
+                alert('✓ تم تطبيق استثناء التأخير الجماعي لجميع الموظفين بتاريخ ' + date + ' بنجاح!');
             }
         }
 
@@ -3131,7 +3196,7 @@
         updatePolicyLabels();
         initAttendanceArchive();
     </script>
-    <script src="theme.js?v=1788165952"></script>
-    <script src="pwa-install.js?v=1788165952"></script>
+    <script src="theme.js?v=1788166921"></script>
+    <script src="pwa-install.js?v=1788166921"></script>
 </body>
 </html>
