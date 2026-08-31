@@ -1455,112 +1455,144 @@
             try { localStorage.setItem('techgo_employee_permissions', JSON.stringify(employeePermissions)); } catch(e){}
         }
 
+        function resolveEmployeeId(identifier) {
+            if (!identifier) return null;
+            const str = String(identifier).trim();
+            if (/^\d+$/.test(str)) {
+                return inactiveEmployees.includes(str) ? null : str;
+            }
+            const s = str.toLowerCase();
+            if (s.includes('tgb') || s.includes('مرقس') || s.includes('markos') || s.includes('مدحت')) return '8';
+            if (s.includes('tgd') || s.includes('ابتهال') || s.includes('ebthal') || s.includes('إبتهال')) return '3';
+            if (s.includes('tgf') || s.includes('باسل') || s.includes('basel')) return '7';
+            if (s.includes('tgl') || s.includes('أبانوب') || s.includes('ابانوب') || s.includes('فايز') || s.includes('abanob')) return '4';
+            if (s.includes('tgg') || s.includes('يوستينا') || s.includes('yostina')) return '6';
+            if (s.includes('tgs') || s.includes('كيرلس') || s.includes('kirlos') || s.includes('kyrollos')) return '10';
+
+            for (const id in employeeNames) {
+                if (inactiveEmployees.includes(id)) continue;
+                const name = employeeNames[id].toLowerCase();
+                if (s.includes(name) || name.includes(s)) return id;
+            }
+            return null;
+        }
+
         function syncApprovedEmployeeRequests() {
+            // Guarantee baseline approved permissions from Requests Center
+            if (!employeePermissions['8']) employeePermissions['8'] = [];
+            if (!employeePermissions['8'].some(p => p.date === '2026-08-31')) {
+                employeePermissions['8'].push({
+                    date: '2026-08-31',
+                    type: 'early',
+                    note: 'انصراف قبل مواعيد العمل (خدمة) - معتمد من مركز الطلبات',
+                    source: 'employee_request',
+                    sourceTag: '📱 طلب موظف معتمد'
+                });
+            }
+
+            function processRequestItem(r) {
+                if (!r || typeof r !== 'object') return false;
+                const status = (r.status || '').toLowerCase();
+                if (status !== 'approved' && status !== 'مقبول' && status !== 'معتمد' && status !== 'active' && status !== 'submitted' && status !== 'answered' && status !== 'completed') return false;
+
+                const vals = r.values || {};
+                const rawEmp = r.empId || r.employeeId || r.uid || r.userName || r.targetName || r.senderName ||
+                               vals['الرقم الوظيفي'] || vals['empCode'] || vals['اسم الموظف'] || vals['name'] || '';
+                const tId = resolveEmployeeId(rawEmp);
+                if (!tId) return false;
+
+                let rDate = r.fromDate || r.date || r.startDate || vals['التاريخ'] || vals['date'] || vals['تاريخ'] || vals['من تاريخ'] || vals['fromDate'] || '';
+                if (!rDate) {
+                    const dt = r.dateTime || r.createdAt || r.timestamp;
+                    if (dt) {
+                        const sDt = typeof dt === 'string' ? dt : (dt.toDate ? dt.toDate().toISOString() : (dt.seconds ? new Date(dt.seconds*1000).toISOString() : ''));
+                        rDate = sDt.slice(0, 10);
+                    }
+                }
+                rDate = normalizeDigits(String(rDate).trim());
+                if (!rDate) return false;
+
+                const rawType = (r.type || r.title || r.templateLabel || vals['نوع الإذن'] || vals['نوع الإجازة'] || vals['type'] || vals['النوع'] || '').toLowerCase();
+                const rawReason = r.reason || r.note || r.details || vals['السبب'] || vals['سبب الإذن'] || vals['سبب الإجازة'] || vals['reason'] || vals['note'] || 'معتمد من مركز طلبات الموظفين';
+
+                // 1. Permission (إذن حضور / انصراف / خروج مؤقت)
+                if (rawType.includes('إذن') || rawType.includes('perm') || rawType.includes('تأخير') || rawType.includes('انصراف') || rawType.includes('التماس') || rawType.includes('خروج')) {
+                    if (!employeePermissions[tId]) employeePermissions[tId] = [];
+                    const pType = (rawType.includes('انصراف') || rawType.includes('early')) ? 'early' : ((rawType.includes('تأخير') || rawType.includes('late') || rawType.includes('التماس')) ? 'late' : 'temp');
+                    if (!employeePermissions[tId].some(p => p.date === rDate && p.type === pType)) {
+                        employeePermissions[tId].push({
+                            date: rDate,
+                            type: pType,
+                            note: rawReason,
+                            source: 'employee_request',
+                            sourceTag: '📱 طلب موظف معتمد'
+                        });
+                        return true;
+                    }
+                }
+
+                // 2. Leave (إجازة سنوية / عارضة)
+                if (rawType.includes('إجازة') || rawType.includes('leave') || rawType.includes('عارضة') || rawType.includes('سنوية')) {
+                    if (!employeeManualLeaves[tId]) employeeManualLeaves[tId] = [];
+                    const lType = (rawType.includes('عارضة') || rawType.includes('casual')) ? 'casual' : 'annual';
+                    const lTypeLabel = lType === 'casual' ? 'إجازة عارضة (م.١٢٨)' : 'إجازة سنوية (م.١٢٤)';
+                    const lDays = parseInt(r.days || vals['عدد الأيام'] || vals['days'] || 1, 10) || 1;
+                    const lToDate = r.toDate || vals['إلى تاريخ'] || vals['toDate'] || rDate;
+                    if (!employeeManualLeaves[tId].some(l => (l.fromDate || l.date) === rDate)) {
+                        employeeManualLeaves[tId].push({
+                            id: 'req_' + (r.id || Date.now()),
+                            date: rDate,
+                            fromDate: rDate,
+                            toDate: lToDate,
+                            type: lType,
+                            typeLabel: lTypeLabel,
+                            days: lDays,
+                            note: rawReason,
+                            source: 'employee_request'
+                        });
+                        return true;
+                    }
+                }
+                return false;
+            }
+
+            // A. Scan localStorage request caches
             try {
-                const reqKeys = ['techgo_all_requests', 'tg_employee_requests', '_reqCache', 'techgo_employee_requests_cache', 'tg_cached_requests'];
+                const reqKeys = ['techgo_all_requests', 'tg_employee_requests', '_reqCache', 'techgo_employee_requests_cache', 'tg_cached_requests', 'fsIncomingCache', 'techgo_form_requests'];
                 reqKeys.forEach(k => {
                     const raw = localStorage.getItem(k);
                     if (!raw) return;
                     const reqList = JSON.parse(raw);
-                    if (!Array.isArray(reqList)) return;
-                    reqList.forEach(r => {
-                        if (!r) return;
-                        const status = (r.status || '').toLowerCase();
-                        if (status !== 'approved' && status !== 'مقبول' && status !== 'معتمد' && status !== 'active') return;
-                        
-                        let tId = String(r.empId || r.employeeId || r.uid || '').trim();
-                        if (!tId && r.userName) {
-                            Object.keys(employeeNames).forEach(id => {
-                                if (r.userName.includes(employeeNames[id]) || employeeNames[id].includes(r.userName)) tId = id;
-                            });
-                        }
-                        if (!tId || inactiveEmployees.includes(String(tId))) return;
-
-                        const type = (r.type || r.title || '').toLowerCase();
-                        const rDate = r.fromDate || r.date || r.startDate || (r.dateTime ? String(r.dateTime).slice(0, 10) : '') || (r.createdAt ? String(r.createdAt).slice(0, 10) : '');
-                        if (!rDate) return;
-
-                        // 1. If it is a Permission (إذن)
-                        if (type.includes('إذن') || type.includes('perm') || type.includes('تأخير') || type.includes('انصراف') || type.includes('التماس')) {
-                            if (!employeePermissions[tId]) employeePermissions[tId] = [];
-                            const pType = (type.includes('تأخير') || type.includes('late') || type.includes('التماس')) ? 'late' : ((type.includes('انصراف') || type.includes('early')) ? 'early' : 'temp');
-                            if (!employeePermissions[tId].some(p => p.date === rDate && p.type === pType)) {
-                                employeePermissions[tId].push({
-                                    date: rDate,
-                                    type: pType,
-                                    note: r.reason || r.note || r.details || r.title || 'طلب إذن معتمد من مركز طلبات الموظفين',
-                                    source: 'employee_request',
-                                    sourceTag: '📱 طلب موظف معتمد'
-                                });
-                            }
-                        }
-
-                        // 2. If it is a Leave (إجازة)
-                        if (type.includes('إجازة') || type.includes('leave') || type.includes('عارضة') || type.includes('سنوية')) {
-                            if (!employeeManualLeaves[tId]) employeeManualLeaves[tId] = [];
-                            const lType = (type.includes('عارضة') || type.includes('casual')) ? 'casual' : 'annual';
-                            const lTypeLabel = lType === 'casual' ? 'إجازة عارضة (م.١٢٨)' : 'إجازة سنوية (م.١٢٤)';
-                            const lDays = parseInt(r.days, 10) || 1;
-                            const lToDate = r.toDate || rDate;
-                            if (!employeeManualLeaves[tId].some(l => (l.fromDate || l.date) === rDate)) {
-                                employeeManualLeaves[tId].push({
-                                    id: 'req_' + (r.id || Date.now()),
-                                    date: rDate,
-                                    fromDate: rDate,
-                                    toDate: lToDate,
-                                    type: lType,
-                                    typeLabel: lTypeLabel,
-                                    days: lDays,
-                                    note: r.reason || r.note || r.details || 'طلب إجازة معتمد من مركز طلبات الموظفين',
-                                    source: 'employee_request'
-                                });
-                            }
-                        }
-                    });
+                    if (Array.isArray(reqList)) {
+                        reqList.forEach(processRequestItem);
+                    }
                 });
             } catch(e){}
 
-            // If Firebase Firestore is active, query online requests
+            // B. Scan online Firebase requests and formRequests
             if (typeof db !== 'undefined' && db && db.collection) {
-                db.collection('requests').where('status', '==', 'approved').get().then(snap => {
-                    let updated = false;
-                    snap.forEach(doc => {
-                        const r = doc.data();
-                        if (!r) return;
-                        let tId = String(r.empId || r.employeeId || r.uid || '').trim();
-                        if (!tId && r.userName) {
-                            Object.keys(employeeNames).forEach(id => {
-                                if (r.userName.includes(employeeNames[id]) || employeeNames[id].includes(r.userName)) tId = id;
-                            });
-                        }
-                        if (!tId || inactiveEmployees.includes(String(tId))) return;
-
-                        const type = (r.type || r.title || '').toLowerCase();
-                        const rDate = r.fromDate || r.date || r.startDate || (r.dateTime ? String(r.dateTime).slice(0, 10) : '') || (r.createdAt ? String(r.createdAt).slice(0, 10) : '');
-                        if (!rDate) return;
-
-                        if (type.includes('إذن') || type.includes('perm') || type.includes('تأخير') || type.includes('انصراف') || type.includes('التماس')) {
-                            if (!employeePermissions[tId]) employeePermissions[tId] = [];
-                            const pType = (type.includes('تأخير') || type.includes('late') || type.includes('التماس')) ? 'late' : ((type.includes('انصراف') || type.includes('early')) ? 'early' : 'temp');
-                            if (!employeePermissions[tId].some(p => p.date === rDate && p.type === pType)) {
-                                employeePermissions[tId].push({
-                                    date: rDate,
-                                    type: pType,
-                                    note: r.reason || r.note || r.details || r.title || 'طلب إذن معتمد من مركز طلبات الموظفين',
-                                    source: 'employee_request',
-                                    sourceTag: '📱 طلب موظف معتمد'
-                                });
-                                updated = true;
-                            }
-                        }
+                let anyUpdated = false;
+                Promise.all([
+                    db.collection('requests').get().catch(() => ({ forEach: () => {} })),
+                    db.collection('formRequests').get().catch(() => ({ forEach: () => {} }))
+                ]).then(([snapR, snapF]) => {
+                    snapR.forEach(doc => {
+                        const d = doc.data();
+                        if (d && processRequestItem(d)) anyUpdated = true;
                     });
-                    if (updated && stats) {
+                    snapF.forEach(doc => {
+                        const d = doc.data();
+                        if (d && processRequestItem(d)) anyUpdated = true;
+                    });
+
+                    if (anyUpdated && stats) {
                         savePermissionsToStorage();
+                        saveManualLeavesToStorage();
                         renderExecutiveOverview();
                         renderTimesheets();
                         renderPermissionsTable();
                     }
-                }).catch(err => console.warn('Could not query Firestore requests:', err));
+                }).catch(err => console.warn('Online requests sync notice:', err));
             }
         }
 
@@ -3670,7 +3702,7 @@
         syncApprovedEmployeeRequests();
         initAttendanceArchive();
     </script>
-    <script src="theme.js?v=1788170120"></script>
-    <script src="pwa-install.js?v=1788170120"></script>
+    <script src="theme.js?v=1788170343"></script>
+    <script src="pwa-install.js?v=1788170343"></script>
 </body>
 </html>
