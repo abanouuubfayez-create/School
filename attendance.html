@@ -3046,13 +3046,25 @@
                     monthUsedLeavesCount += (l.days || 1);
                 });
 
-                // Calculate full-year leave days consumed (طوال السنة)
-                let totalUsedLeaves = (meta.used || 0);
-                let totalCasualLeaves = (meta.casual || 0);
+                // Calculate full-year leave days consumed (طوال السنة حتى الشهر الحالي)
+                let baseTotal = 15;
+                let totalUsedLeaves = 0;
+                let totalCasualLeaves = 0;
+
+                if (pYear === '2026') {
+                    baseTotal = meta.total || 15;
+                    totalUsedLeaves = meta.used || 0;
+                    totalCasualLeaves = meta.casual || 0;
+                } else {
+                    // New Year rollover (e.g. 2027): fresh 15-day annual entitlement
+                    baseTotal = 15;
+                    totalUsedLeaves = 0;
+                    totalCasualLeaves = 0;
+                }
 
                 // Add any extra unique dates from dynamic/manual stores
                 const allYearLeaveDates = new Set();
-                (meta.leaves || []).forEach(l => {
+                (pYear === '2026' ? (meta.leaves || []) : []).forEach(l => {
                     const m = String(l.date || l.fromDate || '').match(/\d{4}-\d{2}-\d{2}/g);
                     if (m) {
                         if (m.length >= 2) {
@@ -3886,7 +3898,7 @@
         syncApprovedEmployeeRequests();
         initAttendanceArchive();
     </script>
-    <script src="theme.js?v=1788177568"></script>
-    <script src="pwa-install.js?v=1788177568"></script>
+    <script src="theme.js?v=1788177713"></script>
+    <script src="pwa-install.js?v=1788177713"></script>
 </body>
 </html>
