@@ -1512,22 +1512,6 @@
                 });
             }
 
-            // 3. Markos (كود 8) Approved Annual Leave for 2026-08-19
-            if (!employeeManualLeaves['8']) employeeManualLeaves['8'] = [];
-            if (!employeeManualLeaves['8'].some(l => (l.fromDate || l.date) === '2026-08-19')) {
-                employeeManualLeaves['8'].push({
-                    id: 'markos_leave_19',
-                    date: '2026-08-19',
-                    fromDate: '2026-08-19',
-                    toDate: '2026-08-19',
-                    type: 'annual',
-                    typeLabel: 'إجازة سنوية (م.١٢٤)',
-                    days: 1,
-                    note: 'إجازة سنوية معتمدة من مركز طلبات الموظفين',
-                    source: 'employee_request'
-                });
-            }
-
             function processRequestItem(r) {
                 if (!r || typeof r !== 'object') return false;
                 const status = (r.status || '').toLowerCase();
@@ -2936,14 +2920,23 @@
                     }
                 });
 
-                // Isolate leaves specifically for this printed month (primaryYm)
+                // Deduplicate and aggregate leaves by date
                 let empLeavesList = [];
+                const seenLeaveDates = new Set();
+
+                function addLeaveToMonthList(type, dateStr, daysCount, note) {
+                    const dMatch = String(dateStr).match(/\d{4}-\d{2}-\d{2}/g);
+                    const primaryDate = dMatch ? dMatch[0] : String(dateStr);
+                    if (seenLeaveDates.has(primaryDate)) return; // Avoid duplicate count for the same date!
+                    seenLeaveDates.add(primaryDate);
+                    empLeavesList.push({ type, date: dateStr, days: daysCount || 1, note });
+                }
 
                 // 1. Meta leaves strictly matching this month
                 (meta.leaves || []).forEach(l => {
                     const dStr = String(l.date || l.fromDate || '');
                     if (dStr.includes(primaryYm) || dStr.includes(monthNameAr)) {
-                        empLeavesList.push(l);
+                        addLeaveToMonthList(l.type, dStr, l.days || 1, l.note);
                     }
                 });
 
@@ -2955,9 +2948,7 @@
                         const lReason = l.reason || l.note || 'معتمد على السيستم';
                         if (lDate && String(lDate).startsWith(primaryYm)) {
                             const dateTxt = `${lDate}${l.toDate && l.toDate !== lDate ? ' ← ' + l.toDate : ''} (${l.days||1}ي) - ${lReason}`;
-                            if (!empLeavesList.some(ex => ex.date && ex.date.includes(String(lDate)))) {
-                                empLeavesList.push({ type: `📱 [طلب موظف معتمد] إجازة سنوية (${l.days||1} يوم)`, date: dateTxt });
-                            }
+                            addLeaveToMonthList(`📱 [طلب موظف معتمد] إجازة سنوية (${l.days||1} يوم)`, dateTxt, l.days || 1, lReason);
                         }
                     });
                     (yrData.casual || []).forEach(l => {
@@ -2965,9 +2956,7 @@
                         const lReason = l.reason || l.note || 'معتمد على السيستم';
                         if (lDate && String(lDate).startsWith(primaryYm)) {
                             const dateTxt = `${lDate}${l.toDate && l.toDate !== lDate ? ' ← ' + l.toDate : ''} (${l.days||1}ي) - ${lReason}`;
-                            if (!empLeavesList.some(ex => ex.date && ex.date.includes(String(lDate)))) {
-                                empLeavesList.push({ type: `📱 [طلب موظف معتمد] إجازة عارضة (${l.days||1} يوم)`, date: dateTxt });
-                            }
+                            addLeaveToMonthList(`📱 [طلب موظف معتمد] إجازة عارضة (${l.days||1} يوم)`, dateTxt, l.days || 1, lReason);
                         }
                     });
                 }
@@ -2983,46 +2972,54 @@
                         ? `${l.fromDate} ← ${l.toDate}`
                         : lDate;
                     const noteTxt = l.note ? ` - ${l.note}` : '';
-                    empLeavesList.push({
-                        type: `✍️ [تسجيل يدوي] ${l.typeLabel || 'إجازة'} (${l.days||1} يوم)`,
-                        date: `${lDateTxt} (${l.days||1}ي)${noteTxt}`
-                    });
-                });
-
-                // Clean and remove any undefined or duplicate entries
-                empLeavesList = empLeavesList.filter((l, i, arr) => {
-                    if (!l || !l.type || !l.date) return false;
-                    const sType = String(l.type);
-                    const sDate = String(l.date);
-                    if (sType.includes('undefined') || sDate.includes('undefined')) return false;
-                    return arr.findIndex(x => x.type === l.type && x.date === l.date) === i;
+                    addLeaveToMonthList(`✍️ [تسجيل يدوي] ${l.typeLabel || 'إجازة'} (${l.days||1} يوم)`, `${lDateTxt} (${l.days||1}ي)${noteTxt}`, l.days || 1, l.note);
                 });
 
                 // Calculate month-specific leave days consumed
                 let monthUsedLeavesCount = 0;
                 empLeavesList.forEach(l => {
-                    const match = String(l.type + ' ' + l.date).match(/(\d+)\s*ي/);
-                    monthUsedLeavesCount += match ? parseInt(match[1], 10) : 1;
+                    monthUsedLeavesCount += (l.days || 1);
                 });
 
                 // Calculate full-year leave days consumed (طوال السنة)
                 let totalUsedLeaves = (meta.used || 0);
                 let totalCasualLeaves = (meta.casual || 0);
 
+                // Add any extra unique dates from dynamic/manual stores
+                const allYearLeaveDates = new Set();
+                (meta.leaves || []).forEach(l => {
+                    const m = String(l.date).match(/\d{4}-\d{2}-\d{2}/g);
+                    if (m) m.forEach(d => allYearLeaveDates.add(d));
+                });
+
                 if (dynamicLeavesStore[emp.employeeId]) {
                     const yrData = dynamicLeavesStore[emp.employeeId][pYear] || {};
-                    (yrData.annual || []).forEach(l => { totalUsedLeaves += (parseInt(l.days, 10) || 1); });
+                    (yrData.annual || []).forEach(l => {
+                        const d = l.date || l.fromDate;
+                        if (d && !allYearLeaveDates.has(d)) {
+                            allYearLeaveDates.add(d);
+                            totalUsedLeaves += (parseInt(l.days, 10) || 1);
+                        }
+                    });
                     (yrData.casual || []).forEach(l => {
-                        const d = parseInt(l.days, 10) || 1;
-                        totalUsedLeaves += d;
-                        totalCasualLeaves += d;
+                        const d = l.date || l.fromDate;
+                        if (d && !allYearLeaveDates.has(d)) {
+                            allYearLeaveDates.add(d);
+                            const count = (parseInt(l.days, 10) || 1);
+                            totalUsedLeaves += count;
+                            totalCasualLeaves += count;
+                        }
                     });
                 }
 
                 (employeeManualLeaves[emp.employeeId] || []).forEach(l => {
-                    const d = parseInt(l.days, 10) || 1;
-                    totalUsedLeaves += d;
-                    if (l.type === 'casual') totalCasualLeaves += d;
+                    const d = l.date || l.fromDate;
+                    if (d && !allYearLeaveDates.has(d)) {
+                        allYearLeaveDates.add(d);
+                        const count = (parseInt(l.days, 10) || 1);
+                        totalUsedLeaves += count;
+                        if (l.type === 'casual') totalCasualLeaves += count;
+                    }
                 });
 
                 const calculatedBalance = Math.max(0, meta.total - totalUsedLeaves);
@@ -3778,7 +3775,7 @@
         syncApprovedEmployeeRequests();
         initAttendanceArchive();
     </script>
-    <script src="theme.js?v=1788172202"></script>
-    <script src="pwa-install.js?v=1788172202"></script>
+    <script src="theme.js?v=1788172439"></script>
+    <script src="pwa-install.js?v=1788172439"></script>
 </body>
 </html>
