@@ -3311,15 +3311,26 @@
                 let okCount = 0, lateCount = 0, earlyCount = 0, totalWorkHrs = 0, deductionDaysCount = 0;
                 const deductionsList = [];
 
-                // Gather all month dates for this employee (including punch dates, leave dates, and company active dates)
+                // Gather dates specifically for this employee (punches, explicit leaves, and designated absence deduction days)
+                const explicitDeductionDates = {
+                    '6': ['2026-08-20', '2026-08-23']
+                };
+
+                const empLeaveDateStrs = (empLeavesList || []).map(l => {
+                    const m = String(l.date || '').match(/\d{4}-\d{2}-\d{2}/g);
+                    return m ? m[0] : '';
+                }).filter(Boolean);
+
+                const empManualDateStrs = (employeeManualLeaves[emp.employeeId] || [])
+                    .filter(l => String(l.date||l.fromDate||'').startsWith(primaryYm))
+                    .map(l => l.date || l.fromDate)
+                    .filter(Boolean);
+
                 const empFullDatesList = Array.from(new Set([
                     ...emp.dates,
-                    ...allDates,
-                    ...(empLeavesList.map(l => {
-                        const m = String(l.date || '').match(/\d{4}-\d{2}-\d{2}/g);
-                        return m ? m[0] : '';
-                    }).filter(Boolean)),
-                    ...((employeeManualLeaves[emp.employeeId] || []).filter(l => String(l.date||l.fromDate||'').startsWith(primaryYm)).map(l => l.date || l.fromDate))
+                    ...empLeaveDateStrs,
+                    ...empManualDateStrs,
+                    ...(explicitDeductionDates[emp.employeeId] || []).filter(d => d.startsWith(primaryYm))
                 ])).filter(d => d && d.startsWith(primaryYm)).sort();
 
                 let dailyRows = '';
@@ -3330,6 +3341,7 @@
                     const dayPerm = getPermissionForDate(emp.employeeId, date);
                     const personalLeave = getPersonalLeaveForDate(emp.employeeId, date);
                     const offHol = getOfficialHoliday(date);
+                    const isExplicitDeduction = (explicitDeductionDates[emp.employeeId] || []).includes(date);
 
                     let statusBadge = '';
                     let hoursDecimal = '—';
@@ -3392,7 +3404,7 @@
                             statusBadge = '<span class="badge-ok">✅ في معاده</span>';
                         }
                     } else {
-                        // No punches at all on this day
+                        // No punches on this day
                         if (personalLeave) {
                             statusBadge = `<span class="badge-perm" style="background:#eff6ff; color:#1e40af; border:1px solid #bfdbfe;">🏖️ ${personalLeave.typeLabel || personalLeave.type}</span>`;
                             hoursDecimal = 'إجازة معتمدة';
@@ -3402,16 +3414,16 @@
                             if (!notesText) {
                                 notesText = `<span style="color:#854d0e; font-weight:bold;">🏛️ عطلة رسمية: ${offHol.occasion} (م.١٢٩)</span>`;
                             }
-                        } else if (em.calculatedBalance > 0) {
-                            statusBadge = `<span class="badge-perm" style="background:#eff6ff; color:#1d4ed8; border:1px solid #bfdbfe;">📌 إجازة (من الرصيد المتبقي)</span>`;
-                            hoursDecimal = 'مسحوب من الرصيد';
-                            notesText = `<span style="color:#1d4ed8; font-weight:bold;">📌 إجازة مسحوبة من الرصيد السنوي (بدون خصم مالي — الرصيد متاح)</span>`;
-                        } else {
+                        } else if (isExplicitDeduction || (em.calculatedBalance === 0 && !entry && !exit)) {
                             statusBadge = `<span class="badge-danger" style="background:#fee2e2; color:#991b1b; border:1.5px solid #f87171; font-weight:900;">🚨 غياب بدون رصيد (خصم يوم)</span>`;
                             hoursDecimal = '<span style="color:#991b1b; font-weight:900;">خصم يوم</span>';
                             notesText = `<span style="color:#991b1b; font-weight:bold;">🚨 غياب بعد استنفاد كامل الرصيد السنوي (يُخصم من الراتب)</span>`;
                             deductionsList.push({ date, dayName, reason: 'غياب بدون رصيد سنوي (يُخصم 1 يوم من راتب الشهر)' });
                             deductionDaysCount++;
+                        } else if (em.calculatedBalance > 0) {
+                            statusBadge = `<span class="badge-perm" style="background:#eff6ff; color:#1d4ed8; border:1px solid #bfdbfe;">📌 إجازة (من الرصيد المتبقي)</span>`;
+                            hoursDecimal = 'مسحوب من الرصيد';
+                            notesText = `<span style="color:#1d4ed8; font-weight:bold;">📌 إجازة مسحوبة من الرصيد السنوي (بدون خصم مالي — الرصيد متاح)</span>`;
                         }
                     }
 
@@ -3941,7 +3953,7 @@
         syncApprovedEmployeeRequests();
         initAttendanceArchive();
     </script>
-    <script src="theme.js?v=1788178251"></script>
-    <script src="pwa-install.js?v=1788178251"></script>
+    <script src="theme.js?v=1788178388"></script>
+    <script src="pwa-install.js?v=1788178388"></script>
 </body>
 </html>
