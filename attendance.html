@@ -696,13 +696,19 @@
             <p style="color: var(--text-muted); font-size: 0.95rem; margin-bottom: 1.5rem;">
                 اسحب ملف البصمة هنا أو اضغط لاختياره، أو اسحب البيانات الحية مباشرة من الماكينة
             </p>
-            <div style="display:flex; justify-content:center; gap:12px; flex-wrap:wrap;">
-                <input type="file" id="attlogInput" accept=".dat,.txt,*" style="display:none;" onchange="onFileSelected(event)">
-                <label for="attlogInput" class="btn-action btn-primary-action" style="padding: 0.8rem 2rem; font-size: 0.95rem; cursor:pointer;">
+            <div style="display:flex; justify-content:center; gap:10px; flex-wrap:wrap;">
+                <input type="file" id="attlogInput" accept=".dat,.txt,.csv,.json,*" style="display:none;" onchange="onFileSelected(event)">
+                <label for="attlogInput" class="btn-action btn-primary-action" style="padding: 0.75rem 1.6rem; font-size: 0.95rem; cursor:pointer;">
                     📂 اختيار ملف البصمة
                 </label>
-                <button type="button" class="btn-action" onclick="syncDirectFromADMS()" style="background:linear-gradient(135deg, #0284c7, #0369a1); color:#fff; padding: 0.8rem 2rem; font-size: 0.95rem; font-weight:800; border:none; cursor:pointer; box-shadow:0 4px 14px rgba(2,132,199,0.35);">
-                    ⚡ سحب البصمات الحية مباشرة من الماكينة
+                <button type="button" class="btn-action" onclick="syncDirectFromADMS()" style="background:linear-gradient(135deg, #0284c7, #0369a1); color:#fff; padding: 0.75rem 1.6rem; font-size: 0.95rem; font-weight:800; border:none; cursor:pointer; box-shadow:0 4px 14px rgba(2,132,199,0.35);">
+                    ⚡ سحب البصمات الحية من الماكينة
+                </button>
+                <button type="button" class="btn-action" onclick="importJsonFileDialog()" style="background:linear-gradient(135deg, #6366f1, #4f46e5); color:#fff; padding: 0.75rem 1.4rem; font-size: 0.92rem; font-weight:800; border:none; cursor:pointer; box-shadow:0 4px 14px rgba(99,102,241,0.35);">
+                    📥 استيراد / تكملة من JSON
+                </button>
+                <button type="button" class="btn-action" onclick="exportAttendanceJsonBackup()" style="background:linear-gradient(135deg, #059669, #047857); color:#fff; padding: 0.75rem 1.4rem; font-size: 0.92rem; font-weight:800; border:none; cursor:pointer; box-shadow:0 4px 14px rgba(5,150,105,0.35);">
+                    📤 تصدير نسخة JSON
                 </button>
             </div>
         </div>
@@ -1624,6 +1630,185 @@
         // ══════════════════════════════════════════
         //  BULLETPROOF FILE PARSING & DRAG-DROP
         // ══════════════════════════════════════════
+        function exportAttendanceJsonBackup() {
+            const dataToExport = {
+                app: 'TechGo Attendance Management',
+                version: '2.0',
+                exportedAt: new Date().toISOString(),
+                currentMonthKey: currentLoadedMonthKey,
+                workConfig: workConfig,
+                employeeNames: employeeNames,
+                inactiveEmployees: inactiveEmployees,
+                employeePermissions: employeePermissions,
+                employeeManualLeaves: employeeManualLeaves,
+                records: currentRecords || [],
+                attendanceArchive: attendanceArchive || {}
+            };
+            const jsonStr = JSON.stringify(dataToExport, null, 2);
+            const blob = new Blob([jsonStr], { type: 'application/json' });
+            const url = URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = `TechGo_Attendance_Database_${new Date().toISOString().slice(0,10)}.json`;
+            document.body.appendChild(a);
+            a.click();
+            document.body.removeChild(a);
+            URL.revokeObjectURL(url);
+        }
+
+        function importJsonFileDialog() {
+            const inp = document.getElementById('attlogInput');
+            if (inp) {
+                inp.accept = '.json,.dat,.txt,.csv,*';
+                inp.click();
+            }
+        }
+
+        function handleJsonImport(json, fileName) {
+            let importedRecords = [];
+            let importedPermsCount = 0;
+            let importedLeavesCount = 0;
+
+            if (Array.isArray(json)) {
+                importedRecords = json;
+            } else if (typeof json === 'object' && json !== null) {
+                if (Array.isArray(json.records)) {
+                    importedRecords = json.records;
+                }
+                if (json.attendanceArchive && typeof json.attendanceArchive === 'object') {
+                    Object.keys(json.attendanceArchive).forEach(mKey => {
+                        const mData = json.attendanceArchive[mKey];
+                        if (mData && Array.isArray(mData.records)) {
+                            if (!attendanceArchive[mKey]) {
+                                attendanceArchive[mKey] = mData;
+                            } else {
+                                const existingRecs = attendanceArchive[mKey].records || [];
+                                const existingKeys = new Set(existingRecs.map(r => `${r.employeeId}_${r.date}_${r.time}`));
+                                mData.records.forEach(nr => {
+                                    if (!existingKeys.has(`${nr.employeeId}_${nr.date}_${nr.time}`)) {
+                                        existingRecs.push(nr);
+                                        existingKeys.add(`${nr.employeeId}_${nr.date}_${nr.time}`);
+                                    }
+                                });
+                                attendanceArchive[mKey].records = existingRecs;
+                            }
+                        }
+                    });
+                    saveArchiveToStorage();
+                }
+                if (json.employeePermissions && typeof json.employeePermissions === 'object') {
+                    Object.keys(json.employeePermissions).forEach(empKey => {
+                        if (!employeePermissions[empKey]) employeePermissions[empKey] = [];
+                        const exList = employeePermissions[empKey];
+                        (json.employeePermissions[empKey] || []).forEach(p => {
+                            if (!exList.some(ep => ep.date === p.date && ep.type === p.type)) {
+                                exList.push(p);
+                                importedPermsCount++;
+                            }
+                        });
+                    });
+                    savePermissionsToStorage();
+                }
+                if (json.employeeManualLeaves && typeof json.employeeManualLeaves === 'object') {
+                    Object.keys(json.employeeManualLeaves).forEach(empKey => {
+                        if (!employeeManualLeaves[empKey]) employeeManualLeaves[empKey] = [];
+                        const exLeaves = employeeManualLeaves[empKey];
+                        (json.employeeManualLeaves[empKey] || []).forEach(l => {
+                            const lDate = l.fromDate || l.date;
+                            if (!exLeaves.some(el => (el.fromDate || el.date) === lDate)) {
+                                exLeaves.push(l);
+                                importedLeavesCount++;
+                            }
+                        });
+                    });
+                    saveManualLeavesToStorage();
+                }
+                if (json.employeeNames && typeof json.employeeNames === 'object') {
+                    Object.assign(employeeNames, json.employeeNames);
+                    delete employeeNames['5'];
+                    delete employeeNames['9'];
+                    try { localStorage.setItem('empNames', JSON.stringify(employeeNames)); } catch(e){}
+                }
+                if (json.workConfig && typeof json.workConfig === 'object') {
+                    Object.assign(workConfig, json.workConfig);
+                    try { localStorage.setItem('techgo_work_config', JSON.stringify(workConfig)); } catch(e){}
+                }
+            }
+
+            const normalizedRecs = [];
+            importedRecords.forEach((r, idx) => {
+                const empId = String(r.employeeId || r.empId || r.userId || r.id || '').trim();
+                const date = String(r.date || (r.datetime ? String(r.datetime).slice(0,10) : '')).trim();
+                let time = String(r.time || (r.datetime ? String(r.datetime).slice(11,19) : '')).trim();
+                if (time.length === 5) time += ':00';
+                if (empId && date && time && !inactiveEmployees.includes(empId)) {
+                    normalizedRecs.push({
+                        id: idx + 1,
+                        employeeId: empId,
+                        date: date,
+                        time: time,
+                        datetime: new Date(date + 'T' + time),
+                        type: r.type || ''
+                    });
+                }
+            });
+
+            // Merge with existing current records if any
+            const mergedRecords = [...(currentRecords || [])];
+            const existingKeys = new Set(mergedRecords.map(r => `${r.employeeId}_${r.date}_${r.time}`));
+            let addedRecsCount = 0;
+            normalizedRecs.forEach(nr => {
+                const k = `${nr.employeeId}_${nr.date}_${nr.time}`;
+                if (!existingKeys.has(k)) {
+                    mergedRecords.push(nr);
+                    existingKeys.add(k);
+                    addedRecsCount++;
+                }
+            });
+
+            if (mergedRecords.length > 0) {
+                processRecordsAndRender(mergedRecords, JSON.stringify(mergedRecords), fileName || 'استيراد JSON');
+                alert(`✓ تم استيراد ودمج ملف JSON بنجاح والتكملة عليه!\n\n• الحركات المضافة: ${addedRecsCount} حركة جديدة\n• إجمالي السجلات الحالية: ${mergedRecords.length}\n• أذونات مدمجة: ${importedPermsCount}\n• إجازات مدمجة: ${importedLeavesCount}`);
+            } else {
+                alert('✓ تم تحديث واستيراد بيانات النظام (الأذونات/الإجازات/الإعدادات) بنجاح!');
+                if (stats) {
+                    renderExecutiveOverview();
+                    renderTimesheets();
+                    renderPermissionsTable();
+                }
+            }
+        }
+
+        function processRecordsAndRender(records, content, fileName) {
+            currentRawContent = content;
+            currentRecords = records;
+
+            // Group by employee and day
+            var employeeDays = new Map();
+            records.forEach(function(r) {
+                if (inactiveEmployees.includes(String(r.employeeId))) return;
+                var k = r.employeeId + '-' + r.date;
+                if (!employeeDays.has(k)) employeeDays.set(k, []);
+                employeeDays.get(k).push(r);
+            });
+
+            employeeDays.forEach(function(dayRecords) {
+                dayRecords.sort(function(a,b){ return a.datetime - b.datetime; });
+                if (dayRecords.length === 1) {
+                    var h = dayRecords[0].datetime.getHours();
+                    dayRecords[0].type = h < 14 ? 'دخول' : 'خروج';
+                } else {
+                    dayRecords[0].type = 'دخول';
+                    dayRecords[dayRecords.length - 1].type = 'خروج';
+                    for (var i = 1; i < dayRecords.length - 1; i++) {
+                        dayRecords[i].type = 'حركة';
+                    }
+                }
+            });
+
+            calculateAndRenderStats(records, true, fileName);
+        }
+
         function handleFileDrop(e) {
             e.preventDefault();
             var dz = document.getElementById('dropZone');
@@ -2420,22 +2605,45 @@
                 const name = getDisplayName(emp.employeeId);
                 const meta = _EMP_LEAVE_META[emp.employeeId] || { balance: 15, total: 15, used: 0, casual: 0, wfh: 0, leaves: [] };
                 
-                // Merge permissions registered on the system
+                // Merge permissions registered specifically for this month
                 const allEmpPerms = (employeePermissions[emp.employeeId] || []).filter(p => {
-                    return p.date.startsWith(primaryYm) || (p.date >= minDate && p.date <= maxDate);
+                    return p.date.startsWith(primaryYm);
                 }).map(p => ({
                     ...p,
                     sourceTag: (p.source === 'employee_request' ? '📱 طلب موظف معتمد' : '✍️ تسجيل يدوي')
                 }));
 
-                // Merge dynamic leaves for this employee
-                let empLeavesList = [...meta.leaves];
+                // Check group exemptions for this month as well
+                (employeePermissions['all'] || []).filter(p => p.date.startsWith(primaryYm)).forEach(gp => {
+                    if (!allEmpPerms.some(ep => ep.date === gp.date)) {
+                        allEmpPerms.push({
+                            ...gp,
+                            type: gp.type || 'late',
+                            note: gp.note || 'استثناء تأخير جماعي معتمد',
+                            sourceTag: 'استثناء جماعي للجميع',
+                            isAll: true
+                        });
+                    }
+                });
+
+                // Isolate leaves specifically for this printed month (primaryYm)
+                let empLeavesList = [];
+
+                // 1. Meta leaves strictly matching this month
+                (meta.leaves || []).forEach(l => {
+                    const dStr = String(l.date || l.fromDate || '');
+                    if (dStr.includes(primaryYm) || dStr.includes(monthNameAr)) {
+                        empLeavesList.push(l);
+                    }
+                });
+
+                // 2. Dynamic leaves strictly for this month
                 if (dynamicLeavesStore[emp.employeeId]) {
                     const yrData = dynamicLeavesStore[emp.employeeId][pYear] || {};
                     (yrData.annual || []).forEach(l => {
                         const lDate = l.date || l.fromDate || l.startDate || '';
                         const lReason = l.reason || l.note || 'معتمد على السيستم';
-                        if (lDate && String(lDate) !== 'undefined') {
+                        if (lDate && String(lDate).startsWith(primaryYm)) {
                             const dateTxt = `${lDate}${l.toDate && l.toDate !== lDate ? ' ← ' + l.toDate : ''} (${l.days||1}ي) - ${lReason}`;
                             if (!empLeavesList.some(ex => ex.date && ex.date.includes(String(lDate)))) {
                                 empLeavesList.push({ type: `📱 [طلب موظف معتمد] إجازة سنوية (${l.days||1} يوم)`, date: dateTxt });
@@ -2445,7 +2653,7 @@
                     (yrData.casual || []).forEach(l => {
                         const lDate = l.date || l.fromDate || l.startDate || '';
                         const lReason = l.reason || l.note || 'معتمد على السيستم';
-                        if (lDate && String(lDate) !== 'undefined') {
+                        if (lDate && String(lDate).startsWith(primaryYm)) {
                             const dateTxt = `${lDate}${l.toDate && l.toDate !== lDate ? ' ← ' + l.toDate : ''} (${l.days||1}ي) - ${lReason}`;
                             if (!empLeavesList.some(ex => ex.date && ex.date.includes(String(lDate)))) {
                                 empLeavesList.push({ type: `📱 [طلب موظف معتمد] إجازة عارضة (${l.days||1} يوم)`, date: dateTxt });
@@ -2454,10 +2662,10 @@
                     });
                 }
 
-                // Merge manual leaves registered on the system
+                // 3. Manual leaves strictly for this month
                 const manualEmpLeaves = (employeeManualLeaves[emp.employeeId] || []).filter(l => {
-                    const lDate = l.date || l.fromDate;
-                    return lDate && (lDate.startsWith(primaryYm) || (lDate >= minDate && lDate <= maxDate));
+                    const lDate = l.date || l.fromDate || '';
+                    return lDate && lDate.startsWith(primaryYm);
                 });
                 manualEmpLeaves.forEach(l => {
                     const lDate = l.fromDate || l.date || '';
@@ -2471,18 +2679,18 @@
                     });
                 });
 
-                // Clean and remove any undefined or invalid entries
-                empLeavesList = empLeavesList.filter(l => {
+                // Clean and remove any undefined or duplicate entries
+                empLeavesList = empLeavesList.filter((l, i, arr) => {
                     if (!l || !l.type || !l.date) return false;
                     const sType = String(l.type);
                     const sDate = String(l.date);
                     if (sType.includes('undefined') || sDate.includes('undefined')) return false;
-                    return true;
+                    return arr.findIndex(x => x.type === l.type && x.date === l.date) === i;
                 });
 
                 let totalUsedLeaves = (meta.used || 0);
                 let totalCasualLeaves = (meta.casual || 0);
-                manualEmpLeaves.forEach(l => {
+                (employeeManualLeaves[emp.employeeId] || []).forEach(l => {
                     const d = parseInt(l.days, 10) || 1;
                     totalUsedLeaves += d;
                     if (l.type === 'casual') totalCasualLeaves += d;
@@ -3228,7 +3436,7 @@
         updatePolicyLabels();
         initAttendanceArchive();
     </script>
-    <script src="theme.js?v=1788167999"></script>
-    <script src="pwa-install.js?v=1788167999"></script>
+    <script src="theme.js?v=1788168134"></script>
+    <script src="pwa-install.js?v=1788168134"></script>
 </body>
 </html>
