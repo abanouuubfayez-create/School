@@ -3047,7 +3047,9 @@
                 });
 
                 // Calculate full-year leave days consumed (طوال السنة حتى الشهر الحالي)
-                let baseTotal = 15;
+                // طبقاً للائحة الشركة وقانون العمل (مادة 124): 15 يوماً للسنة الأولى (2026)، و21 يوماً بدءاً من السنة الثانية (2027 وما بعدها)
+                const currentYearNum = parseInt(pYear, 10) || 2026;
+                let baseTotal = currentYearNum >= 2027 ? 21 : 15;
                 let totalUsedLeaves = 0;
                 let totalCasualLeaves = 0;
 
@@ -3056,8 +3058,8 @@
                     totalUsedLeaves = meta.used || 0;
                     totalCasualLeaves = meta.casual || 0;
                 } else {
-                    // New Year rollover (e.g. 2027): fresh 15-day annual entitlement
-                    baseTotal = 15;
+                    // تجديد تلقائي للسنة الثانية (2027 وما بعدها): 21 يوم رصيد سنوي جديد لكافة الموظفين المستمرين
+                    baseTotal = 21;
                     totalUsedLeaves = 0;
                     totalCasualLeaves = 0;
                 }
@@ -3169,7 +3171,11 @@
                     allEmpPerms,
                     personalPermsCount: personalPerms.length,
                     groupPermsCount: groupPerms.length,
+                    allEmpPerms,
+                    personalPermsCount: personalPerms.length,
+                    groupPermsCount: groupPerms.length,
                     empLeavesList,
+                    baseTotal,
                     ok,
                     late,
                     early,
@@ -3212,7 +3218,7 @@
                         <td style="text-align:center; font-weight:800; color:#0f766e;">${(em.empHours).toFixed(1)} س</td>
                         <td style="text-align:center; font-weight:900; color:${rateColor};">${em.punctualityRate}%</td>
                         <td style="text-align:center; padding:2px 3px;">
-                            <div style="font-weight:900; color:${em.calculatedBalance === 0 ? '#b91c1c' : '#0f766e'}; font-size:7.5pt;">${em.calculatedBalance === 0 ? '0 / 15 يوم (مستنفد)' : em.calculatedBalance + ' / 15 يوم متبقي'}</div>
+                            <div style="font-weight:900; color:${em.calculatedBalance === 0 ? '#b91c1c' : '#0f766e'}; font-size:7.5pt;">${em.calculatedBalance === 0 ? '0 / ' + em.baseTotal + ' يوم (مستنفد)' : em.calculatedBalance + ' / ' + em.baseTotal + ' يوم متبقي'}</div>
                             <div style="font-size:6pt; color:#475569;">مستهلك العام: <strong>${em.totalUsedLeaves}ي</strong> (عارضة ${em.totalCasualLeaves}/7)</div>
                             <div style="font-size:6pt; color:#0284c7; font-weight:800;">[منها <strong>${em.monthUsedLeavesCount}ي</strong> بشهر ${monthNameAr}]</div>
                             ${(em.emp.employeeId === '6' || em.calculatedBalance === 0) ? '<div style="font-size:6.2pt; color:#991b1b; font-weight:900; background:#fee2e2; border-radius:3px; padding:1px 2px; margin-top:2px; border:1px solid #fca5a5;">🚨 خصم 2 يوم غياب من الراتب</div>' : ''}
@@ -3528,7 +3534,7 @@
                                     <span style="font-size:10.5pt; font-weight:900; color:${em.calculatedBalance === 0 ? '#b91c1c' : '#0f766e'};">${em.calculatedBalance} <small style="font-size:6.8pt; color:#475569;">يوم متبقي</small></span>
                                 </div>
                                 <div style="background:#f1f5f9; border-radius:4px; padding:4px 6px; font-size:6.8pt; line-height:1.45; color:#334155; margin-bottom:4px;">
-                                    <div>📊 <strong>الاستحقاق السنوي الكامل:</strong> 15 يوم | <strong>المستهلك طوال عام ${pYear}:</strong> <span style="color:#b91c1c; font-weight:800;">${em.totalUsedLeaves} يوم</span> (عارضة: ${em.totalCasualLeaves}/7)</div>
+                                    <div>📊 <strong>الاستحقاق السنوي الكامل:</strong> ${em.baseTotal} يوم (السنة ${currentYearNum >= 2027 ? 'الثانية - م.١٢٤' : 'الأولى'}) | <strong>المستهلك طوال عام ${pYear}:</strong> <span style="color:#b91c1c; font-weight:800;">${em.totalUsedLeaves} يوم</span> (عارضة: ${em.totalCasualLeaves}/7)</div>
                                     <div>🗓️ <strong>المستهلك خلال شهر ${monthNameAr} ${pYear} تحديداً:</strong> <span style="color:#0284c7; font-weight:800;">${em.monthUsedLeavesCount > 0 ? em.monthUsedLeavesCount + ' يوم' : '0 (لا توجد إجازات هذا الشهر)'}</span></div>
                                 </div>
                                 <div style="margin-top:4px;">
@@ -3935,7 +3941,7 @@
         syncApprovedEmployeeRequests();
         initAttendanceArchive();
     </script>
-    <script src="theme.js?v=1788178043"></script>
-    <script src="pwa-install.js?v=1788178043"></script>
+    <script src="theme.js?v=1788178251"></script>
+    <script src="pwa-install.js?v=1788178251"></script>
 </body>
 </html>
