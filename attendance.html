@@ -1455,6 +1455,115 @@
             try { localStorage.setItem('techgo_employee_permissions', JSON.stringify(employeePermissions)); } catch(e){}
         }
 
+        function syncApprovedEmployeeRequests() {
+            try {
+                const reqKeys = ['techgo_all_requests', 'tg_employee_requests', '_reqCache', 'techgo_employee_requests_cache', 'tg_cached_requests'];
+                reqKeys.forEach(k => {
+                    const raw = localStorage.getItem(k);
+                    if (!raw) return;
+                    const reqList = JSON.parse(raw);
+                    if (!Array.isArray(reqList)) return;
+                    reqList.forEach(r => {
+                        if (!r) return;
+                        const status = (r.status || '').toLowerCase();
+                        if (status !== 'approved' && status !== 'مقبول' && status !== 'معتمد' && status !== 'active') return;
+                        
+                        let tId = String(r.empId || r.employeeId || r.uid || '').trim();
+                        if (!tId && r.userName) {
+                            Object.keys(employeeNames).forEach(id => {
+                                if (r.userName.includes(employeeNames[id]) || employeeNames[id].includes(r.userName)) tId = id;
+                            });
+                        }
+                        if (!tId || inactiveEmployees.includes(String(tId))) return;
+
+                        const type = (r.type || r.title || '').toLowerCase();
+                        const rDate = r.fromDate || r.date || r.startDate || (r.dateTime ? String(r.dateTime).slice(0, 10) : '') || (r.createdAt ? String(r.createdAt).slice(0, 10) : '');
+                        if (!rDate) return;
+
+                        // 1. If it is a Permission (إذن)
+                        if (type.includes('إذن') || type.includes('perm') || type.includes('تأخير') || type.includes('انصراف') || type.includes('التماس')) {
+                            if (!employeePermissions[tId]) employeePermissions[tId] = [];
+                            const pType = (type.includes('تأخير') || type.includes('late') || type.includes('التماس')) ? 'late' : ((type.includes('انصراف') || type.includes('early')) ? 'early' : 'temp');
+                            if (!employeePermissions[tId].some(p => p.date === rDate && p.type === pType)) {
+                                employeePermissions[tId].push({
+                                    date: rDate,
+                                    type: pType,
+                                    note: r.reason || r.note || r.details || r.title || 'طلب إذن معتمد من مركز طلبات الموظفين',
+                                    source: 'employee_request',
+                                    sourceTag: '📱 طلب موظف معتمد'
+                                });
+                            }
+                        }
+
+                        // 2. If it is a Leave (إجازة)
+                        if (type.includes('إجازة') || type.includes('leave') || type.includes('عارضة') || type.includes('سنوية')) {
+                            if (!employeeManualLeaves[tId]) employeeManualLeaves[tId] = [];
+                            const lType = (type.includes('عارضة') || type.includes('casual')) ? 'casual' : 'annual';
+                            const lTypeLabel = lType === 'casual' ? 'إجازة عارضة (م.١٢٨)' : 'إجازة سنوية (م.١٢٤)';
+                            const lDays = parseInt(r.days, 10) || 1;
+                            const lToDate = r.toDate || rDate;
+                            if (!employeeManualLeaves[tId].some(l => (l.fromDate || l.date) === rDate)) {
+                                employeeManualLeaves[tId].push({
+                                    id: 'req_' + (r.id || Date.now()),
+                                    date: rDate,
+                                    fromDate: rDate,
+                                    toDate: lToDate,
+                                    type: lType,
+                                    typeLabel: lTypeLabel,
+                                    days: lDays,
+                                    note: r.reason || r.note || r.details || 'طلب إجازة معتمد من مركز طلبات الموظفين',
+                                    source: 'employee_request'
+                                });
+                            }
+                        }
+                    });
+                });
+            } catch(e){}
+
+            // If Firebase Firestore is active, query online requests
+            if (typeof db !== 'undefined' && db && db.collection) {
+                db.collection('requests').where('status', '==', 'approved').get().then(snap => {
+                    let updated = false;
+                    snap.forEach(doc => {
+                        const r = doc.data();
+                        if (!r) return;
+                        let tId = String(r.empId || r.employeeId || r.uid || '').trim();
+                        if (!tId && r.userName) {
+                            Object.keys(employeeNames).forEach(id => {
+                                if (r.userName.includes(employeeNames[id]) || employeeNames[id].includes(r.userName)) tId = id;
+                            });
+                        }
+                        if (!tId || inactiveEmployees.includes(String(tId))) return;
+
+                        const type = (r.type || r.title || '').toLowerCase();
+                        const rDate = r.fromDate || r.date || r.startDate || (r.dateTime ? String(r.dateTime).slice(0, 10) : '') || (r.createdAt ? String(r.createdAt).slice(0, 10) : '');
+                        if (!rDate) return;
+
+                        if (type.includes('إذن') || type.includes('perm') || type.includes('تأخير') || type.includes('انصراف') || type.includes('التماس')) {
+                            if (!employeePermissions[tId]) employeePermissions[tId] = [];
+                            const pType = (type.includes('تأخير') || type.includes('late') || type.includes('التماس')) ? 'late' : ((type.includes('انصراف') || type.includes('early')) ? 'early' : 'temp');
+                            if (!employeePermissions[tId].some(p => p.date === rDate && p.type === pType)) {
+                                employeePermissions[tId].push({
+                                    date: rDate,
+                                    type: pType,
+                                    note: r.reason || r.note || r.details || r.title || 'طلب إذن معتمد من مركز طلبات الموظفين',
+                                    source: 'employee_request',
+                                    sourceTag: '📱 طلب موظف معتمد'
+                                });
+                                updated = true;
+                            }
+                        }
+                    });
+                    if (updated && stats) {
+                        savePermissionsToStorage();
+                        renderExecutiveOverview();
+                        renderTimesheets();
+                        renderPermissionsTable();
+                    }
+                }).catch(err => console.warn('Could not query Firestore requests:', err));
+            }
+        }
+
         function getDisplayName(id) {
             return employeeNames[id] || ('موظف ' + id);
         }
@@ -3558,9 +3667,10 @@
 
         // Initialize UI & Monthly Archive on load
         updatePolicyLabels();
+        syncApprovedEmployeeRequests();
         initAttendanceArchive();
     </script>
-    <script src="theme.js?v=1788169696"></script>
-    <script src="pwa-install.js?v=1788169696"></script>
+    <script src="theme.js?v=1788170120"></script>
+    <script src="pwa-install.js?v=1788170120"></script>
 </body>
 </html>
