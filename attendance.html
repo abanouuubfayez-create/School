@@ -826,29 +826,59 @@
 
         <!-- ════════════ TAB 3: PERMISSIONS & LEAVES HUB ════════════ -->
         <section id="tab-permissions" class="tab-panel">
-            <div class="card-table-wrap">
-                <div class="card-table-hdr">
-                    <div class="card-table-title">
-                        🎫 سجل أذونات الحضور والانصراف المعتمدة
+            <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 16px;">
+                <!-- Permissions Table Card -->
+                <div class="card-table-wrap">
+                    <div class="card-table-hdr">
+                        <div class="card-table-title">
+                            🎫 سجل أذونات الحضور والانصراف
+                        </div>
+                        <button class="btn-action btn-perm-action" onclick="openNewPermDialog()">
+                            ➕ تسجيل إذن جديد
+                        </button>
                     </div>
-                    <button class="btn-action btn-perm-action" onclick="openNewPermDialog()">
-                        ➕ تسجيل إذن جديد
-                    </button>
+                    <div style="overflow-x: auto;">
+                        <table class="admin-table">
+                            <thead>
+                                <tr>
+                                    <th>اسم الموظف</th>
+                                    <th>الكود</th>
+                                    <th>تاريخ الإذن</th>
+                                    <th>نوع الإذن</th>
+                                    <th>السبب والملاحظات</th>
+                                    <th>إجراء</th>
+                                </tr>
+                            </thead>
+                            <tbody id="permissionsTableBody"></tbody>
+                        </table>
+                    </div>
                 </div>
-                <div style="overflow-x: auto;">
-                    <table class="admin-table">
-                        <thead>
-                            <tr>
-                                <th>اسم الموظف</th>
-                                <th>الكود</th>
-                                <th>تاريخ الإذن</th>
-                                <th>نوع الإذن</th>
-                                <th>السبب والملاحظات</th>
-                                <th>إجراء</th>
-                            </tr>
-                        </thead>
-                        <tbody id="permissionsTableBody"></tbody>
-                    </table>
+
+                <!-- Manual Leaves Table Card -->
+                <div class="card-table-wrap">
+                    <div class="card-table-hdr">
+                        <div class="card-table-title">
+                            🏖️ سجل الإجازات المسجلة واليدوية
+                        </div>
+                        <button class="btn-action" style="background: linear-gradient(135deg, #0284c7 0%, #0369a1 100%); color:#fff; border:none; padding:6px 12px; border-radius:8px; font-weight:700; cursor:pointer;" onclick="openNewLeaveDialog()">
+                            ➕ تسجيل إجازة يدوية
+                        </button>
+                    </div>
+                    <div style="overflow-x: auto;">
+                        <table class="admin-table">
+                            <thead>
+                                <tr>
+                                    <th>اسم الموظف</th>
+                                    <th>الكود</th>
+                                    <th>تاريخ الإجازة</th>
+                                    <th>نوع الإجازة</th>
+                                    <th>المدة / السبب</th>
+                                    <th>إجراء</th>
+                                </tr>
+                            </thead>
+                            <tbody id="leavesTableBody"></tbody>
+                        </table>
+                    </div>
                 </div>
             </div>
         </section>
@@ -937,6 +967,50 @@
         </div>
     </div>
 
+    <!-- Manual Leave Modal -->
+    <div id="manualLeaveModal" class="modal-overlay hidden" onclick="if(event.target===this)closeLeaveModal()">
+        <div class="modal-box">
+            <h3 style="font-size: 1.2rem; font-weight: 800; color: #0284c7; margin-bottom: 1rem;">🏖️ تسجيل إجازة يدوية للموظف</h3>
+            <div style="margin-bottom: 10px;">
+                <label style="font-size: 0.82rem; color: var(--text-muted); display: block; margin-bottom: 4px;">الموظف:</label>
+                <select id="modalLeaveEmpSel" style="width: 100%; padding: 8px; border-radius: 8px; background: var(--surface-2); color: var(--text); border: 1px solid var(--border);"></select>
+            </div>
+            <div style="margin-bottom: 10px;">
+                <label style="font-size: 0.82rem; color: var(--text-muted); display: block; margin-bottom: 4px;">نوع الإجازة:</label>
+                <select id="modalLeaveType" style="width: 100%; padding: 8px; border-radius: 8px; background: var(--surface-2); color: var(--text); border: 1px solid var(--border);">
+                    <option value="annual">🏖️ إجازة سنوية اعتيادية (مادة ١٢٤)</option>
+                    <option value="casual">⏳ إجازة عارضة طارئة (مادة ١٢٨)</option>
+                    <option value="sick">🩺 إجازة مرضية</option>
+                    <option value="unpaid">📄 إجازة بدون راتب / خاصة</option>
+                    <option value="official">🏢 مأمورية عمل / إجازة رسمية</option>
+                    <option value="wfh">🏠 عمل من المنزل (WFH)</option>
+                </select>
+            </div>
+            <div style="display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 10px; margin-bottom: 10px;">
+                <div>
+                    <label style="font-size: 0.82rem; color: var(--text-muted); display: block; margin-bottom: 4px;">من تاريخ:</label>
+                    <input type="date" id="modalLeaveFromDate" onchange="syncLeaveDaysCount()" style="width: 100%; padding: 8px; border-radius: 8px; background: var(--surface-2); color: var(--text); border: 1px solid var(--border);">
+                </div>
+                <div>
+                    <label style="font-size: 0.82rem; color: var(--text-muted); display: block; margin-bottom: 4px;">إلى تاريخ:</label>
+                    <input type="date" id="modalLeaveToDate" onchange="syncLeaveDaysCount()" style="width: 100%; padding: 8px; border-radius: 8px; background: var(--surface-2); color: var(--text); border: 1px solid var(--border);">
+                </div>
+                <div>
+                    <label style="font-size: 0.82rem; color: var(--text-muted); display: block; margin-bottom: 4px;">عدد الأيام:</label>
+                    <input type="number" id="modalLeaveDays" min="1" value="1" style="width: 100%; padding: 8px; border-radius: 8px; background: var(--surface-2); color: var(--text); border: 1px solid var(--border);">
+                </div>
+            </div>
+            <div style="margin-bottom: 14px;">
+                <label style="font-size: 0.82rem; color: var(--text-muted); display: block; margin-bottom: 4px;">السبب والملاحظات:</label>
+                <input type="text" id="modalLeaveReason" placeholder="إجازة مسجلة يدوياً، ظرف خاص..." style="width: 100%; padding: 8px; border-radius: 8px; background: var(--surface-2); color: var(--text); border: 1px solid var(--border);">
+            </div>
+            <div style="display: flex; justify-content: flex-end; gap: 8px;">
+                <button class="btn-action btn-ghost" onclick="closeLeaveModal()">إلغاء</button>
+                <button class="btn-action" style="background: linear-gradient(135deg, #0284c7 0%, #0369a1 100%); color:#fff; border:none; padding:8px 16px; border-radius:8px; font-weight:700; cursor:pointer;" onclick="saveLeaveRecord()">✓ حفظ الإجازة</button>
+            </div>
+        </div>
+    </div>
+
     <script>
         // ══════════════════════════════════════════
         //  DATA STATE & STORAGE
@@ -959,6 +1033,7 @@
 
         let employeeNames = Object.assign({}, _SAVED_DATA.empNames);
         let employeePermissions = Object.assign({}, _SAVED_DATA.employeePermissions);
+        let employeeManualLeaves = {};
         let workConfig = { start: '10:00', end: '18:00', grace: 30, workDays: [0,1,2,3,4] };
         let stats = null;
 
@@ -975,6 +1050,8 @@
             if (sn) Object.assign(employeeNames, JSON.parse(sn));
             const sp = localStorage.getItem('techgo_employee_permissions');
             if (sp) Object.assign(employeePermissions, JSON.parse(sp));
+            const sml = localStorage.getItem('techgo_manual_leaves');
+            if (sml) employeeManualLeaves = JSON.parse(sml);
             const sw = localStorage.getItem('techgo_work_config');
             if (sw) Object.assign(workConfig, JSON.parse(sw));
             const sa = localStorage.getItem('techgo_attendance_archive');
@@ -1383,9 +1460,57 @@
             return 'ok';
         }
 
+        function saveManualLeavesToStorage() {
+            try { localStorage.setItem('techgo_manual_leaves', JSON.stringify(employeeManualLeaves)); } catch(e){}
+        }
+
         function getPermissionForDate(empId, dateStr) {
             const list = employeePermissions[empId] || [];
             return list.find(p => p.date === dateStr) || null;
+        }
+
+        function getLeaveForDate(empId, dateStr) {
+            // 1. Manual leaves registered on the system
+            const manualList = employeeManualLeaves[empId] || [];
+            const m = manualList.find(l => {
+                if (l.date === dateStr) return true;
+                if (l.fromDate && l.toDate && dateStr >= l.fromDate && dateStr <= l.toDate) return true;
+                return false;
+            });
+            if (m) return m;
+
+            // 2. Dynamic leaves in localStorage
+            try {
+                const raw = localStorage.getItem('attendance_sys_techgo_employee_leaves') || localStorage.getItem('techgo_employee_leaves');
+                if (raw) {
+                    const store = JSON.parse(raw);
+                    const yr = dateStr.substring(0, 4);
+                    const yrData = (store[empId] && store[empId][yr]) ? store[empId][yr] : null;
+                    if (yrData) {
+                        const allRecs = [
+                            ...(yrData.annual || []).map(r => ({ ...r, type: 'annual', typeLabel: 'إجازة سنوية (م.١٢٤)' })),
+                            ...(yrData.casual || []).map(r => ({ ...r, type: 'casual', typeLabel: 'إجازة عارضة (م.١٢٨)' })),
+                            ...(yrData.sick   || []).map(r => ({ ...r, type: 'sick', typeLabel: 'إجازة مرضية' })),
+                            ...(yrData.other  || []).map(r => ({ ...r, type: 'other', typeLabel: 'إجازة خاصة' }))
+                        ];
+                        const dMatch = allRecs.find(r => {
+                            const d1 = r.date || r.fromDate;
+                            const d2 = r.toDate || d1;
+                            return (dateStr >= d1 && dateStr <= d2);
+                        });
+                        if (dMatch) return { type: dMatch.type, typeLabel: dMatch.typeLabel, note: dMatch.reason || 'طلب إجازة معتمد على السيستم' };
+                    }
+                }
+            } catch(e){}
+
+            // 3. Baseline meta leaves
+            const meta = _EMP_LEAVE_META[empId];
+            if (meta && meta.leaves) {
+                const b = meta.leaves.find(l => l.date && l.date.includes(dateStr));
+                if (b) return { type: 'meta', typeLabel: b.type, note: b.date };
+            }
+
+            return null;
         }
 
         // ══════════════════════════════════════════
@@ -1846,6 +1971,42 @@
             if (!hasRecords) {
                 tbody.innerHTML = `<tr><td colspan="6" style="text-align:center;color:var(--text-muted);padding:20px;">لا توجد أذونات مسجلة حتى الآن</td></tr>`;
             }
+
+            renderLeavesTable();
+        }
+
+        function renderLeavesTable() {
+            const tbody = document.getElementById('leavesTableBody');
+            if (!tbody) return;
+            tbody.innerHTML = '';
+
+            let hasRecords = false;
+            Object.keys(employeeManualLeaves).forEach(empId => {
+                const list = employeeManualLeaves[empId] || [];
+                const name = getDisplayName(empId);
+                list.forEach((l, lIdx) => {
+                    hasRecords = true;
+                    const tr = document.createElement('tr');
+                    const dateDisplay = (l.fromDate && l.toDate && l.fromDate !== l.toDate)
+                        ? `📅 ${l.fromDate} ← ${l.toDate}`
+                        : `📅 ${l.date || l.fromDate}`;
+                    tr.innerHTML = `
+                        <td style="font-weight:bold;">${name}</td>
+                        <td style="color:var(--primary-light); font-weight:bold;">${empId}</td>
+                        <td>${dateDisplay}</td>
+                        <td><span class="status-badge badge-perm" style="background:#eff6ff; color:#0369a1; border:1px solid #bae6fd;">🏖️ ${l.typeLabel || l.type}</span></td>
+                        <td style="color:var(--text-muted);"><strong>${l.days || 1} يوم</strong> - ${l.note || 'تسجيل يدوي'}</td>
+                        <td>
+                            <button class="btn-action btn-ghost" onclick="deleteManualLeave('${empId}', ${lIdx})" style="color:var(--danger-light);padding:2px 8px;">✕ حذف</button>
+                        </td>
+                    `;
+                    tbody.appendChild(tr);
+                });
+            });
+
+            if (!hasRecords) {
+                tbody.innerHTML = `<tr><td colspan="6" style="text-align:center;color:var(--text-muted);padding:20px;">لا توجد إجازات يدوية مسجلة حتى الآن</td></tr>`;
+            }
         }
 
         // ══════════════════════════════════════════
@@ -1910,6 +2071,87 @@
             if (!confirm('هل تريد حذف هذا الإذن؟')) return;
             employeePermissions[empId].splice(idx, 1);
             savePermissionsToStorage();
+            if (stats) {
+                renderExecutiveOverview();
+                renderTimesheets();
+                renderPermissionsTable();
+            }
+        }
+
+        // ══════════════════════════════════════════
+        //  MANUAL LEAVES MODAL & LOGIC
+        // ══════════════════════════════════════════
+        function openNewLeaveDialog() {
+            const sel = document.getElementById('modalLeaveEmpSel');
+            sel.innerHTML = '';
+            Object.keys(employeeNames).forEach(id => {
+                sel.innerHTML += `<option value="${id}">${employeeNames[id]} (كود ${id})</option>`;
+            });
+            const today = new Date().toISOString().slice(0, 10);
+            document.getElementById('modalLeaveFromDate').value = today;
+            document.getElementById('modalLeaveToDate').value = today;
+            document.getElementById('modalLeaveDays').value = '1';
+            document.getElementById('modalLeaveReason').value = '';
+            document.getElementById('manualLeaveModal').classList.remove('hidden');
+        }
+
+        function openNewLeaveForEmp(empId) {
+            openNewLeaveDialog();
+            document.getElementById('modalLeaveEmpSel').value = empId;
+        }
+
+        function closeLeaveModal() {
+            document.getElementById('manualLeaveModal').classList.add('hidden');
+        }
+
+        function syncLeaveDaysCount() {
+            const d1 = document.getElementById('modalLeaveFromDate').value;
+            const d2 = document.getElementById('modalLeaveToDate').value;
+            if (d1 && d2 && d2 >= d1) {
+                const diffTime = Math.abs(new Date(d2) - new Date(d1));
+                const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24)) + 1;
+                document.getElementById('modalLeaveDays').value = diffDays;
+            }
+        }
+
+        function saveLeaveRecord() {
+            const empId = document.getElementById('modalLeaveEmpSel').value;
+            const typeSel = document.getElementById('modalLeaveType');
+            const type  = typeSel.value;
+            const typeLabel = typeSel.options[typeSel.selectedIndex].text.replace(/^[^\s]+\s/, '');
+            const fromDate = document.getElementById('modalLeaveFromDate').value;
+            const toDate   = document.getElementById('modalLeaveToDate').value || fromDate;
+            const days     = parseInt(document.getElementById('modalLeaveDays').value, 10) || 1;
+            const note     = document.getElementById('modalLeaveReason').value.trim();
+
+            if (!empId || !fromDate) { alert('يرجى اختيار الموظف والتاريخ'); return; }
+
+            if (!employeeManualLeaves[empId]) employeeManualLeaves[empId] = [];
+            employeeManualLeaves[empId].push({
+                id: Date.now().toString(),
+                date: fromDate,
+                fromDate: fromDate,
+                toDate: toDate,
+                type: type,
+                typeLabel: typeLabel,
+                days: days,
+                note: note
+            });
+            saveManualLeavesToStorage();
+
+            closeLeaveModal();
+            if (stats) {
+                renderExecutiveOverview();
+                renderTimesheets();
+                renderPermissionsTable();
+            }
+            alert('✓ تم تسجيل الإجازة اليدوية وتحديث أرصدة وسجلات الموظف بنجاح!');
+        }
+
+        function deleteManualLeave(empId, idx) {
+            if (!confirm('هل تريد حذف هذه الإجازة المسجلة؟')) return;
+            employeeManualLeaves[empId].splice(idx, 1);
+            saveManualLeavesToStorage();
             if (stats) {
                 renderExecutiveOverview();
                 renderTimesheets();
@@ -2202,6 +2444,7 @@
                     const exit  = emp.exits.find(e => e.date === date);
                     const p = getDayPunctuality(emp.employeeId, date, entry ? entry.time : null, exit ? exit.time : null);
                     const dayPerm = getPermissionForDate(emp.employeeId, date);
+                    const dayLeave = getLeaveForDate(emp.employeeId, date);
 
                     let statusBadge = '';
                     let hoursDecimal = '—';
@@ -2216,6 +2459,9 @@
                     if (dayPerm) {
                         const pTypeTxt = dayPerm.type === 'late' ? 'إذن تأخير' : (dayPerm.type === 'early' ? 'إذن انصراف' : 'إذن خروج');
                         notesText = `<span style="color:#0284c7; font-weight:bold;">🎫 ${pTypeTxt}${dayPerm.note ? ': ' + dayPerm.note : ''}</span>`;
+                    }
+                    if (dayLeave) {
+                        notesText += (notesText ? ' | ' : '') + `<span style="color:#1e40af; font-weight:bold;">🏖️ ${dayLeave.typeLabel || dayLeave.type}${dayLeave.note ? ': ' + dayLeave.note : ''}</span>`;
                     }
 
                     if (!entry && exit) {
@@ -2258,6 +2504,11 @@
                         } else {
                             okCount++;
                             statusBadge = '<span class="badge-ok">✅ في معاده</span>';
+                        }
+                    } else {
+                        if (dayLeave) {
+                            statusBadge = `<span class="badge-perm" style="background:#eff6ff; color:#1e40af; border:1px solid #bfdbfe;">🏖️ ${dayLeave.typeLabel || dayLeave.type}</span>`;
+                            hoursDecimal = 'إجازة';
                         }
                     }
 
@@ -2747,7 +2998,7 @@
         updatePolicyLabels();
         initAttendanceArchive();
     </script>
-    <script src="theme.js?v=1788092953"></script>
-    <script src="pwa-install.js?v=1788092953"></script>
+    <script src="theme.js?v=1788165172"></script>
+    <script src="pwa-install.js?v=1788165172"></script>
 </body>
 </html>
