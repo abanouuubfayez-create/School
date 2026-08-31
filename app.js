@@ -1800,10 +1800,43 @@ function saveEmpWorkMode(uid,idx){
     }).catch(function(err){ msg.style.color='var(--no)'; msg.textContent='❌ '+err.message; });
 }
 
-// ─── تعطيل / إعادة تفعيل حساب موظف (يمنع الدخول بدون فقد أي بيانات) ────
-function toggleEmpDisabled(uid,currentlyDisabled){
-    db.collection('users').doc(uid).update({disabled:!currentlyDisabled}).then(loadStaffOverview)
-      .catch(function(err){ alert('تعذر تحديث حالة الحساب: '+err.message); });
+// ─── تعطيل / إعادة تفعيل حساب موظف (يمنع الدخول ويعامله كأنه محذوف) ────
+function toggleEmpDisabled(uid, currentlyDisabled){
+    var emp = (window._staffEmpCache || []).find(function(e){ return e.uid === uid; });
+    var isDis = (currentlyDisabled !== undefined && currentlyDisabled !== null) ? !!currentlyDisabled : (emp ? !!emp.disabled : false);
+    var nextState = !isDis;
+    var name = escH(emp ? (emp.name || emp.email) : 'الموظف');
+
+    var confirmMsg = nextState
+        ? 'هل أنت متأكد من تعطيل حساب "' + name + '"؟\n\n⚠️ سيتم منعه من تسجيل الدخول فوراً وإخفاؤه تماماً من قوائم الموظفين والمشاريع النشطة كما لو تم حذفه (مع إمكانية إعادة التفعيل لاحقاً).'
+        : 'هل تريد إعادة تفعيل حساب "' + name + '"؟';
+
+    if (!confirm(confirmMsg)) return;
+
+    db.collection('users').doc(uid).update({
+        disabled: nextState,
+        status: nextState ? 'disabled' : 'active',
+        disabledAt: nextState ? firebase.firestore.FieldValue.serverTimestamp() : null
+    }).then(function(){
+        tgToast(nextState ? '🚫 تم تعطيل الحساب وإخفاء الموظف من النظام بنجاح' : '✅ تم إعادة تفعيل الحساب بنجاح', 'ok');
+        if (typeof tgCloseProfile === 'function') {
+            tgCloseProfile();
+        }
+        if (typeof closeAdminEmployeeDetail === 'function') {
+            closeAdminEmployeeDetail();
+        }
+        if (typeof loadStaffOverview === 'function') {
+            loadStaffOverview();
+        }
+        if (typeof loadTeamStaff === 'function') {
+            loadTeamStaff();
+        }
+        if (typeof loadDashboardSummary === 'function') {
+            loadDashboardSummary();
+        }
+    }).catch(function(err){
+        tgToast('❌ تعذر تحديث حالة الحساب: ' + err.message, 'err');
+    });
 }
 
 function tgToggleEmpChatAccess(uid, currentAccess) {
@@ -1817,19 +1850,24 @@ function tgToggleEmpChatAccess(uid, currentAccess) {
 }
 
 // ─── حذف موظف: يسأل في كل مرة بين تعطيل فقط أو حذف نهائي كامل ─────────
-function openDeleteEmpModal(uid,idx){
-    var emp=(window._staffEmpCache||[])[idx];
-    var name=escH(emp?(emp.name||emp.email):'');
+function openDeleteEmpModal(uid, idx){
+    var emp = null;
+    if (idx !== undefined && idx !== null && window._staffEmpCache) {
+        emp = window._staffEmpCache[idx];
+    }
+    if (!emp && window._staffEmpCache) {
+        emp = window._staffEmpCache.find(function(e){ return e.uid === uid; });
+    }
+    var name = escH(emp ? (emp.name || emp.email) : 'الموظف');
     tgConfirmModal(
-        '🗑 حذف / تعطيل: '+name,
-        'اختر الإجراء المناسب لحساب هذا الموظف:<br><br>'+
-        '<b>تعطيل الحساب:</b> يمنعه من الدخول فوراً، مع الاحتفاظ الكامل بسجل مشاريعه وإنجازاته وطلباته السابقة (يمكن التراجع لاحقاً).<br><br>'+
-        '<b>حذف نهائي:</b> يمسح ملفه من النظام، ويزيله من كل المشاريع المُسندة إليه، ويحذف إنجازاته وطلباته وتقاريره الأسبوعية نهائياً — إجراء لا يمكن التراجع عنه. '+
-        '(ملاحظة: حساب الدخول في Firebase Authentication نفسه يبقى موجوداً تقنياً ولازم يتحذف يدوياً من Firebase Console لو حبيت إزالته بالكامل، لكنه لن يقدر يدخل على النظام بعد الحذف).',
+        '🗑 حذف / تعطيل: ' + name,
+        'اختر الإجراء المناسب لحساب هذا الموظف:<br><br>' +
+        '<b>🚫 تعطيل الحساب:</b> يمنعه من الدخول فوراً، ويخفيه تماماً من كل القوائم والمشاريع (كأنه محذوف) مع الاحتفاظ بسجلاته للأرشيف.<br><br>' +
+        '<b>🗑 حذف نهائي:</b> يمسح ملفه من النظام نهائياً، ويزيله من كل المشاريع المُسندة إليه، ويحذف إنجازاته وطلباته وتقاريره الأسبوعية نهائياً.',
         [
             {label:'إلغاء', cls:'bt-o', onClick:tgCloseModal},
-            {label:'🚫 تعطيل الحساب فقط', cls:'bt-p', onClick:function(){ tgCloseModal(); toggleEmpDisabled(uid,false); }},
-            {label:'🗑 حذف نهائي مع كل بياناته', cls:'bt-d', onClick:function(){ tgCloseModal(); permanentlyDeleteEmployee(uid,name); }}
+            {label:'🚫 تعطيل الحساب فقط', cls:'bt-p', onClick:function(){ tgCloseModal(); toggleEmpDisabled(uid, false); }},
+            {label:'🗑 حذف نهائي مع كل بياناته', cls:'bt-d', onClick:function(){ tgCloseModal(); permanentlyDeleteEmployee(uid, name); }}
         ]
     );
 }
