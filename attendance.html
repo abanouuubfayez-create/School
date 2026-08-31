@@ -3903,91 +3903,39 @@
 </html>
             `;
 
-            // Ultra-Reliable Non-Blocking Print Handler (Prevents Any UI Freeze)
-            const printBtn = document.getElementById('exportPdfBtn');
-            const origBtnHtml = printBtn ? printBtn.innerHTML : '';
-            if (printBtn) {
-                printBtn.innerHTML = '⏳ جارٍ تجهيز التقرير للطباعة...';
-                printBtn.style.opacity = '0.7';
-                printBtn.style.pointerEvents = 'none';
-            }
-
-            function restoreBtn() {
-                if (printBtn) {
-                    printBtn.innerHTML = origBtnHtml || '🖨️ طباعة التقرير الشهري الرسمي المعتمد (PDF)';
-                    printBtn.style.opacity = '1';
-                    printBtn.style.pointerEvents = 'auto';
-                }
-            }
-
+            // Instant Blob URL Print Architecture (Zero-Freeze, Instant Render)
             try {
-                // Remove any stale print iframes
-                const existingIframes = document.querySelectorAll('iframe[id^="_techgo_print_"]');
-                existingIframes.forEach(el => { try { el.remove(); } catch(e){} });
-
-                const iframe = document.createElement('iframe');
-                iframe.id = '_techgo_print_' + Date.now();
-                iframe.style.position = 'fixed';
-                iframe.style.right = '0';
-                iframe.style.bottom = '0';
-                iframe.style.width = '1px';
-                iframe.style.height = '1px';
-                iframe.style.opacity = '0.01';
-                iframe.style.border = 'none';
-                iframe.style.pointerEvents = 'none';
-                document.body.appendChild(iframe);
-
-                const iWin = iframe.contentWindow;
-                const iDoc = iframe.contentDocument || iWin.document;
-                
-                iDoc.open();
-                iDoc.write(htmlContent);
-                iDoc.close();
-
-                let printed = false;
-                function triggerSafePrint() {
-                    if (printed) return;
-                    printed = true;
-                    restoreBtn();
-                    try {
-                        iWin.focus();
-                        iWin.print();
-                    } catch(err) {
-                        fallbackPrintWindow(htmlContent);
-                    }
+                const blob = new Blob([htmlContent], { type: 'text/html;charset=utf-8' });
+                const blobUrl = URL.createObjectURL(blob);
+                const printWin = window.open(blobUrl, '_blank');
+                if (printWin) {
+                    printWin.focus();
+                } else {
+                    // Fallback to hidden iframe if popups are completely blocked
+                    let oldIframe = document.getElementById('_techgo_print_iframe');
+                    if (oldIframe) oldIframe.remove();
+                    const iframe = document.createElement('iframe');
+                    iframe.id = '_techgo_print_iframe';
+                    iframe.src = blobUrl;
+                    iframe.style.position = 'fixed';
+                    iframe.style.right = '0';
+                    iframe.style.bottom = '0';
+                    iframe.style.width = '0';
+                    iframe.style.height = '0';
+                    iframe.style.border = 'none';
+                    document.body.appendChild(iframe);
+                    iframe.onload = function() {
+                        try {
+                            iframe.contentWindow.focus();
+                            iframe.contentWindow.print();
+                        } catch(e){}
+                    };
                 }
-
-                iframe.onload = function() {
-                    setTimeout(triggerSafePrint, 150);
-                };
-
-                // Fallback timeout in case iframe onload does not fire
-                setTimeout(triggerSafePrint, 600);
-
             } catch(e) {
-                restoreBtn();
-                fallbackPrintWindow(htmlContent);
-            }
-
-            function fallbackPrintWindow(html) {
-                try {
-                    const printWin = window.open('', '_blank', 'width=1100,height=850');
-                    if (printWin) {
-                        printWin.document.open();
-                        printWin.document.write(html);
-                        printWin.document.close();
-                        setTimeout(() => {
-                            try {
-                                printWin.focus();
-                                printWin.print();
-                            } catch(e){}
-                        }, 500);
-                    }
-                } catch(e){}
+                console.error('Print generation error:', e);
+                alert('حدث خطأ أثناء فتح شاشة الطباعة: ' + e.message);
             }
         }
-
-        document.getElementById('exportPdfBtn').addEventListener('click', buildOfficialPrintReport);
 
         document.getElementById('resetBtn').addEventListener('click', () => {
             showUploadSection();
@@ -3998,7 +3946,7 @@
         syncApprovedEmployeeRequests();
         initAttendanceArchive();
     </script>
-    <script src="theme.js?v=1788178862"></script>
-    <script src="pwa-install.js?v=1788178862"></script>
+    <script src="theme.js?v=1788179169"></script>
+    <script src="pwa-install.js?v=1788179169"></script>
 </body>
 </html>
