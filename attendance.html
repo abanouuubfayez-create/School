@@ -845,6 +845,7 @@
                                     <th>الكود</th>
                                     <th>تاريخ الإذن</th>
                                     <th>نوع الإذن</th>
+                                    <th>المصدر</th>
                                     <th>السبب والملاحظات</th>
                                     <th>إجراء</th>
                                 </tr>
@@ -872,6 +873,7 @@
                                     <th>الكود</th>
                                     <th>تاريخ الإجازة</th>
                                     <th>نوع الإجازة</th>
+                                    <th>المصدر</th>
                                     <th>المدة / السبب</th>
                                     <th>إجراء</th>
                                 </tr>
@@ -1031,6 +1033,12 @@
             }
         };
 
+        let inactiveEmployees = ['5']; // إبراهيم معطل / غير نشط (يتم استبعاده تلقائياً من الكشوفات)
+        try {
+            const rawInact = localStorage.getItem('techgo_inactive_employees');
+            if (rawInact) inactiveEmployees = JSON.parse(rawInact);
+        } catch(e){}
+
         let employeeNames = Object.assign({}, _SAVED_DATA.empNames);
         let employeePermissions = Object.assign({}, _SAVED_DATA.employeePermissions);
         let employeeManualLeaves = {};
@@ -1059,8 +1067,8 @@
         } catch(e){}
 
         function createDefaultAttendanceDataset() {
-            // Baseline July 2026 & August 2026 attendance dataset
-            const emps = ['3', '8', '7', '4', '5', '6', '10'];
+            // Baseline July 2026 & August 2026 attendance dataset (استبعاد الموظفين المعطلين)
+            const emps = ['3', '8', '7', '4', '6', '10'].filter(id => !inactiveEmployees.includes(id));
             
             function genMonthPunches(year, month, daysCount, baseIn, baseOut) {
                 const recs = [];
@@ -2039,16 +2047,22 @@
 
             let hasRecords = false;
             Object.keys(employeePermissions).forEach(empId => {
+                if (inactiveEmployees.includes(empId)) return;
                 const list = employeePermissions[empId] || [];
                 const name = getDisplayName(empId);
                 list.forEach((p, pIdx) => {
                     hasRecords = true;
                     const tr = document.createElement('tr');
+                    const isManual = (p.source !== 'employee_request');
+                    const sourceBadge = isManual
+                        ? `<span class="status-badge" style="background:#f1f5f9; color:#475569; border:1px solid #cbd5e1; font-size:0.75rem;">✍️ تسجيل يدوي (إدارة)</span>`
+                        : `<span class="status-badge" style="background:#ecfdf5; color:#065f46; border:1px solid #a7f3d0; font-size:0.75rem;">📱 طلب موظف (معتمد)</span>`;
                     tr.innerHTML = `
                         <td style="font-weight:bold;">${name}</td>
                         <td style="color:var(--perm-light); font-weight:bold;">${empId}</td>
                         <td>📅 ${p.date}</td>
                         <td><span class="status-badge badge-perm">${p.type === 'late' ? '⏰ إذن تأخير' : (p.type === 'early' ? '🚪 انصراف مبكر' : '🔄 خروج مؤقت')}</span></td>
+                        <td>${sourceBadge}</td>
                         <td style="color:var(--text-muted);">${p.note || '—'}</td>
                         <td>
                             <button class="btn-action btn-ghost" onclick="deletePerm('${empId}', ${pIdx})" style="color:var(--danger-light);padding:2px 8px;">✕ حذف</button>
@@ -2059,7 +2073,7 @@
             });
 
             if (!hasRecords) {
-                tbody.innerHTML = `<tr><td colspan="6" style="text-align:center;color:var(--text-muted);padding:20px;">لا توجد أذونات مسجلة حتى الآن</td></tr>`;
+                tbody.innerHTML = `<tr><td colspan="7" style="text-align:center;color:var(--text-muted);padding:20px;">لا توجد أذونات مسجلة حتى الآن</td></tr>`;
             }
 
             renderLeavesTable();
@@ -2072,6 +2086,7 @@
 
             let hasRecords = false;
             Object.keys(employeeManualLeaves).forEach(empId => {
+                if (inactiveEmployees.includes(empId)) return;
                 const list = employeeManualLeaves[empId] || [];
                 const name = getDisplayName(empId);
                 list.forEach((l, lIdx) => {
@@ -2080,12 +2095,17 @@
                     const dateDisplay = (l.fromDate && l.toDate && l.fromDate !== l.toDate)
                         ? `📅 ${l.fromDate} ← ${l.toDate}`
                         : `📅 ${l.date || l.fromDate}`;
+                    const isManual = (l.source !== 'employee_request');
+                    const sourceBadge = isManual
+                        ? `<span class="status-badge" style="background:#f1f5f9; color:#475569; border:1px solid #cbd5e1; font-size:0.75rem;">✍️ تسجيل يدوي (إدارة)</span>`
+                        : `<span class="status-badge" style="background:#ecfdf5; color:#065f46; border:1px solid #a7f3d0; font-size:0.75rem;">📱 طلب موظف (معتمد)</span>`;
                     tr.innerHTML = `
                         <td style="font-weight:bold;">${name}</td>
                         <td style="color:var(--primary-light); font-weight:bold;">${empId}</td>
                         <td>${dateDisplay}</td>
                         <td><span class="status-badge badge-perm" style="background:#eff6ff; color:#0369a1; border:1px solid #bae6fd;">🏖️ ${l.typeLabel || l.type}</span></td>
-                        <td style="color:var(--text-muted);"><strong>${l.days || 1} يوم</strong> - ${l.note || 'تسجيل يدوي'}</td>
+                        <td>${sourceBadge}</td>
+                        <td style="color:var(--text-muted);"><strong>${l.days || 1} يوم</strong> - ${l.note || '—'}</td>
                         <td>
                             <button class="btn-action btn-ghost" onclick="deleteManualLeave('${empId}', ${lIdx})" style="color:var(--danger-light);padding:2px 8px;">✕ حذف</button>
                         </td>
@@ -2095,7 +2115,7 @@
             });
 
             if (!hasRecords) {
-                tbody.innerHTML = `<tr><td colspan="6" style="text-align:center;color:var(--text-muted);padding:20px;">لا توجد إجازات يدوية مسجلة حتى الآن</td></tr>`;
+                tbody.innerHTML = `<tr><td colspan="7" style="text-align:center;color:var(--text-muted);padding:20px;">لا توجد إجازات يدوية مسجلة حتى الآن</td></tr>`;
             }
         }
 
@@ -2121,6 +2141,7 @@
             const sel = document.getElementById('modalPermEmpSel');
             sel.innerHTML = '';
             Object.keys(employeeNames).forEach(id => {
+                if (inactiveEmployees.includes(id)) return; // استبعاد الموظفين المعطلين
                 sel.innerHTML += `<option value="${id}">${employeeNames[id]} (كود ${id})</option>`;
             });
             document.getElementById('modalPermDate').value = new Date().toISOString().slice(0, 10);
@@ -2146,7 +2167,7 @@
             if (!empId || !date) { alert('يرجى اختيار الموظف والتاريخ'); return; }
 
             if (!employeePermissions[empId]) employeePermissions[empId] = [];
-            employeePermissions[empId].push({ date, type, note });
+            employeePermissions[empId].push({ date, type, note, source: 'manual' });
             savePermissionsToStorage();
 
             closePermModal();
@@ -2175,6 +2196,7 @@
             const sel = document.getElementById('modalLeaveEmpSel');
             sel.innerHTML = '';
             Object.keys(employeeNames).forEach(id => {
+                if (inactiveEmployees.includes(id)) return; // استبعاد الموظفين المعطلين
                 sel.innerHTML += `<option value="${id}">${employeeNames[id]} (كود ${id})</option>`;
             });
             const today = new Date().toISOString().slice(0, 10);
@@ -2225,7 +2247,8 @@
                 type: type,
                 typeLabel: typeLabel,
                 days: days,
-                note: note
+                note: note,
+                source: 'manual'
             });
             saveManualLeavesToStorage();
 
@@ -2273,14 +2296,13 @@
             { id: 1, date: '2026-04-25', day: 'السبت', desc: 'تسليم الريان - أبو عبد الله' }
         ];
 
-        // Employee Metadata for Leave Balances
+        // Employee Metadata for Leave Balances (استبعاد الموظفين المعطلين)
         const _EMP_LEAVE_META = {
-            '3': { name: 'Ebthal', balance: 14, total: 15, used: 1, casual: 1, wfh: 10, leaves: [{ type: 'إجازة عارضة (1 يوم)', date: '9 يوليو 2026 (1ي)' }, { type: 'إجازة رسمية (1 يوم)', date: '16 يوليو 2026 (1ي) - من الإدارة' }] },
+            '3': { name: 'Ebthal', balance: 14, total: 15, used: 1, casual: 1, wfh: 10, leaves: [{ type: '✍️ [تسجيل يدوي] إجازة عارضة (1 يوم)', date: '9 يوليو 2026 (1ي)' }, { type: '✍️ [تسجيل يدوي] إجازة رسمية (1 يوم)', date: '16 يوليو 2026 (1ي) - من الإدارة' }] },
             '8': { name: 'Markos', balance: 15, total: 15, used: 0, casual: 0, wfh: 10, leaves: [] },
-            '7': { name: 'Basel', balance: 10, total: 15, used: 5, casual: 1, wfh: 0, leaves: [{ type: 'إجازة سنوية (4 يوم)', date: '19 يوليو 2026 ← 22 يوليو 2026 (4ي) - سفر' }, { type: 'إجازة عارضة (1 يوم)', date: '16 يوليو 2026 (1ي) - سفر' }] },
+            '7': { name: 'Basel', balance: 10, total: 15, used: 5, casual: 1, wfh: 0, leaves: [{ type: '✍️ [تسجيل يدوي] إجازة سنوية (4 يوم)', date: '19 يوليو 2026 ← 22 يوليو 2026 (4ي) - سفر' }, { type: '✍️ [تسجيل يدوي] إجازة عارضة (1 يوم)', date: '16 يوليو 2026 (1ي) - سفر' }] },
             '4': { name: 'Abanob', balance: 15, total: 15, used: 0, casual: 0, wfh: 10, leaves: [] },
-            '5': { name: 'Ibrahim', balance: 12, total: 15, used: 3, casual: 2, wfh: 10, leaves: [{ type: 'إجازة سنوية (1 يوم)', date: '16 أبريل 2026 (1ي)' }, { type: 'إجازة عارضة (2 يوم)', date: '14 يوليو 2026 (1ي)' }] },
-            '6': { name: 'Yostina', balance: 5, total: 15, used: 10, casual: 4, wfh: 10, leaves: [{ type: 'إجازة سنوية (10 يوم إجمالي)', date: '19 يوليو 2026 ← 27 يوليو 2026 (7ي) - سفر' }] },
+            '6': { name: 'Yostina', balance: 5, total: 15, used: 10, casual: 4, wfh: 10, leaves: [{ type: '✍️ [تسجيل يدوي] إجازة سنوية (10 يوم إجمالي)', date: '19 يوليو 2026 ← 27 يوليو 2026 (7ي) - سفر' }] },
             '10': { name: 'Kirlos', balance: 15, total: 15, used: 0, casual: 0, wfh: 0, leaves: [] }
         };
 
@@ -2290,7 +2312,8 @@
                 return;
             }
 
-            const allDates = Array.from(new Set(stats.employeeDetails.flatMap(e => e.dates))).sort();
+            const activeEmpDetails = stats.employeeDetails.filter(e => !inactiveEmployees.includes(String(e.employeeId)));
+            const allDates = Array.from(new Set(activeEmpDetails.flatMap(e => e.dates))).sort();
             const minDate = allDates[0] || '';
             const maxDate = allDates[allDates.length - 1] || minDate;
             
@@ -2305,11 +2328,9 @@
             const monthNum = parseInt(pMonth, 10);
             const monthNameAr = _MONTH_NAMES_AR[monthNum - 1] || pMonth;
             
-            const totalEmployees = stats.totalEmployees;
-            const uniqueDates = stats.uniqueDates;
-            const totalHoursSum = stats.totalHoursSum;
-            const avgDailyHours = (totalHoursSum / (totalEmployees * (uniqueDates || 1))).toFixed(2);
-            const totalRecordsCount = stats.employeeDetails.reduce((acc, e) => acc + e.entries.length + e.exits.length, 0);
+            const totalEmployees = activeEmpDetails.length;
+            const uniqueDates = allDates.length;
+            const totalRecordsCount = activeEmpDetails.reduce((acc, e) => acc + e.entries.length + e.exits.length, 0);
 
             // Filter holidays & extra days specifically for the active month/period
             const monthHolidays = _OFFICIAL_HOLIDAYS_LIST.filter(h => {
@@ -2330,22 +2351,46 @@
             let sumOk = 0, sumLate = 0, sumEarly = 0, sumLeaves = 0, sumWfh = 0, sumHours = 0, sumPerms = 0;
             const employeeMetrics = [];
 
-            stats.employeeDetails.forEach((emp, idx) => {
+            activeEmpDetails.forEach((emp, idx) => {
                 const name = getDisplayName(emp.employeeId);
                 const meta = _EMP_LEAVE_META[emp.employeeId] || { balance: 15, total: 15, used: 0, casual: 0, wfh: 0, leaves: [] };
                 
                 // Merge permissions registered on the system
                 const allEmpPerms = (employeePermissions[emp.employeeId] || []).filter(p => {
                     return p.date.startsWith(primaryYm) || (p.date >= minDate && p.date <= maxDate);
-                });
+                }).map(p => ({
+                    ...p,
+                    sourceTag: (p.source === 'employee_request' ? '📱 طلب موظف معتمد' : '✍️ تسجيل يدوي')
+                }));
 
                 // Merge dynamic leaves for this employee
                 let empLeavesList = [...meta.leaves];
                 if (dynamicLeavesStore[emp.employeeId]) {
                     const yrData = dynamicLeavesStore[emp.employeeId][pYear] || {};
-                    (yrData.annual || []).forEach(l => empLeavesList.push({ type: `إجازة سنوية (${l.days||1} يوم)`, date: `${l.date || l.fromDate} - ${l.reason || 'معتمدة على السيستم'}` }));
-                    (yrData.casual || []).forEach(l => empLeavesList.push({ type: `إجازة عارضة (${l.days||1} يوم)`, date: `${l.date || l.fromDate} - ${l.reason || 'معتمدة على السيستم'}` }));
+                    (yrData.annual || []).forEach(l => empLeavesList.push({ type: `📱 [طلب موظف معتمد] إجازة سنوية (${l.days||1} يوم)`, date: `${l.date || l.fromDate} - ${l.reason || 'معتمد على السيستم'}` }));
+                    (yrData.casual || []).forEach(l => empLeavesList.push({ type: `📱 [طلب موظف معتمد] إجازة عارضة (${l.days||1} يوم)`, date: `${l.date || l.fromDate} - ${l.reason || 'معتمد على السيستم'}` }));
                 }
+
+                // Merge manual leaves registered on the system
+                const manualEmpLeaves = (employeeManualLeaves[emp.employeeId] || []).filter(l => {
+                    const lDate = l.date || l.fromDate;
+                    return (lDate.startsWith(primaryYm) || (lDate >= minDate && lDate <= maxDate));
+                });
+                manualEmpLeaves.forEach(l => {
+                    empLeavesList.push({
+                        type: `✍️ [تسجيل يدوي] ${l.typeLabel || 'إجازة'} (${l.days||1} يوم)`,
+                        date: `${l.fromDate || l.date}${l.toDate && l.toDate !== l.fromDate ? ' ← ' + l.toDate : ''} (${l.days||1}ي) - ${l.note || 'تسجيل يدوي'}`
+                    });
+                });
+
+                let totalUsedLeaves = (meta.used || 0);
+                let totalCasualLeaves = (meta.casual || 0);
+                manualEmpLeaves.forEach(l => {
+                    const d = parseInt(l.days, 10) || 1;
+                    totalUsedLeaves += d;
+                    if (l.type === 'casual') totalCasualLeaves += d;
+                });
+                const calculatedBalance = Math.max(0, meta.total - totalUsedLeaves);
 
                 let ok = 0, late = 0, early = 0, empHours = 0;
 
@@ -2373,7 +2418,7 @@
                 sumOk += ok;
                 sumLate += late;
                 sumEarly += early;
-                sumLeaves += (meta.used || 0);
+                sumLeaves += totalUsedLeaves;
                 sumWfh += (meta.wfh || 0);
                 sumHours += empHours;
                 sumPerms += allEmpPerms.length;
@@ -2383,6 +2428,9 @@
                     emp,
                     name,
                     meta,
+                    calculatedBalance,
+                    totalUsedLeaves,
+                    totalCasualLeaves,
                     allEmpPerms,
                     empLeavesList,
                     ok,
@@ -2404,10 +2452,10 @@
             // Build Executive Overview Table Rows
             let overviewRows = '';
             employeeMetrics.forEach(em => {
-                const leavesCount = em.meta.used > 0 ? `${em.meta.used}ي` : '—';
+                const leavesCount = em.totalUsedLeaves > 0 ? `${em.totalUsedLeaves}ي` : '—';
                 const permsStr = em.allEmpPerms.length > 0 ? `<span style="color:#0284c7; font-weight:800;">${em.allEmpPerms.length} إذن</span>` : '0';
                 const wfhStr = em.meta.wfh > 0 ? `${em.meta.wfh}ي` : '—';
-                const balStr = `<strong>${em.meta.balance}</strong> / ${em.meta.total} <small style="color:#64748b; font-size:6.5pt;">(عارضة ${em.meta.casual}/7)</small>`;
+                const balStr = `<strong>${em.calculatedBalance}</strong> / ${em.meta.total} <small style="color:#64748b; font-size:6.5pt;">(عارضة ${em.totalCasualLeaves}/7)</small>`;
                 const rateColor = em.punctualityRate >= 95 ? '#15803d' : (em.punctualityRate >= 85 ? '#0369a1' : '#b91c1c');
 
                 overviewRows += `
@@ -2450,8 +2498,8 @@
             if (monthHolidays.length > 0) {
                 monthHolidaysHtml = `
                     <div style="margin-top:6px;">
-                        <div style="font-size:8pt; font-weight:800; color:#92400e; margin-bottom:3px;">📅 العطلات الرسمية خلال شهر ${monthNameAr} (${monthHolidays.length}):</div>
-                        <table class="print-table table-gold" style="margin-bottom:0;">
+                        <div style="font-size:8pt; font-weight:800; color:#0369a1; margin-bottom:3px;">🌴 العطلات الرسمية لشهر ${monthNameAr} ${pYear} (م.١٢٩):</div>
+                        <table class="print-table table-blue" style="margin-bottom:0;">
                             <thead>
                                 <tr>
                                     <th style="width:25%;">التاريخ</th>
@@ -2529,10 +2577,11 @@
                         dayName = _DAY_NAMES_AR[dObj.getDay()] || '';
                     } catch(e){}
 
-                    // Format permission and personal leave notes
+                    // Format permission and personal leave notes with explicit source indicators
                     if (dayPerm) {
                         const pTypeTxt = dayPerm.type === 'late' ? 'إذن تأخير' : (dayPerm.type === 'early' ? 'إذن انصراف' : 'إذن خروج');
-                        notesText = `<span style="color:#0284c7; font-weight:bold;">🎫 ${pTypeTxt}${dayPerm.note ? ': ' + dayPerm.note : ''}</span>`;
+                        const pSourceTag = dayPerm.sourceTag || (dayPerm.source === 'employee_request' ? 'طلب موظف' : 'تسجيل يدوي');
+                        notesText = `<span style="color:#0284c7; font-weight:bold;">🎫 ${pTypeTxt} [${pSourceTag}]${dayPerm.note ? ': ' + dayPerm.note : ''}</span>`;
                     }
                     if (personalLeave) {
                         notesText += (notesText ? ' | ' : '') + `<span style="color:#1e40af; font-weight:bold;">🏖️ ${personalLeave.typeLabel || personalLeave.type}${personalLeave.note ? ': ' + personalLeave.note : ''}</span>`;
@@ -3082,7 +3131,7 @@
         updatePolicyLabels();
         initAttendanceArchive();
     </script>
-    <script src="theme.js?v=1788165629"></script>
-    <script src="pwa-install.js?v=1788165629"></script>
+    <script src="theme.js?v=1788165952"></script>
+    <script src="pwa-install.js?v=1788165952"></script>
 </body>
 </html>
