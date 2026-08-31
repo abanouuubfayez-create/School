@@ -2004,13 +2004,34 @@
                 return x.date.startsWith(primaryYm) || (x.date >= minDate && x.date <= maxDate);
             });
 
+            // Dynamic Leaves Store from LocalStorage / Baseline
+            let dynamicLeavesStore = {};
+            try {
+                const rawLeaves = localStorage.getItem('attendance_sys_techgo_employee_leaves') || localStorage.getItem('techgo_employee_leaves');
+                if (rawLeaves) dynamicLeavesStore = JSON.parse(rawLeaves);
+            } catch(e){}
+
             // Compute overall aggregate metrics across all employees
-            let sumOk = 0, sumLate = 0, sumEarly = 0, sumLeaves = 0, sumWfh = 0, sumHours = 0;
+            let sumOk = 0, sumLate = 0, sumEarly = 0, sumLeaves = 0, sumWfh = 0, sumHours = 0, sumPerms = 0;
             const employeeMetrics = [];
 
             stats.employeeDetails.forEach((emp, idx) => {
                 const name = getDisplayName(emp.employeeId);
                 const meta = _EMP_LEAVE_META[emp.employeeId] || { balance: 15, total: 15, used: 0, casual: 0, wfh: 0, leaves: [] };
+                
+                // Merge permissions registered on the system
+                const allEmpPerms = (employeePermissions[emp.employeeId] || []).filter(p => {
+                    return p.date.startsWith(primaryYm) || (p.date >= minDate && p.date <= maxDate);
+                });
+
+                // Merge dynamic leaves for this employee
+                let empLeavesList = [...meta.leaves];
+                if (dynamicLeavesStore[emp.employeeId]) {
+                    const yrData = dynamicLeavesStore[emp.employeeId][pYear] || {};
+                    (yrData.annual || []).forEach(l => empLeavesList.push({ type: `إجازة سنوية (${l.days||1} يوم)`, date: `${l.date || l.fromDate} - ${l.reason || 'معتمدة على السيستم'}` }));
+                    (yrData.casual || []).forEach(l => empLeavesList.push({ type: `إجازة عارضة (${l.days||1} يوم)`, date: `${l.date || l.fromDate} - ${l.reason || 'معتمدة على السيستم'}` }));
+                }
+
                 let ok = 0, late = 0, early = 0, empHours = 0;
 
                 emp.dates.forEach(date => {
@@ -2040,12 +2061,15 @@
                 sumLeaves += (meta.used || 0);
                 sumWfh += (meta.wfh || 0);
                 sumHours += empHours;
+                sumPerms += allEmpPerms.length;
 
                 employeeMetrics.push({
                     idx: idx + 1,
                     emp,
                     name,
                     meta,
+                    allEmpPerms,
+                    empLeavesList,
                     ok,
                     late,
                     early,
@@ -2065,8 +2089,9 @@
             // Build Executive Overview Table Rows
             let overviewRows = '';
             employeeMetrics.forEach(em => {
-                const leavesCount = em.meta.used > 0 ? `${em.meta.used} يوم` : '—';
-                const wfhStr = em.meta.wfh > 0 ? `${em.meta.wfh} يوم` : '—';
+                const leavesCount = em.meta.used > 0 ? `${em.meta.used}ي` : '—';
+                const permsStr = em.allEmpPerms.length > 0 ? `<span style="color:#0284c7; font-weight:800;">${em.allEmpPerms.length} إذن</span>` : '0';
+                const wfhStr = em.meta.wfh > 0 ? `${em.meta.wfh}ي` : '—';
                 const balStr = `<strong>${em.meta.balance}</strong> / ${em.meta.total} <small style="color:#64748b; font-size:6.5pt;">(عارضة ${em.meta.casual}/7)</small>`;
                 const rateColor = em.punctualityRate >= 95 ? '#15803d' : (em.punctualityRate >= 85 ? '#0369a1' : '#b91c1c');
 
@@ -2078,6 +2103,7 @@
                         <td style="text-align:center; font-weight:700; color:#15803d;">${em.ok}</td>
                         <td style="text-align:center; font-weight:700; color:${em.late > 0 ? '#b91c1c' : '#64748b'};">${em.late > 0 ? em.late : '0'}</td>
                         <td style="text-align:center; color:#64748b;">${em.early > 0 ? em.early : '0'}</td>
+                        <td style="text-align:center; font-weight:700;">${permsStr}</td>
                         <td style="text-align:center; font-weight:600; color:#0369a1;">${leavesCount}</td>
                         <td style="text-align:center; font-weight:600; color:#0f766e;">${wfhStr}</td>
                         <td style="text-align:center; font-weight:800; color:#0f766e;">${(em.empHours).toFixed(1)} س</td>
@@ -2095,6 +2121,7 @@
                     <td style="text-align:center; color:#15803d;">${sumOk}</td>
                     <td style="text-align:center; color:#b91c1c;">${sumLate}</td>
                     <td style="text-align:center; color:#64748b;">${sumEarly}</td>
+                    <td style="text-align:center; color:#0284c7;">${sumPerms} إذن</td>
                     <td style="text-align:center; color:#0369a1;">${sumLeaves} ي</td>
                     <td style="text-align:center; color:#0f766e;">${sumWfh} ي</td>
                     <td style="text-align:center; color:#0f766e;">${sumHours.toFixed(1)} س</td>
@@ -2165,6 +2192,8 @@
                 const emp = em.emp;
                 const name = em.name;
                 const meta = em.meta;
+                const allEmpPerms = em.allEmpPerms;
+                const empLeavesList = em.empLeavesList;
                 let okCount = 0, lateCount = 0, earlyCount = 0, totalWorkHrs = 0;
 
                 let dailyRows = '';
@@ -2172,25 +2201,41 @@
                     const entry = emp.entries.find(e => e.date === date);
                     const exit  = emp.exits.find(e => e.date === date);
                     const p = getDayPunctuality(emp.employeeId, date, entry ? entry.time : null, exit ? exit.time : null);
+                    const dayPerm = getPermissionForDate(emp.employeeId, date);
 
                     let statusBadge = '';
                     let hoursDecimal = '—';
+                    let notesText = '';
                     let dayName = '';
                     try {
                         const dObj = new Date(date);
                         dayName = _DAY_NAMES_AR[dObj.getDay()] || '';
                     } catch(e){}
 
+                    // Format permission notes if any
+                    if (dayPerm) {
+                        const pTypeTxt = dayPerm.type === 'late' ? 'إذن تأخير' : (dayPerm.type === 'early' ? 'إذن انصراف' : 'إذن خروج');
+                        notesText = `<span style="color:#0284c7; font-weight:bold;">🎫 ${pTypeTxt}${dayPerm.note ? ': ' + dayPerm.note : ''}</span>`;
+                    }
+
                     if (!entry && exit) {
                         earlyCount++;
-                        statusBadge = '<span class="badge-danger">⚠️ خروج فقط</span>';
+                        if (dayPerm && dayPerm.type === 'late') {
+                            statusBadge = '<span class="badge-perm">⚠️ خروج فقط (إذن حضور)</span>';
+                        } else {
+                            statusBadge = '<span class="badge-danger">⚠️ خروج فقط</span>';
+                        }
                     } else if (entry && !exit) {
                         if (p === 'late') {
                             lateCount++;
                             const startMins = timeToMins(workConfig.start);
                             const graceMins = parseInt(workConfig.grace || 30);
                             const lateMin = timeToMins(entry.time) - (startMins + graceMins);
-                            statusBadge = `<span class="badge-danger">⏰ متأخر +${lateMin > 0 ? lateMin : ''}د</span>`;
+                            if (dayPerm && (dayPerm.type === 'late' || dayPerm.type === 'temp')) {
+                                statusBadge = `<span class="badge-perm">⏰ متأخر +${lateMin > 0 ? lateMin : ''}د (بإذن معتمد)</span>`;
+                            } else {
+                                statusBadge = `<span class="badge-danger">⏰ متأخر +${lateMin > 0 ? lateMin : ''}د</span>`;
+                            }
                         } else {
                             okCount++;
                             statusBadge = '<span class="badge-ok">✅ في معاده</span>';
@@ -2205,11 +2250,19 @@
                             const startMins = timeToMins(workConfig.start);
                             const graceMins = parseInt(workConfig.grace || 30);
                             const lateMin = timeToMins(entry.time) - (startMins + graceMins);
-                            statusBadge = `<span class="badge-danger">⏰ متأخر +${lateMin > 0 ? lateMin : ''}د</span>`;
+                            if (dayPerm && (dayPerm.type === 'late' || dayPerm.type === 'temp')) {
+                                statusBadge = `<span class="badge-perm">⏰ متأخر +${lateMin > 0 ? lateMin : ''}د (بإذن معتمد)</span>`;
+                            } else {
+                                statusBadge = `<span class="badge-danger">⏰ متأخر +${lateMin > 0 ? lateMin : ''}د</span>`;
+                            }
                         } else {
                             okCount++;
                             statusBadge = '<span class="badge-ok">✅ في معاده</span>';
                         }
+                    }
+
+                    if (!notesText) {
+                        notesText = entry && exit ? 'حركة مكتملة' : (entry ? 'دخول فقط' : 'خروج فقط');
                     }
 
                     dailyRows += `
@@ -2220,12 +2273,20 @@
                             <td style="text-align:center; color:#166534; font-weight:700;">${entry ? entry.time : '—'}</td>
                             <td style="text-align:center; color:#991b1b; font-weight:700;">${exit ? exit.time : '—'}</td>
                             <td style="text-align:center; font-weight:800; color:#0f172a;">${hoursDecimal}</td>
-                            <td style="text-align:center; font-size:6.5pt; color:#64748b;">${entry && exit ? 'مكتملة' : (entry ? 'دخول فقط' : 'خروج فقط')}</td>
+                            <td style="text-align:center; font-size:6.5pt; color:#475569;">${notesText}</td>
                         </tr>
                     `;
                 });
 
-                let leavesBoxesHtml = meta.leaves.length ? meta.leaves.map(l => `
+                // Permissions HTML Box
+                let permsBoxHtml = allEmpPerms.length ? allEmpPerms.map(p => `
+                    <div style="background:#f0f9ff; border:1px solid #bae6fd; border-radius:4px; padding:3px 6px; margin-bottom:2px; font-size:7pt; color:#0369a1;">
+                        🎫 <strong>${p.type === 'late' ? 'إذن تأخير' : (p.type === 'early' ? 'إذن انصراف' : 'إذن خروج مؤقت')}:</strong> ${p.date} (${p.note || 'معتمد'})
+                    </div>
+                `).join('') : '<div style="font-size:7pt; color:#64748b;">لا توجد أذونات مسجلة هذا الشهر</div>';
+
+                // Leaves HTML Box
+                let leavesBoxesHtml = empLeavesList.length ? empLeavesList.map(l => `
                     <div style="background:#eff6ff; border:1px solid #bfdbfe; border-radius:4px; padding:3px 6px; margin-bottom:2px; font-size:7pt; color:#1e40af;">
                         📌 <strong>${l.type}:</strong> ${l.date}
                     </div>
@@ -2253,6 +2314,7 @@
                             </div>
                             <div style="display:flex; gap:4px; align-items:center;">
                                 <span class="badge-pill badge-pill-rate">🎯 الالتزام: ${empPunctRate}%</span>
+                                <span class="badge-pill badge-pill-perm">🎫 ${allEmpPerms.length} أذونات</span>
                                 <span class="badge-pill badge-pill-ok">✅ ${okCount} في معاده</span>
                                 <span class="badge-pill badge-pill-danger">⏰ ${lateCount} متأخر</span>
                                 <span class="badge-pill badge-pill-early">🚪 ${earlyCount} بدري</span>
@@ -2265,10 +2327,10 @@
                                     <th style="width:12%;">اليوم</th>
                                     <th style="width:16%;">التاريخ</th>
                                     <th style="width:24%;">حالة الانضباط</th>
-                                    <th style="width:14%;">وقت الدخول</th>
-                                    <th style="width:14%;">وقت الخروج</th>
-                                    <th style="width:12%;">ساعات العمل</th>
-                                    <th style="width:8%;">الحركة</th>
+                                    <th style="width:13%;">وقت الدخول</th>
+                                    <th style="width:13%;">وقت الخروج</th>
+                                    <th style="width:11%;">ساعات العمل</th>
+                                    <th style="width:11%;">الأذونات والملاحظات</th>
                                 </tr>
                             </thead>
                             <tbody>
@@ -2283,10 +2345,14 @@
                                     <span style="font-size:10pt; font-weight:900; color:#0f766e;">${meta.balance} <small style="font-size:6.5pt;">يوم متبقي</small></span>
                                 </div>
                                 <div style="font-size:6.5pt; color:#64748b; margin-top:1px;">الاستحقاق: ${meta.total} يوم | مستهلك: <strong>${meta.used} يوم</strong> (عارضة: ${meta.casual}/7)</div>
+                                <div style="margin-top:4px;">
+                                    <div style="font-size:7pt; font-weight:800; color:#1e40af; margin-bottom:2px;">🏖️ الإجازات المسجلة على السيستم:</div>
+                                    ${leavesBoxesHtml}
+                                </div>
                             </div>
                             <div style="background:#f8fafc; border:1px solid #cbd5e1; border-radius:6px; padding:5px 8px;">
-                                <div style="font-size:7.5pt; font-weight:800; color:#334155; margin-bottom:2px;">🏖️ الإجازات والعمل عن بعد (WFH)</div>
-                                ${leavesBoxesHtml}
+                                <div style="font-size:7.5pt; font-weight:800; color:#0369a1; margin-bottom:3px;">🎫 سجل أذونات الحضور والانصراف المعتمدة:</div>
+                                ${permsBoxHtml}
                                 ${wfhBoxHtml}
                             </div>
                         </div>
@@ -2476,11 +2542,13 @@
             font-weight: 800;
         }
         .badge-pill-rate    { background: #ffffff; color: #0f766e; }
+        .badge-pill-perm    { background: #e0f2fe; color: #0369a1; border: 1px solid #bae6fd; }
         .badge-pill-ok      { background: #dcfce7; color: #15803d; }
         .badge-pill-danger  { background: #fee2e2; color: #b91c1c; }
         .badge-pill-early   { background: #fef3c7; color: #b45309; }
 
         .badge-ok      { display: inline-block; padding: 1px 5px; border-radius: 6px; font-size: 6pt; font-weight: 700; background: #dcfce7; color: #15803d; border: 1px solid #86efac; }
+        .badge-perm    { display: inline-block; padding: 1px 5px; border-radius: 6px; font-size: 6pt; font-weight: 700; background: #e0f2fe; color: #0369a1; border: 1px solid #7dd3fc; }
         .badge-danger  { display: inline-block; padding: 1px 5px; border-radius: 6px; font-size: 6pt; font-weight: 700; background: #fee2e2; color: #b91c1c; border: 1px solid #fca5a5; }
 
         /* Signatures */
@@ -2551,8 +2619,8 @@
                 <div class="kpi-lbl">التأخيرات</div>
             </div>
             <div class="kpi-card kpi-blue">
-                <div class="kpi-val">${sumLeaves}ي / ${sumWfh}ي</div>
-                <div class="kpi-lbl">إجازات / WFH</div>
+                <div class="kpi-val">${sumPerms} إذن / ${sumLeaves}ي</div>
+                <div class="kpi-lbl">أذونات / إجازات</div>
             </div>
         </div>
 
@@ -2563,12 +2631,12 @@
                 ${topPunctual.map(t => `<div>• <strong>${t.name}:</strong> التزام <strong>${t.punctualityRate}%</strong> (${t.ok} يوم في معاده)</div>`).join('')}
             </div>
             <div class="insight-col">
-                <div class="insight-col-title" style="color:#b91c1c;">⚠️ ملاحظات التأخيرات المسجلة:</div>
-                ${needsAttention.length ? needsAttention.slice(0, 3).map(n => `<div>• <strong>${n.name}:</strong> ${n.late} يوم تأخير</div>`).join('') : '<div>• لا توجد أي حالات تأخير مسجلة هذا الشهر</div>'}
+                <div class="insight-col-title" style="color:#b91c1c;">⚠️ ملاحظات التأخيرات والأذونات:</div>
+                ${needsAttention.length ? needsAttention.slice(0, 3).map(n => `<div>• <strong>${n.name}:</strong> ${n.late} يوم تأخير (مسجل ${n.allEmpPerms.length} إذن)</div>`).join('') : '<div>• لا توجد أي حالات تأخير مسجلة هذا الشهر</div>'}
             </div>
             <div class="insight-col">
                 <div class="insight-col-title" style="color:#0f766e;">📑 مؤشرات الدوام والأرصدة:</div>
-                <div>• متوسط الدوام: <strong>${avgDailyHours} ساعة/يوم</strong></div>
+                <div>• إجمالي الأذونات المعتمدة: <strong>${sumPerms} إذن</strong></div>
                 <div>• إجمالي السجلات: <strong>${totalRecordsCount} حركة</strong></div>
                 <div>• رصيد الإجازات: مادة 124 قانون العمل</div>
             </div>
@@ -2580,16 +2648,17 @@
             <thead>
                 <tr>
                     <th style="width:3%;">#</th>
-                    <th style="width:16%;">الموظف</th>
+                    <th style="width:15%;">الموظف</th>
                     <th style="width:7%;">الدوام</th>
                     <th style="width:8%;">✅ في معاده</th>
                     <th style="width:7%;">⏰ متأخر</th>
-                    <th style="width:7%;">🚪 بدري</th>
-                    <th style="width:8%;">🏖️ إجازة</th>
-                    <th style="width:8%;">🏠 WFH</th>
+                    <th style="width:6%;">🚪 بدري</th>
+                    <th style="width:8%;">🎫 أذونات</th>
+                    <th style="width:7%;">🏖️ إجازة</th>
+                    <th style="width:7%;">🏠 WFH</th>
                     <th style="width:10%;">⏱ ساعات العمل</th>
-                    <th style="width:9%;">🎯 الانضباط</th>
-                    <th style="width:17%;">📑 رصيد الإجازة</th>
+                    <th style="width:8%;">🎯 الانضباط</th>
+                    <th style="width:14%;">📑 رصيد الإجازة</th>
                 </tr>
             </thead>
             <tbody>
