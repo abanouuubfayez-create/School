@@ -1532,13 +1532,11 @@
                 });
             }
 
-            // 4. Ensure Yostina (كود 6) has NO unapproved August leaves in manual store
-            if (employeeManualLeaves['6']) {
-                employeeManualLeaves['6'] = employeeManualLeaves['6'].filter(l => {
-                    const d = String(l.date || l.fromDate || '');
-                    return !d.startsWith('2026-08');
-                });
-            }
+            // 4. Set accurate August leaves for Yostina (كود 6)
+            employeeManualLeaves['6'] = [
+                { type: 'annual', typeLabel: 'إجازة سنوية اعتيادية (مادة ١٢٤)', date: '2026-08-06', fromDate: '2026-08-06', toDate: '2026-08-06', days: 1, note: 'مسحوبة من الرصيد السنوي' },
+                { type: 'casual', typeLabel: 'إجازة عارضة طارئة (مادة ١٢٨)', date: '2026-08-25', fromDate: '2026-08-25', toDate: '2026-08-25', days: 1, note: 'إجازة عارضة معتمدة' }
+            ];
 
             function processRequestItem(r) {
                 if (!r || typeof r !== 'object') return false;
@@ -2852,13 +2850,22 @@
             '4': { name: 'Abanob', balance: 15, total: 15, used: 0, casual: 0, wfh: 10, leaves: [] },
             '6': { 
                 name: 'Yostina', 
-                balance: 9, 
+                balance: 0, 
                 total: 15, 
-                used: 6, 
-                casual: 0, 
+                used: 15, 
+                casual: 2, 
                 wfh: 10, 
                 leaves: [
-                    { type: '✍️ [تسجيل يدوي] إجازة سنوية (6 يوم)', date: '2026-07-19 ← 2026-07-27 (6ي) - يوليو 2026 سفر' }
+                    { type: '✍️ [تسجيل يدوي] إجازة عارضة (1 يوم)', date: '2026-04-26 (1ي) - 26 أبريل 2026' },
+                    { type: '✍️ [تسجيل يدوي] إجازة سنوية مسحوبة من الرصيد (1 يوم)', date: '2026-06-09 (1ي) - 9 يونيو 2026' },
+                    { type: '✍️ [تسجيل يدوي] إجازة سنوية مسحوبة من الرصيد (1 يوم)', date: '2026-06-11 (1ي) - 11 يونيو 2026' },
+                    { type: '✍️ [تسجيل يدوي] إجازة سنوية مسحوبة من الرصيد (1 يوم)', date: '2026-06-23 (1ي) - 23 يونيو 2026' },
+                    { type: '✍️ [تسجيل يدوي] إجازة سنوية مسحوبة من الرصيد (1 يوم)', date: '2026-07-01 (1ي) - 1 يوليو 2026' },
+                    { type: '✍️ [تسجيل يدوي] إجازة سنوية مسحوبة من الرصيد (1 يوم)', date: '2026-07-12 (1ي) - 12 يوليو 2026' },
+                    { type: '✍️ [تسجيل يدوي] إجازة سنوية اعتيادية (6 يوم)', date: '2026-07-19 ← 2026-07-26 (6ي) - إجازة سنوية' },
+                    { type: '✍️ [تسجيل يدوي] إجازة سنوية مسحوبة من الرصيد (1 يوم)', date: '2026-07-29 (1ي) - 29 يوليو 2026' },
+                    { type: '✍️ [تسجيل يدوي] إجازة سنوية مسحوبة من الرصيد (1 يوم)', date: '2026-08-06 (1ي) - 6 أغسطس 2026' },
+                    { type: '✍️ [تسجيل يدوي] إجازة عارضة (1 يوم)', date: '2026-08-25 (1ي) - 25 أغسطس 2026' }
                 ] 
             },
             '10': { name: 'Kirlos', balance: 15, total: 15, used: 0, casual: 0, wfh: 0, leaves: [] }
@@ -3879,7 +3886,7 @@
         syncApprovedEmployeeRequests();
         initAttendanceArchive();
     </script>
-    <script src="theme.js?v=1788177339"></script>
-    <script src="pwa-install.js?v=1788177339"></script>
+    <script src="theme.js?v=1788177568"></script>
+    <script src="pwa-install.js?v=1788177568"></script>
 </body>
 </html>
