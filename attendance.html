@@ -819,8 +819,11 @@
 
         <!-- Tab Bar Switcher -->
         <div class="exec-tabs-bar">
-            <button class="exec-tab-btn active" onclick="switchExecTab('timesheets', this)">
-                👤 كشوفات الموظفين وسجلات البصمة التفصيلية
+            <button class="exec-tab-btn active" onclick="switchExecTab('overview', this)">
+                📊 الملخص التنفيذي والانضباط
+            </button>
+            <button class="exec-tab-btn" onclick="switchExecTab('timesheets', this)">
+                👤 كشوفات الموظفين وسجلات البصمة
             </button>
             <button class="exec-tab-btn" onclick="switchExecTab('permissions', this)">
                 🎫 سجل الأذونات والإجازات
@@ -830,8 +833,54 @@
             </button>
         </div>
 
-        <!-- ════════════ TAB 1: EMPLOYEE TIMESHEETS (PRIMARY) ════════════ -->
-        <section id="tab-timesheets" class="tab-panel active">
+        <!-- ════════════ TAB 1: EXECUTIVE OVERVIEW ════════════ -->
+        <section id="tab-overview" class="tab-panel active">
+            <div class="card-table-wrap">
+                <div class="card-table-hdr">
+                    <div class="card-table-title">
+                        📊 كشف الانضباط الشهري وتدقيق الأذونات
+                    </div>
+                    <input type="text" class="search-box" id="overviewSearch" placeholder="🔍 بحث عن موظف..." oninput="filterOverviewTable()">
+                </div>
+                <div style="overflow-x: auto;">
+                    <table class="admin-table" id="overviewTable">
+                        <thead>
+                            <tr>
+                                <th style="width: 4%; text-align:center;">#</th>
+                                <th style="width: 20%; text-align:right;">اسم الموظف</th>
+                                <th style="width: 6%; text-align:center;">الكود</th>
+                                <th style="width: 13%; text-align:center;">✅ في الميعاد</th>
+                                <th style="width: 13%; text-align:center;">⏰ تأخير بدون إذن</th>
+                                <th style="width: 12%; text-align:center;">🎫 تأخير بإذن</th>
+                                <th style="width: 11%; text-align:center;">🚨 خصومات الغياب</th>
+                                <th style="width: 8%; text-align:center;">🎫 الأذونات</th>
+                                <th style="width: 13%; text-align:center;">⏱ ساعات العمل</th>
+                            </tr>
+                        </thead>
+                        <tbody id="overviewTableBody"></tbody>
+                    </table>
+                </div>
+            </div>
+
+            <!-- Official Signatures Footer (Visible in Print Only) -->
+            <div class="print-only-footer">
+                <div class="sig-box">
+                    <div class="sig-title">إعداد ومراجعة الموارد البشرية (HR)</div>
+                    <div class="sig-line">الاسم والتوقيع: ............................</div>
+                </div>
+                <div class="sig-box">
+                    <div class="sig-title">تدقيق المدير الإداري</div>
+                    <div class="sig-line">الاسم والتوقيع: ............................</div>
+                </div>
+                <div class="sig-box">
+                    <div class="sig-title">اعتماد المدير التنفيذي وخاتم الشركة</div>
+                    <div class="sig-line">الاعتماد الرسمي: ............................</div>
+                </div>
+            </div>
+        </section>
+
+        <!-- ════════════ TAB 2: EMPLOYEE TIMESHEETS ════════════ -->
+        <section id="tab-timesheets" class="tab-panel">
             <div style="margin-bottom: 1rem; display: flex; gap: 10px; align-items: center; justify-content: space-between; flex-wrap: wrap;">
                 <input type="text" class="search-box" id="timesheetSearch" placeholder="🔍 تصفية بطاقات الموظفين..." oninput="filterTimesheetCards()" style="width: 280px;">
                 <div style="font-size: 0.85rem; color: var(--text-muted);">💡 اضغط على بطاقة أي موظف لعرض أو إخفاء سجل بصماته التفصيلي اليومي</div>
@@ -2375,7 +2424,6 @@
         // ══════════════════════════════════════════
         function renderExecutiveOverview() {
             const tbody = document.getElementById('overviewTableBody');
-            if (!tbody) return;
             tbody.innerHTML = '';
 
             stats.employeeDetails.forEach((emp, idx) => {
@@ -2411,18 +2459,15 @@
 
                 const tr = document.createElement('tr');
                 tr.innerHTML = `
-                    <td style="font-weight:bold; color:var(--text-muted); text-align:center; white-space:nowrap;">${idx + 1}</td>
-                    <td style="font-weight:bold; color:var(--text); white-space:nowrap;">${name}</td>
-                    <td style="color:var(--perm-light); font-weight:bold; text-align:center; white-space:nowrap;">#${emp.employeeId}</td>
-                    <td style="text-align:center; white-space:nowrap;"><span class="status-badge badge-ok">✅ ${ok} يوم</span></td>
-                    <td style="text-align:center; white-space:nowrap;">${lateNoPerm > 0 ? `<span class="status-badge badge-danger">⚠️ ${lateNoPerm} غير مبرر</span>` : '<span style="color:var(--text-muted);">0</span>'}</td>
-                    <td style="text-align:center; white-space:nowrap;">${latePerm > 0 ? `<span class="status-badge badge-perm">🎫 ${latePerm} بإذن</span>` : '<span style="color:var(--text-muted);">0</span>'}</td>
-                    <td style="text-align:center; white-space:nowrap;">${deductionBadge}</td>
-                    <td style="text-align:center; white-space:nowrap;"><span class="status-badge badge-perm">${permsCount} إذن</span></td>
-                    <td style="font-weight:bold; color:var(--primary-light); text-align:center; white-space:nowrap;">${(totalHours).toFixed(2)} س <small style="display:block; font-size:10px; color:var(--text-muted);">(${fmtHoursAndMins(totalHours)})</small></td>
-                    <td class="col-action" style="text-align:center; white-space:nowrap;">
-                        <button class="btn-action btn-perm-action" onclick="openNewPermForEmp('${emp.employeeId}')" style="padding:2px 8px;font-size:0.75rem;">+ إذن</button>
-                    </td>
+                    <td style="font-weight:bold; color:var(--text-muted); text-align:center;">${idx + 1}</td>
+                    <td style="font-weight:bold; color:var(--text);">${name}</td>
+                    <td style="color:var(--perm-light); font-weight:bold; text-align:center;">#${emp.employeeId}</td>
+                    <td style="text-align:center;"><span class="status-badge badge-ok">✅ ${ok} يوم</span></td>
+                    <td style="text-align:center;">${lateNoPerm > 0 ? `<span class="status-badge badge-danger">⚠️ ${lateNoPerm} غير مبرر</span>` : '<span style="color:var(--text-muted);">0</span>'}</td>
+                    <td style="text-align:center;">${latePerm > 0 ? `<span class="status-badge badge-perm">🎫 ${latePerm} بإذن</span>` : '<span style="color:var(--text-muted);">0</span>'}</td>
+                    <td style="text-align:center;">${deductionBadge}</td>
+                    <td style="text-align:center;"><span class="status-badge badge-perm">${permsCount} إذن</span></td>
+                    <td style="font-weight:bold; color:var(--primary-light); text-align:center;">${(totalHours).toFixed(2)} س <small style="display:block; font-size:10px; color:var(--text-muted);">(${fmtHoursAndMins(totalHours)})</small></td>
                 `;
                 tbody.appendChild(tr);
             });
@@ -3949,21 +3994,107 @@
     </style>
 </head>
 <body>
-    <!-- Top Header -->
-    <div class="hdr-box">
-        <div>
-            <div class="hdr-brand">🏢 شركة تيك جو للحلول التقنية المتطورة</div>
-            <div class="hdr-title">📊 التقرير الإداري المفصل للحضور والانصراف</div>
-            <div class="hdr-sub">سجل الحضور المعتمد والأرشيف الإداري ومطابقة ساعات العمل الرسمية</div>
+    <!-- ════════════ PAGE 1: EXECUTIVE DASHBOARD ════════════ -->
+    <div class="avoid-break">
+        <!-- Top Header -->
+        <div class="hdr-box">
+            <div>
+                <div class="hdr-brand">🏢 شركة تيك جو للحلول التقنية المتطورة</div>
+                <div class="hdr-title">📊 التقرير الإداري الشهري للحضور والانصراف</div>
+                <div class="hdr-sub">سجل الحضور المعتمد والأرشيف الإداري ومطابقة ساعات العمل الرسمية</div>
+            </div>
+            <div class="hdr-badge-wrap">
+                <div>📅 <strong>شهر التقرير:</strong> ${monthNameAr} ${pYear}</div>
+                <div>⏰ <strong>مواعيد الدوام:</strong> ${workConfig.start} → ${workConfig.end} (سماح ${workConfig.grace || 30}د)</div>
+                <div>👥 <strong>${totalEmployees} موظف</strong> | <strong>${uniqueDates} يوم عمل</strong> | <strong>${totalRecordsCount} حركة</strong></div>
+            </div>
         </div>
-        <div class="hdr-badge-wrap">
-            <div>📅 <strong>شهر التقرير:</strong> ${monthNameAr} ${pYear}</div>
-            <div>⏰ <strong>مواعيد الدوام:</strong> ${workConfig.start} → ${workConfig.end} (سماح ${workConfig.grace || 30}د)</div>
-            <div>👥 <strong>${totalEmployees} موظف</strong> | <strong>${uniqueDates} يوم عمل</strong> | <strong>${totalRecordsCount} حركة</strong></div>
+
+        <!-- Month Ribbon Banner -->
+        <div class="month-ribbon">
+            <div class="month-ribbon-title">🗓️ ملخص واعتماد دوام شهر: ${monthNameAr} ${pYear}</div>
+            <div class="month-ribbon-dates">الفترة المعتمدة: من <strong>${minDate}</strong> إلى <strong>${maxDate}</strong> | تاريخ الطباعة: <strong>${new Date().toLocaleDateString('ar-EG')}</strong></div>
+        </div>
+
+        <!-- Executive KPI Grid -->
+        <div class="kpi-grid">
+            <div class="kpi-card kpi-purple">
+                <div class="kpi-val">${totalEmployees}</div>
+                <div class="kpi-lbl">الموظفين</div>
+            </div>
+            <div class="kpi-card kpi-yellow">
+                <div class="kpi-val">${uniqueDates}</div>
+                <div class="kpi-lbl">أيام الدوام</div>
+            </div>
+            <div class="kpi-card kpi-teal">
+                <div class="kpi-val">${sumHours.toFixed(1)} س</div>
+                <div class="kpi-lbl">ساعات العمل</div>
+            </div>
+            <div class="kpi-card kpi-green">
+                <div class="kpi-val">${overallPunctuality}%</div>
+                <div class="kpi-lbl">الانضباط العام</div>
+            </div>
+            <div class="kpi-card kpi-red">
+                <div class="kpi-val">${sumLate}</div>
+                <div class="kpi-lbl">التأخيرات</div>
+            </div>
+            <div class="kpi-card kpi-blue">
+                <div class="kpi-val">${sumPerms} إذن / ${sumLeaves}ي</div>
+                <div class="kpi-lbl">أذونات / إجازات</div>
+            </div>
+        </div>
+
+        <!-- Executive Highlights Box -->
+        <div class="insights-box">
+            <div class="insight-col">
+                <div class="insight-col-title" style="color:#15803d;">🏆 الأكثر التزاماً بالمواعيد:</div>
+                ${topPunctual.map(t => `<div>• <strong>${t.name}:</strong> التزام <strong>${t.punctualityRate}%</strong> (${t.ok} يوم في معاده)</div>`).join('')}
+            </div>
+            <div class="insight-col">
+                <div class="insight-col-title" style="color:#b91c1c;">⚠️ ملاحظات التأخيرات والأذونات:</div>
+                ${needsAttention.length ? needsAttention.slice(0, 3).map(n => `<div>• <strong>${n.name}:</strong> ${n.late} يوم تأخير (مسجل ${n.allEmpPerms.length} إذن)</div>`).join('') : '<div>• لا توجد أي حالات تأخير مسجلة هذا الشهر</div>'}
+            </div>
+            <div class="insight-col">
+                <div class="insight-col-title" style="color:#0f766e;">📑 مؤشرات الدوام والأرصدة:</div>
+                <div>• إجمالي الأذونات المعتمدة: <strong>${sumPerms} إذن</strong></div>
+                <div>• إجمالي السجلات: <strong>${totalRecordsCount} حركة</strong></div>
+                <div>• رصيد الإجازات: مادة 124 قانون العمل</div>
+            </div>
+        </div>
+
+        <!-- Summary Performance Matrix Table -->
+        <div class="table-hdr-title">📊 جدول ملخص الانضباط والأداء لكافة الموظفين (${monthNameAr} ${pYear})</div>
+        <table class="print-table">
+            <thead>
+                <tr>
+                    <th style="width:3%;">#</th>
+                    <th style="width:15%;">الموظف</th>
+                    <th style="width:7%;">الدوام</th>
+                    <th style="width:8%;">✅ في معاده</th>
+                    <th style="width:7%;">⏰ متأخر</th>
+                    <th style="width:6%;">🚪 بدري</th>
+                    <th style="width:8%;">🎫 أذونات</th>
+                    <th style="width:7%;">🏖️ إجازة</th>
+                    <th style="width:7%;">🏠 WFH</th>
+                    <th style="width:10%;">⏱ ساعات العمل</th>
+                    <th style="width:8%;">🎯 الانضباط</th>
+                    <th style="width:14%;">📑 رصيد الإجازة</th>
+                </tr>
+            </thead>
+            <tbody>
+                ${overviewRows}
+            </tbody>
+        </table>
+
+        <!-- Month Holidays & Extra Days Section (Only for active month) -->
+        <div style="display:grid; grid-template-columns: ${monthExtraDays.length ? '1.4fr 1fr' : '1fr'}; gap:8px;">
+            ${monthHolidaysHtml}
+            ${monthExtraDaysHtml}
         </div>
     </div>
 
-    <!-- ════════════ DETAILED EMPLOYEE TIMESHEETS ════════════ -->
+    <!-- ════════════ PAGES 2+: DETAILED EMPLOYEE TIMESHEETS ════════════ -->
+    <div class="page-break"></div>
     <div style="margin-top:4px;">
         <div class="table-hdr-title" style="font-size:11pt; margin-bottom:8px; border-bottom: 2px solid #0f6e64; padding-bottom: 4px;">
             👥 السجل التفصيلي اليومي للموظفين — شهر ${monthNameAr} ${pYear}
