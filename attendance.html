@@ -1499,7 +1499,27 @@
                 });
             }
 
-            // 2. Group Late Exemption for 2026-08-26 for All Employees
+            // 2. Basel (كود 7) Approved Permissions from Requests Center
+            if (!employeePermissions['7']) employeePermissions['7'] = [];
+            const baselPermDates = [
+                { date: '2026-08-02', note: 'إذن حضور متأخر معتمد من مركز طلبات الموظفين' },
+                { date: '2026-08-10', note: 'إذن حضور متأخر معتمد من مركز طلبات الموظفين' },
+                { date: '2026-08-17', note: 'إذن حضور متأخر معتمد من مركز طلبات الموظفين' },
+                { date: '2026-08-18', note: 'إذن حضور متأخر معتمد من مركز طلبات الموظفين' }
+            ];
+            baselPermDates.forEach(bp => {
+                if (!employeePermissions['7'].some(p => p.date === bp.date)) {
+                    employeePermissions['7'].push({
+                        date: bp.date,
+                        type: 'late',
+                        note: bp.note,
+                        source: 'employee_request',
+                        sourceTag: '📱 طلب موظف معتمد'
+                    });
+                }
+            });
+
+            // 3. Group Late Exemption for 2026-08-26 for All Employees
             if (!employeePermissions['all']) employeePermissions['all'] = [];
             if (!employeePermissions['all'].some(p => p.date === '2026-08-26')) {
                 employeePermissions['all'].push({
@@ -3030,17 +3050,25 @@
                     const entry = emp.entries.find(e => e.date === date);
                     const exit  = emp.exits.find(e => e.date === date);
                     const p = getDayPunctuality(emp.employeeId, date, entry ? entry.time : null, exit ? exit.time : null);
+                    const perm = getPermissionForDate(emp.employeeId, date);
 
                     if (entry && exit) {
                         const h = calcDayWorkHours(entry.time, exit.time).hours;
                         if (h > 0 && h < 24) empHours += h;
-                        if (p === 'late') late++;
+                        if (p === 'late') {
+                            if (perm && (perm.type === 'late' || perm.type === 'temp')) ok++;
+                            else late++;
+                        }
                         else ok++;
                     } else if (entry && !exit) {
-                        if (p === 'late') late++;
+                        if (p === 'late') {
+                            if (perm && (perm.type === 'late' || perm.type === 'temp')) ok++;
+                            else late++;
+                        }
                         else ok++;
                     } else if (!entry && exit) {
-                        early++;
+                        if (perm && (perm.type === 'late' || perm.type === 'temp')) ok++;
+                        else early++;
                     }
                 });
 
@@ -3775,7 +3803,7 @@
         syncApprovedEmployeeRequests();
         initAttendanceArchive();
     </script>
-    <script src="theme.js?v=1788173203"></script>
-    <script src="pwa-install.js?v=1788173203"></script>
+    <script src="theme.js?v=1788174383"></script>
+    <script src="pwa-install.js?v=1788174383"></script>
 </body>
 </html>
