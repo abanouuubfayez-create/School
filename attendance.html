@@ -12,6 +12,11 @@
         })();
     </script>
     <link href="https://fonts.googleapis.com/css2?family=Cairo:wght@400;600;700;800;900&family=Tajawal:wght@400;500;700;800&display=swap" rel="stylesheet">
+    <!-- Firebase SDK for real-time integration with Employee Requests Center -->
+    <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-app-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-auth-compat.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/9.23.0/firebase-firestore-compat.js"></script>
+    <script src="firebase-config.js"></script>
     <style>
         * { margin: 0; padding: 0; box-sizing: border-box; }
 
@@ -2593,11 +2598,11 @@
 
         // Employee Metadata for Leave Balances (استبعاد الموظفين المعطلين)
         const _EMP_LEAVE_META = {
-            '3': { name: 'Ebthal', balance: 14, total: 15, used: 1, casual: 1, wfh: 10, leaves: [{ type: '✍️ [تسجيل يدوي] إجازة عارضة (1 يوم)', date: '9 يوليو 2026 (1ي)' }, { type: '✍️ [تسجيل يدوي] إجازة رسمية (1 يوم)', date: '16 يوليو 2026 (1ي) - من الإدارة' }] },
-            '8': { name: 'Markos', balance: 15, total: 15, used: 0, casual: 0, wfh: 10, leaves: [] },
+            '3': { name: 'Ebthal', balance: 13, total: 15, used: 2, casual: 1, wfh: 10, leaves: [{ type: '✍️ [تسجيل يدوي] إجازة عارضة (1 يوم)', date: '9 يوليو 2026 (1ي)' }, { type: '✍️ [تسجيل يدوي] إجازة رسمية (1 يوم)', date: '16 يوليو 2026 (1ي) - من الإدارة' }] },
+            '8': { name: 'Markos', balance: 14, total: 15, used: 1, casual: 0, wfh: 10, leaves: [{ type: '📱 [طلب موظف معتمد] إجازة سنوية (1 يوم)', date: 'إجازة سنوية معتمدة من مركز طلبات الموظفين (1ي)' }] },
             '7': { name: 'Basel', balance: 10, total: 15, used: 5, casual: 1, wfh: 0, leaves: [{ type: '✍️ [تسجيل يدوي] إجازة سنوية (4 يوم)', date: '19 يوليو 2026 ← 22 يوليو 2026 (4ي) - سفر' }, { type: '✍️ [تسجيل يدوي] إجازة عارضة (1 يوم)', date: '16 يوليو 2026 (1ي) - سفر' }] },
             '4': { name: 'Abanob', balance: 15, total: 15, used: 0, casual: 0, wfh: 10, leaves: [] },
-            '6': { name: 'Yostina', balance: 5, total: 15, used: 10, casual: 4, wfh: 10, leaves: [{ type: '✍️ [تسجيل يدوي] إجازة سنوية (10 يوم إجمالي)', date: '19 يوليو 2026 ← 27 يوليو 2026 (7ي) - سفر' }] },
+            '6': { name: 'Yostina', balance: 5, total: 15, used: 10, casual: 4, wfh: 10, leaves: [{ type: '✍️ [تسجيل يدوي] إجازة سنوية (6 يوم)', date: '19 يوليو 2026 ← 27 يوليو 2026 (6ي) - سفر' }, { type: '📱 [طلب موظف معتمد] إجازة عارضة (4 يوم)', date: 'إجازات عارضة معتمدة من مركز الطلبات (4ي)' }] },
             '10': { name: 'Kirlos', balance: 15, total: 15, used: 0, casual: 0, wfh: 0, leaves: [] }
         };
 
@@ -2635,11 +2640,54 @@
                 return x.date.startsWith(primaryYm) || (x.date >= minDate && x.date <= maxDate);
             });
 
-            // Dynamic Leaves Store from LocalStorage / Baseline
+            // Dynamic Leaves Store from LocalStorage / Baseline & Employee Requests Center
             let dynamicLeavesStore = {};
             try {
                 const rawLeaves = localStorage.getItem('attendance_sys_techgo_employee_leaves') || localStorage.getItem('techgo_employee_leaves');
                 if (rawLeaves) dynamicLeavesStore = JSON.parse(rawLeaves);
+            } catch(e){}
+
+            // Scan Employee Requests Center caches for approved leave requests
+            try {
+                const reqKeys = ['techgo_all_requests', 'tg_employee_requests', '_reqCache', 'techgo_employee_requests_cache', 'tg_cached_requests'];
+                reqKeys.forEach(k => {
+                    const raw = localStorage.getItem(k);
+                    if (!raw) return;
+                    const reqList = JSON.parse(raw);
+                    if (Array.isArray(reqList)) {
+                        reqList.forEach(r => {
+                            if (!r) return;
+                            const status = (r.status || '').toLowerCase();
+                            if (status !== 'approved' && status !== 'مقبول' && status !== 'معتمد' && status !== 'active') return;
+                            const type = (r.type || r.title || '').toLowerCase();
+                            if (type.includes('إجازة') || type.includes('leave') || type.includes('عارضة') || type.includes('سنوية')) {
+                                let tId = String(r.empId || r.employeeId || r.uid || '').trim();
+                                if (!tId && r.userName) {
+                                    Object.keys(employeeNames).forEach(id => {
+                                        if (r.userName.includes(employeeNames[id]) || employeeNames[id].includes(r.userName)) tId = id;
+                                    });
+                                }
+                                if (tId && !inactiveEmployees.includes(String(tId))) {
+                                    if (!dynamicLeavesStore[tId]) dynamicLeavesStore[tId] = {};
+                                    if (!dynamicLeavesStore[tId][pYear]) dynamicLeavesStore[tId][pYear] = { annual: [], casual: [] };
+                                    const lDate = r.fromDate || r.date || r.startDate || '';
+                                    const lDays = parseInt(r.days, 10) || 1;
+                                    const isCasual = type.includes('عارضة') || type.includes('casual');
+                                    const bucket = isCasual ? dynamicLeavesStore[tId][pYear].casual : dynamicLeavesStore[tId][pYear].annual;
+                                    if (!bucket.some(x => (x.fromDate || x.date) === lDate)) {
+                                        bucket.push({
+                                            fromDate: lDate,
+                                            date: lDate,
+                                            toDate: r.toDate || lDate,
+                                            days: lDays,
+                                            reason: r.reason || r.note || 'معتمد من مركز طلبات الموظفين'
+                                        });
+                                    }
+                                }
+                            }
+                        });
+                    }
+                });
             } catch(e){}
 
             // Compute overall aggregate metrics across all employees
@@ -3512,7 +3560,7 @@
         updatePolicyLabels();
         initAttendanceArchive();
     </script>
-    <script src="theme.js?v=1788169581"></script>
-    <script src="pwa-install.js?v=1788169581"></script>
+    <script src="theme.js?v=1788169696"></script>
+    <script src="pwa-install.js?v=1788169696"></script>
 </body>
 </html>
