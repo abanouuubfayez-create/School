@@ -1460,6 +1460,61 @@
             return 'ok';
         }
 
+        // ══════════════════════════════════════════
+        //  OFFICIAL HOLIDAYS MASTER SCHEDULE (قانون العمل المصري - المادة ١٢٩)
+        // ══════════════════════════════════════════
+        const _OFFICIAL_HOLIDAYS_LIST = [
+            { id: 1,  date: '2026-01-07', day: 'الأربعاء', occasion: 'عيد الميلاد المجيد', details: '٧ يناير ٢٠٢٦' },
+            { id: 2,  date: '2026-01-29', day: 'الخميس', occasion: 'عيد الشرطة وثورة ٢٥ يناير', details: '٢٩ يناير ٢٠٢٦ (مرحل)' },
+            { id: 3,  date: '2026-03-19', day: 'الخميس', occasion: 'عيد الفطر المبارك', details: 'من ١٩ حتى ٢٣ مارس ٢٠٢٦', durationDays: 5 },
+            { id: 4,  date: '2026-04-05', day: 'الأحد', occasion: 'أحد الشعانين', details: '٥ أبريل ٢٠٢٦' },
+            { id: 5,  date: '2026-04-09', day: 'الخميس', occasion: 'خميس العهد', details: '٩ أبريل ٢٠٢٦' },
+            { id: 6,  date: '2026-04-12', day: 'الأحد', occasion: 'عيد القيامة المجيد', details: '١٢ أبريل ٢٠٢٦' },
+            { id: 7,  date: '2026-04-13', day: 'الإثنين', occasion: 'شم النسيم', details: '١٣ أبريل ٢٠٢٦' },
+            { id: 8,  date: '2026-04-25', day: 'السبت', occasion: 'عيد تحرير سيناء', details: '٢٥ أبريل ٢٠٢٦' },
+            { id: 9,  date: '2026-05-07', day: 'الخميس', occasion: 'عيد العمال', details: '٧ مايو ٢٠٢٦ (مرحل بدلاً من ١ مايو)' },
+            { id: 10, date: '2026-05-26', day: 'الثلاثاء', occasion: 'وقفة وعيد الأضحى المبارك', details: 'من ٢٦ حتى ٣١ مايو ٢٠٢٦', durationDays: 6 },
+            { id: 11, date: '2026-06-18', day: 'الخميس', occasion: 'رأس السنة الهجرية', details: '١٨ يونيو ٢٠٢٦ (مرحل)' },
+            { id: 12, date: '2026-07-02', day: 'الخميس', occasion: 'ثورة ٣٠ يونيو', details: '٢ يوليو ٢٠٢٦ (مرحل بدلاً من ٣٠ يونيو)' },
+            { id: 13, date: '2026-07-23', day: 'الخميس', occasion: 'ثورة ٢٣ يوليو', details: '٢٣ يوليو ٢٠٢٦' },
+            { id: 14, date: '2026-08-27', day: 'الخميس', occasion: 'المولد النبوي الشريف', details: '٢٧ أغسطس ٢٠٢٦ (مرحل)' },
+            { id: 15, date: '2026-10-08', day: 'الخميس', occasion: 'عيد القوات المسلحة (٦ أكتوبر)', details: '٨ أكتوبر ٢٠٢٦ (مرحل)' },
+            { id: 16, date: '2027-01-07', day: 'الخميس', occasion: 'عيد الميلاد المجيد ٢٠٢٧', details: '٧ يناير ٢٠٢٧' }
+        ];
+
+        function getOfficialHoliday(dateStr) {
+            if (!dateStr) return null;
+            
+            // 1. Check presets
+            for (let i = 0; i < _OFFICIAL_HOLIDAYS_LIST.length; i++) {
+                const h = _OFFICIAL_HOLIDAYS_LIST[i];
+                const dur = h.durationDays || 1;
+                if (dur === 1) {
+                    if (h.date === dateStr) return h;
+                } else {
+                    const startObj = new Date(h.date + 'T00:00:00');
+                    const curObj   = new Date(dateStr + 'T00:00:00');
+                    const endObj   = new Date(startObj.getTime() + (dur - 1) * 24 * 60 * 60 * 1000);
+                    if (curObj >= startObj && curObj <= endObj) return h;
+                }
+            }
+
+            // 2. Check dynamic official holidays in localStorage
+            try {
+                const localHols = JSON.parse(localStorage.getItem('officialHolidays') || '[]');
+                const found = localHols.find(lh => lh.date === dateStr);
+                if (found) {
+                    return {
+                        date: found.date,
+                        occasion: found.label || 'إجازة رسمية معتمدة',
+                        details: found.label || 'إجازة رسمية'
+                    };
+                }
+            } catch(e){}
+
+            return null;
+        }
+
         function saveManualLeavesToStorage() {
             try { localStorage.setItem('techgo_manual_leaves', JSON.stringify(employeeManualLeaves)); } catch(e){}
         }
@@ -1508,6 +1563,16 @@
             if (meta && meta.leaves) {
                 const b = meta.leaves.find(l => l.date && l.date.includes(dateStr));
                 if (b) return { type: 'meta', typeLabel: b.type, note: b.date };
+            }
+
+            // 4. Automatic Official Public Holidays (م.١٢٩ من قانون العمل المصري)
+            const offHol = getOfficialHoliday(dateStr);
+            if (offHol) {
+                return {
+                    type: 'official',
+                    typeLabel: `🏛️ إجازة رسمية: ${offHol.occasion}`,
+                    note: (offHol.occasion || 'عطلة رسمية') + (offHol.details ? ` (${offHol.details})` : '') + ' - م.١٢٩'
+                };
             }
 
             return null;
@@ -2178,23 +2243,6 @@
         // ══════════════════════════════════════════
         const _MONTH_NAMES_AR = ['يناير','فبراير','مارس','أبريل','مايو','يونيو','يوليو','أغسطس','سبتمبر','أكتوبر','نوفمبر','ديسمبر'];
         const _DAY_NAMES_AR = ['الأحد','الاثنين','الثلاثاء','الأربعاء','الخميس','الجمعة','السبت'];
-
-        const _OFFICIAL_HOLIDAYS_LIST = [
-            { id: 1, date: '2026-04-05', day: 'الأحد', occasion: 'احد الشعانين', details: '٥ أبريل ٢٠٢٦' },
-            { id: 2, date: '2026-04-09', day: 'الخميس', occasion: 'خميس العهد', details: '٩ أبريل ٢٠٢٦' },
-            { id: 3, date: '2026-04-12', day: 'الأحد', occasion: 'عيد القيامة', details: '١٢ أبريل ٢٠٢٦' },
-            { id: 4, date: '2026-04-13', day: 'الإثنين', occasion: 'شم النسيم', details: '١٣ أبريل ٢٠٢٦' },
-            { id: 5, date: '2026-05-07', day: 'الخميس', occasion: 'عيد العمال', details: '٧ مايو ٢٠٢٦' },
-            { id: 6, date: '2026-05-26', day: 'الثلاثاء', occasion: 'عيد الأضحي', details: '٢٦ مايو ٢٠٢٦' },
-            { id: 7, date: '2026-05-27', day: 'الأربعاء', occasion: 'أضحي', details: '٢٧ مايو ٢٠٢٦' },
-            { id: 8, date: '2026-05-28', day: 'الخميس', occasion: 'أضحي', details: '٢٨ مايو ٢٠٢٦' },
-            { id: 9, date: '2026-05-29', day: 'الجمعة', occasion: 'أضحي', details: '٢٩ مايو ٢٠٢٦' },
-            { id: 10, date: '2026-05-30', day: 'السبت', occasion: 'أضحي', details: '٣٠ مايو ٢٠٢٦' },
-            { id: 11, date: '2026-05-31', day: 'الأحد', occasion: 'أضحي', details: '٣١ مايو ٢٠٢٦' },
-            { id: 12, date: '2026-06-18', day: 'الخميس', occasion: 'رأس السنة الهجرية', details: '١٨ يونيو ٢٠٢٦' },
-            { id: 13, date: '2026-07-02', day: 'الخميس', occasion: '30 يونيو', details: '٢ يوليو ٢٠٢٦' },
-            { id: 14, date: '2026-07-23', day: 'الخميس', occasion: '23 يوليو', details: '٢٣ يوليو ٢٠٢٦' }
-        ];
 
         const _EXTRA_DAYS_LIST = [
             { id: 1, date: '2026-04-25', day: 'السبت', desc: 'تسليم الريان - أبو عبد الله' }
@@ -2998,7 +3046,7 @@
         updatePolicyLabels();
         initAttendanceArchive();
     </script>
-    <script src="theme.js?v=1788165172"></script>
-    <script src="pwa-install.js?v=1788165172"></script>
+    <script src="theme.js?v=1788165540"></script>
+    <script src="pwa-install.js?v=1788165540"></script>
 </body>
 </html>
