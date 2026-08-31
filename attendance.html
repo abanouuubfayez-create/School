@@ -3007,6 +3007,7 @@
                 name: 'Ebthal', 
                 balance: 10, 
                 total: 15, 
+                priorUsed: 1, 
                 used: 5, 
                 casual: 2, 
                 wfh: 10, 
@@ -3017,13 +3018,14 @@
                     { type: '✍️ [تسجيل يدوي] إجازة عارضة طارئة (مادة ١٢٨) (1 يوم)', date: '2026-08-05 (1ي)' }
                 ] 
             },
-            '8': { name: 'Markos', balance: 13, total: 15, used: 2, casual: 0, wfh: 10, leaves: [{ type: '📱 [طلب موظف معتمد] إجازة سنوية (1 يوم)', date: '2026-08-19 (1ي) - 19 أغسطس 2026 معتمدة من مركز طلبات الموظفين' }, { type: '📱 [طلب موظف معتمد] إجازة سنوية (1 يوم)', date: '2026-08-30 (1ي) - 30 أغسطس 2026 معتمدة من مركز طلبات الموظفين' }] },
-            '7': { name: 'Basel', balance: 10, total: 15, used: 5, casual: 1, wfh: 0, leaves: [{ type: '✍️ [تسجيل يدوي] إجازة سنوية (4 يوم)', date: '2026-07-19 ← 2026-07-22 (4ي) - يوليو 2026 سفر' }, { type: '✍️ [تسجيل يدوي] إجازة عارضة (1 يوم)', date: '2026-07-16 (1ي) - يوليو 2026 سفر' }] },
-            '4': { name: 'Abanob', balance: 15, total: 15, used: 0, casual: 0, wfh: 10, leaves: [] },
+            '8': { name: 'Markos', balance: 13, total: 15, priorUsed: 0, used: 2, casual: 0, wfh: 10, leaves: [{ type: '📱 [طلب موظف معتمد] إجازة سنوية (1 يوم)', date: '2026-08-19 (1ي) - 19 أغسطس 2026 معتمدة من مركز طلبات الموظفين' }, { type: '📱 [طلب موظف معتمد] إجازة سنوية (1 يوم)', date: '2026-08-30 (1ي) - 30 أغسطس 2026 معتمدة من مركز طلبات الموظفين' }] },
+            '7': { name: 'Basel', balance: 10, total: 15, priorUsed: 5, used: 5, casual: 1, wfh: 0, leaves: [{ type: '✍️ [تسجيل يدوي] إجازة سنوية (4 يوم)', date: '2026-07-19 ← 2026-07-22 (4ي) - يوليو 2026 سفر' }, { type: '✍️ [تسجيل يدوي] إجازة عارضة (1 يوم)', date: '2026-07-16 (1ي) - يوليو 2026 سفر' }] },
+            '4': { name: 'Abanob', balance: 15, total: 15, priorUsed: 0, used: 0, casual: 0, wfh: 10, leaves: [] },
             '6': { 
                 name: 'Yostina', 
                 balance: 0, 
                 total: 15, 
+                priorUsed: 13, 
                 used: 15, 
                 casual: 2, 
                 wfh: 10, 
@@ -3040,7 +3042,7 @@
                     { type: '✍️ [تسجيل يدوي] إجازة عارضة (1 يوم)', date: '2026-08-25 (1ي) - 25 أغسطس 2026' }
                 ] 
             },
-            '10': { name: 'Kirlos', balance: 15, total: 15, used: 0, casual: 0, wfh: 0, leaves: [] }
+            '10': { name: 'Kirlos', balance: 15, total: 15, priorUsed: 0, used: 0, casual: 0, wfh: 0, leaves: [] }
         };
 
         function buildOfficialPrintReport() {
@@ -3524,8 +3526,9 @@
                     ...(explicitDeductionDates[emp.employeeId] || []).filter(d => d.startsWith(primaryYm))
                 ])).filter(d => d && d.startsWith(primaryYm)).sort();
 
-                // Starting balance before this month
-                let runningBalance = Math.max(0, em.baseTotal - (pYear === '2026' ? (meta.used || 0) : 0));
+                // Starting balance before this month (الرصيد المتاح عند بداية شهر التقرير)
+                const pUsed = meta.priorUsed !== undefined ? meta.priorUsed : 0;
+                let runningBalance = Math.max(0, em.baseTotal - (pYear === '2026' ? pUsed : 0));
                 const dynamicMonthLeaves = [];
                 const dynamicDeductions = [];
 
@@ -4169,7 +4172,7 @@
         syncApprovedEmployeeRequests();
         initAttendanceArchive();
     </script>
-    <script src="theme.js?v=1788183916"></script>
-    <script src="pwa-install.js?v=1788183916"></script>
+    <script src="theme.js?v=1788184043"></script>
+    <script src="pwa-install.js?v=1788184043"></script>
 </body>
 </html>
