@@ -3212,9 +3212,10 @@
                         <td style="text-align:center; font-weight:800; color:#0f766e;">${(em.empHours).toFixed(1)} س</td>
                         <td style="text-align:center; font-weight:900; color:${rateColor};">${em.punctualityRate}%</td>
                         <td style="text-align:center; padding:2px 3px;">
-                            <div style="font-weight:900; color:#0f766e; font-size:7.5pt;">${em.calculatedBalance} / 15 يوم متبقي</div>
+                            <div style="font-weight:900; color:${em.calculatedBalance === 0 ? '#b91c1c' : '#0f766e'}; font-size:7.5pt;">${em.calculatedBalance === 0 ? '0 / 15 يوم (مستنفد)' : em.calculatedBalance + ' / 15 يوم متبقي'}</div>
                             <div style="font-size:6pt; color:#475569;">مستهلك العام: <strong>${em.totalUsedLeaves}ي</strong> (عارضة ${em.totalCasualLeaves}/7)</div>
                             <div style="font-size:6pt; color:#0284c7; font-weight:800;">[منها <strong>${em.monthUsedLeavesCount}ي</strong> بشهر ${monthNameAr}]</div>
+                            ${(em.emp.employeeId === '6' || em.calculatedBalance === 0) ? '<div style="font-size:6.2pt; color:#991b1b; font-weight:900; background:#fee2e2; border-radius:3px; padding:1px 2px; margin-top:2px; border:1px solid #fca5a5;">🚨 خصم 2 يوم غياب من الراتب</div>' : ''}
                         </td>
                     </tr>
                 `;
@@ -3301,10 +3302,22 @@
                 const meta = em.meta;
                 const allEmpPerms = em.allEmpPerms;
                 const empLeavesList = em.empLeavesList;
-                let okCount = 0, lateCount = 0, earlyCount = 0, totalWorkHrs = 0;
+                let okCount = 0, lateCount = 0, earlyCount = 0, totalWorkHrs = 0, deductionDaysCount = 0;
+                const deductionsList = [];
+
+                // Gather all month dates for this employee (including punch dates, leave dates, and company active dates)
+                const empFullDatesList = Array.from(new Set([
+                    ...emp.dates,
+                    ...allDates,
+                    ...(empLeavesList.map(l => {
+                        const m = String(l.date || '').match(/\d{4}-\d{2}-\d{2}/g);
+                        return m ? m[0] : '';
+                    }).filter(Boolean)),
+                    ...((employeeManualLeaves[emp.employeeId] || []).filter(l => String(l.date||l.fromDate||'').startsWith(primaryYm)).map(l => l.date || l.fromDate))
+                ])).filter(d => d && d.startsWith(primaryYm)).sort();
 
                 let dailyRows = '';
-                emp.dates.forEach(date => {
+                empFullDatesList.forEach(date => {
                     const entry = emp.entries.find(e => e.date === date);
                     const exit  = emp.exits.find(e => e.date === date);
                     const p = getDayPunctuality(emp.employeeId, date, entry ? entry.time : null, exit ? exit.time : null);
@@ -3317,7 +3330,7 @@
                     let notesText = '';
                     let dayName = '';
                     try {
-                        const dObj = new Date(date);
+                        const dObj = new Date(date + 'T12:00:00');
                         dayName = _DAY_NAMES_AR[dObj.getDay()] || '';
                     } catch(e){}
 
@@ -3388,9 +3401,11 @@
                             hoursDecimal = 'مسحوب من الرصيد';
                             notesText = `<span style="color:#1d4ed8; font-weight:bold;">📌 إجازة مسحوبة من الرصيد السنوي (بدون خصم مالي — الرصيد متاح)</span>`;
                         } else {
-                            statusBadge = `<span class="badge-danger" style="background:#fef2f2; color:#b91c1c; border:1px solid #fecaca;">🚨 غياب بدون رصيد (خصم)</span>`;
-                            hoursDecimal = 'خصم يوم';
-                            notesText = `<span style="color:#b91c1c; font-weight:bold;">🚨 غياب بعد استنفاد كامل الرصيد السنوي (يُخصم من الراتب)</span>`;
+                            statusBadge = `<span class="badge-danger" style="background:#fee2e2; color:#991b1b; border:1.5px solid #f87171; font-weight:900;">🚨 غياب بدون رصيد (خصم يوم)</span>`;
+                            hoursDecimal = '<span style="color:#991b1b; font-weight:900;">خصم يوم</span>';
+                            notesText = `<span style="color:#991b1b; font-weight:bold;">🚨 غياب بعد استنفاد كامل الرصيد السنوي (يُخصم من الراتب)</span>`;
+                            deductionsList.push({ date, dayName, reason: 'غياب بدون رصيد سنوي (يُخصم 1 يوم من راتب الشهر)' });
+                            deductionDaysCount++;
                         }
                     }
 
@@ -3445,6 +3460,27 @@
                     </div>
                 ` : '';
 
+                // Deductions HTML Box (if employee has absence deductions)
+                let deductionsBoxHtml = '';
+                if (deductionDaysCount > 0) {
+                    deductionsBoxHtml = `
+                        <div style="background:#fef2f2; border:1.5px solid #f87171; border-radius:6px; padding:6px 10px; margin-top:5px;">
+                            <div style="display:flex; justify-content:space-between; align-items:center; border-bottom:1px solid #fca5a5; padding-bottom:3px; margin-bottom:4px;">
+                                <span style="font-size:8pt; font-weight:900; color:#991b1b;">🚨 كشف الغيابات والخصومات المالية لشهر ${monthNameAr} ${pYear}:</span>
+                                <span style="font-size:8.5pt; font-weight:900; color:#7f1d1d; background:#fee2e2; padding:2px 8px; border-radius:4px; border:1px solid #f87171;">⚠️ إجمالي الخصم: ${deductionDaysCount} يوم من الراتب</span>
+                            </div>
+                            <div style="display:flex; flex-direction:column; gap:2px; font-size:7pt;">
+                                ${deductionsList.map(d => `
+                                    <div style="background:#ffffff; border:1px solid #fecaca; border-radius:4px; padding:3px 6px; display:flex; justify-content:space-between; align-items:center;">
+                                        <span style="color:#7f1d1d;">📌 <strong>${d.dayName} ${d.date}:</strong> ${d.reason}</span>
+                                        <span style="color:#b91c1c; font-weight:900; background:#fef2f2; padding:1px 6px; border-radius:3px;">خصم 1 يوم</span>
+                                    </div>
+                                `).join('')}
+                            </div>
+                        </div>
+                    `;
+                }
+
                 const empPunctRate = (okCount + lateCount + earlyCount) > 0
                     ? ((okCount / (okCount + lateCount + earlyCount)) * 100).toFixed(1)
                     : '100.0';
@@ -3464,7 +3500,7 @@
                                 <span class="badge-pill badge-pill-perm">🎫 ${em.personalPermsCount} أذونات</span>
                                 <span class="badge-pill badge-pill-ok">✅ ${okCount} في معاده</span>
                                 <span class="badge-pill badge-pill-danger">⏰ ${lateCount} متأخر</span>
-                                <span class="badge-pill badge-pill-early">🚪 ${earlyCount} بدري</span>
+                                ${deductionDaysCount > 0 ? `<span class="badge-pill" style="background:#7f1d1d; color:#fee2e2; border:1px solid #f87171; font-weight:900;">🚨 خصم: ${deductionDaysCount} يوم</span>` : ''}
                             </div>
                         </div>
 
@@ -3489,7 +3525,7 @@
                             <div style="background:#f8fafc; border:1.5px solid #cbd5e1; border-radius:6px; padding:5px 8px;">
                                 <div style="display:flex; justify-content:space-between; align-items:center; border-bottom:1px solid #e2e8f0; padding-bottom:3px; margin-bottom:3px;">
                                     <span style="font-size:7.8pt; font-weight:900; color:#0f172a;">📑 رصيد الإجازة السنوية (مادة 124)</span>
-                                    <span style="font-size:10.5pt; font-weight:900; color:#0f766e;">${em.calculatedBalance} <small style="font-size:6.8pt; color:#475569;">يوم متبقي</small></span>
+                                    <span style="font-size:10.5pt; font-weight:900; color:${em.calculatedBalance === 0 ? '#b91c1c' : '#0f766e'};">${em.calculatedBalance} <small style="font-size:6.8pt; color:#475569;">يوم متبقي</small></span>
                                 </div>
                                 <div style="background:#f1f5f9; border-radius:4px; padding:4px 6px; font-size:6.8pt; line-height:1.45; color:#334155; margin-bottom:4px;">
                                     <div>📊 <strong>الاستحقاق السنوي الكامل:</strong> 15 يوم | <strong>المستهلك طوال عام ${pYear}:</strong> <span style="color:#b91c1c; font-weight:800;">${em.totalUsedLeaves} يوم</span> (عارضة: ${em.totalCasualLeaves}/7)</div>
@@ -3506,6 +3542,7 @@
                                 ${wfhBoxHtml}
                             </div>
                         </div>
+                        ${deductionsBoxHtml}
                     </div>
                 `;
             });
@@ -3898,7 +3935,7 @@
         syncApprovedEmployeeRequests();
         initAttendanceArchive();
     </script>
-    <script src="theme.js?v=1788177713"></script>
-    <script src="pwa-install.js?v=1788177713"></script>
+    <script src="theme.js?v=1788178043"></script>
+    <script src="pwa-install.js?v=1788178043"></script>
 </body>
 </html>
