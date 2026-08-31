@@ -2818,7 +2818,20 @@
 
         // Employee Metadata for Leave Balances (استبعاد الموظفين المعطلين)
         const _EMP_LEAVE_META = {
-            '3': { name: 'Ebthal', balance: 10, total: 15, used: 5, casual: 1, wfh: 10, leaves: [{ type: '✍️ [تسجيل يدوي] إجازة عارضة (1 يوم)', date: '2026-07-09 (1ي) - 9 يوليو 2026' }, { type: '🎁 [منحة إدارية] إجازة رسمية هدية من الشركة (1 يوم)', date: '2026-07-16 (1ي) - 16 يوليو 2026 هدية لا تخصم من الرصيد' }] },
+            '3': { 
+                name: 'Ebthal', 
+                balance: 10, 
+                total: 15, 
+                used: 5, 
+                casual: 2, 
+                wfh: 10, 
+                leaves: [
+                    { type: '✍️ [تسجيل يدوي] إجازة عارضة (1 يوم)', date: '2026-07-09 (1ي) - 9 يوليو 2026' },
+                    { type: '🎁 [منحة إدارية] إجازة رسمية هدية من الشركة (1 يوم)', date: '2026-07-16 (1ي) - 16 يوليو 2026 هدية لا تخصم من الرصيد' },
+                    { type: '✍️ [تسجيل يدوي] إجازة سنوية اعتيادية (مادة ١٢٤) (3 يوم)', date: '2026-08-02 ← 2026-08-04 (3ي)' },
+                    { type: '✍️ [تسجيل يدوي] إجازة عارضة طارئة (مادة ١٢٨) (1 يوم)', date: '2026-08-05 (1ي)' }
+                ] 
+            },
             '8': { name: 'Markos', balance: 13, total: 15, used: 2, casual: 0, wfh: 10, leaves: [{ type: '📱 [طلب موظف معتمد] إجازة سنوية (1 يوم)', date: '2026-08-19 (1ي) - 19 أغسطس 2026 معتمدة من مركز طلبات الموظفين' }, { type: '📱 [طلب موظف معتمد] إجازة سنوية (1 يوم)', date: '2026-08-30 (1ي) - 30 أغسطس 2026 معتمدة من مركز طلبات الموظفين' }] },
             '7': { name: 'Basel', balance: 10, total: 15, used: 5, casual: 1, wfh: 0, leaves: [{ type: '✍️ [تسجيل يدوي] إجازة سنوية (4 يوم)', date: '2026-07-19 ← 2026-07-22 (4ي) - يوليو 2026 سفر' }, { type: '✍️ [تسجيل يدوي] إجازة عارضة (1 يوم)', date: '2026-07-16 (1ي) - يوليو 2026 سفر' }] },
             '4': { name: 'Abanob', balance: 15, total: 15, used: 0, casual: 0, wfh: 10, leaves: [] },
@@ -3008,8 +3021,18 @@
                 // Add any extra unique dates from dynamic/manual stores
                 const allYearLeaveDates = new Set();
                 (meta.leaves || []).forEach(l => {
-                    const m = String(l.date).match(/\d{4}-\d{2}-\d{2}/g);
-                    if (m) m.forEach(d => allYearLeaveDates.add(d));
+                    const m = String(l.date || l.fromDate || '').match(/\d{4}-\d{2}-\d{2}/g);
+                    if (m) {
+                        if (m.length >= 2) {
+                            const d1 = new Date(m[0]);
+                            const d2 = new Date(m[1]);
+                            for (let cur = new Date(d1); cur <= d2; cur.setDate(cur.getDate() + 1)) {
+                                allYearLeaveDates.add(cur.toISOString().slice(0, 10));
+                            }
+                        } else {
+                            m.forEach(d => allYearLeaveDates.add(d));
+                        }
+                    }
                 });
 
                 if (dynamicLeavesStore[emp.employeeId]) {
@@ -3034,7 +3057,9 @@
 
                 (employeeManualLeaves[emp.employeeId] || []).forEach(l => {
                     const d = l.date || l.fromDate;
-                    if (d && !allYearLeaveDates.has(d)) {
+                    const dArr = [d, l.toDate].filter(Boolean);
+                    const isCovered = dArr.some(dt => allYearLeaveDates.has(dt));
+                    if (d && !isCovered) {
                         allYearLeaveDates.add(d);
                         const count = (parseInt(l.days, 10) || 1);
                         totalUsedLeaves += count;
@@ -3824,7 +3849,7 @@
         syncApprovedEmployeeRequests();
         initAttendanceArchive();
     </script>
-    <script src="theme.js?v=1788175829"></script>
-    <script src="pwa-install.js?v=1788175829"></script>
+    <script src="theme.js?v=1788175933"></script>
+    <script src="pwa-install.js?v=1788175933"></script>
 </body>
 </html>
