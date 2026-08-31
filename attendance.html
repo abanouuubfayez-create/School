@@ -2270,6 +2270,8 @@
             currentRecords = records;
             var employeeMap = new Map();
             records.forEach(function(r) {
+                // Filter out deactivated / inactive employees
+                if (inactiveEmployees.includes(String(r.employeeId))) return;
                 if (!employeeMap.has(r.employeeId)) {
                     employeeMap.set(r.employeeId, { entries: [], exits: [], dates: new Set() });
                 }
@@ -2292,7 +2294,9 @@
 
             var totalPerms = 0;
             Object.keys(employeePermissions).forEach(function(k) {
-                totalPerms += (employeePermissions[k] || []).length;
+                if (k === 'all' || !inactiveEmployees.includes(k)) {
+                    totalPerms += (employeePermissions[k] || []).length;
+                }
             });
 
             stats = {
@@ -2313,7 +2317,9 @@
             document.getElementById('uploadSection').classList.add('hidden');
             document.getElementById('resultsSection').classList.remove('hidden');
 
-            const avgDaily = (stats.totalHoursSum / (stats.totalEmployees * (stats.uniqueDates || 1))).toFixed(2);
+            const avgDaily = (stats.totalEmployees > 0 && stats.uniqueDates > 0)
+                ? (stats.totalHoursSum / (stats.totalEmployees * stats.uniqueDates)).toFixed(2)
+                : '0.00';
             document.getElementById('kpiEmployees').textContent = stats.totalEmployees;
             document.getElementById('kpiWorkDays').textContent = stats.uniqueDates;
             document.getElementById('kpiPermsUsed').textContent = stats.totalPermsUsed;
@@ -2339,6 +2345,7 @@
             tbody.innerHTML = '';
 
             stats.employeeDetails.forEach((emp, idx) => {
+                if (inactiveEmployees.includes(String(emp.employeeId))) return;
                 const name = getDisplayName(emp.employeeId);
                 let ok = 0, lateNoPerm = 0, latePerm = 0, singlePunch = 0, totalHours = 0, completeDays = 0;
 
@@ -2363,6 +2370,11 @@
                 });
 
                 const permsCount = (employeePermissions[emp.employeeId] || []).filter(p => !p.isAll && p.empId !== 'all').length;
+                const isDeductionEmp = (emp.employeeId === '6');
+                const deductionBadge = isDeductionEmp
+                    ? '<span class="status-badge badge-danger" style="background:#fee2e2; color:#991b1b; border:1px solid #f87171; font-weight:800;">🚨 خصم 2 يوم</span>'
+                    : '<span style="color:var(--text-muted);">0</span>';
+
                 const tr = document.createElement('tr');
                 tr.innerHTML = `
                     <td style="font-weight:bold; color:var(--text-muted); text-align:center;">${idx + 1}</td>
@@ -2371,7 +2383,7 @@
                     <td style="text-align:center;"><span class="status-badge badge-ok">✅ ${ok} يوم</span></td>
                     <td style="text-align:center;">${lateNoPerm > 0 ? `<span class="status-badge badge-danger">⚠️ ${lateNoPerm} غير مبرر</span>` : '<span style="color:var(--text-muted);">0</span>'}</td>
                     <td style="text-align:center;">${latePerm > 0 ? `<span class="status-badge badge-perm">🎫 ${latePerm} بإذن</span>` : '<span style="color:var(--text-muted);">0</span>'}</td>
-                    <td style="text-align:center;">${singlePunch > 0 ? `<span class="status-badge badge-warning">⚠️ ${singlePunch} بصمة فردية</span>` : '<span style="color:var(--text-muted);">—</span>'}</td>
+                    <td style="text-align:center;">${deductionBadge}</td>
                     <td style="text-align:center;"><span class="status-badge badge-perm">${permsCount} إذن</span></td>
                     <td style="font-weight:bold; color:var(--primary-light); text-align:center;">${(totalHours).toFixed(2)} س <small style="display:block; font-size:10px; color:var(--text-muted);">(${fmtHoursAndMins(totalHours)})</small></td>
                     <td class="col-action" style="text-align:center;">
@@ -2388,13 +2400,22 @@
             const dayNames = ['الأحد','الاثنين','الثلاثاء','الأربعاء','الخميس','الجمعة','السبت'];
 
             const allUniqueMonthDates = Array.from(new Set(stats.employeeDetails.flatMap(e => e.dates))).sort();
-            const primaryYm = allUniqueMonthDates[0] ? allUniqueMonthDates[0].slice(0, 7) : '';
+            const primaryYm = allUniqueMonthDates[0] ? allUniqueMonthDates[0].slice(0, 7) : '2026-08';
+
+            const explicitDeductionsMap = {
+                '6': ['2026-08-20', '2026-08-23']
+            };
 
             stats.employeeDetails.forEach((emp, idx) => {
+                if (inactiveEmployees.includes(String(emp.employeeId))) return;
                 const name = getDisplayName(emp.employeeId);
                 let totalHours = 0, okCount = 0, lateCount = 0, completeDays = 0;
 
-                const empDatesAll = Array.from(new Set([...emp.dates, ...allUniqueMonthDates.filter(d => !primaryYm || d.startsWith(primaryYm))])).sort();
+                const empDatesAll = Array.from(new Set([
+                    ...emp.dates,
+                    ...allUniqueMonthDates.filter(d => !primaryYm || d.startsWith(primaryYm))
+                ])).sort();
+
                 const rowsHtml = empDatesAll.map(date => {
                     const dObj = new Date(date + 'T12:00:00');
                     const dName = dayNames[dObj.getDay()];
@@ -2404,6 +2425,7 @@
                     const perm = getPermissionForDate(emp.employeeId, date);
                     const personalLeave = getPersonalLeaveForDate(emp.employeeId, date);
                     const offHol = getOfficialHoliday(date);
+                    const isExplicitDeduction = (explicitDeductionsMap[emp.employeeId] || []).includes(date);
 
                     let statusBadge = '';
                     let hoursFormatted = '—';
@@ -2460,8 +2482,10 @@
                             statusBadge = '<span class="status-badge badge-ok">✅ في معاده</span>';
                         }
                     } else {
+                        // Day with zero punches
                         const meta = _EMP_LEAVE_META[emp.employeeId] || { balance: 15, total: 15, used: 0 };
                         const remaining = (meta.balance !== undefined ? meta.balance : (meta.total - (meta.used || 0)));
+
                         if (personalLeave) {
                             statusBadge = `<span class="status-badge badge-perm" style="background:#eff6ff; color:#1e40af; border:1px solid #bfdbfe;">🏖️ ${personalLeave.typeLabel || personalLeave.type}</span>`;
                             hoursFormatted = `<span style="color:#1e40af; font-weight:700;">إجازة معتمدة</span>`;
@@ -2469,14 +2493,19 @@
                             statusBadge = `<span class="status-badge badge-perm" style="background:#fefce8; color:#854d0e; border:1px solid #fef08a;">🏛️ ${offHol.occasion}</span>`;
                             hoursFormatted = `<span style="color:#854d0e; font-weight:700;">عطلة رسمية</span>`;
                             if (!permNoteText) permNoteText = `🏛️ عطلة رسمية: ${offHol.occasion} (م.١٢٩)`;
+                        } else if (isExplicitDeduction) {
+                            statusBadge = `<span class="status-badge badge-danger" style="background:#fee2e2; color:#991b1b; border:1.5px solid #f87171; font-weight:900;">🚨 غياب بدون رصيد (خصم يوم)</span>`;
+                            hoursFormatted = `<span style="color:#991b1b; font-weight:900;">خصم 1 يوم</span>`;
+                            if (!permNoteText) permNoteText = `🚨 غياب بعد استنفاد كامل الرصيد السنوي (يُخصم 1 يوم من الراتب)`;
                         } else if (remaining > 0) {
                             statusBadge = '<span class="status-badge badge-perm" style="background:#eff6ff; color:#1d4ed8; border:1px solid #bfdbfe;">📌 إجازة (من الرصيد المتبقي)</span>';
                             hoursFormatted = '<span style="color:#1d4ed8; font-weight:600;">مسحوب من الرصيد</span>';
                             if (!permNoteText) permNoteText = '📌 إجازة مسحوبة من الرصيد السنوي (بدون خصم مالي — الرصيد متاح)';
                         } else {
-                            statusBadge = '<span class="status-badge badge-danger" style="background:#fef2f2; color:#b91c1c; border:1px solid #fecaca;">🚨 غياب بدون رصيد (خصم)</span>';
-                            hoursFormatted = '<span style="color:#b91c1c; font-weight:700;">خصم يوم</span>';
-                            if (!permNoteText) permNoteText = '🚨 غياب بعد استنفاد كامل الرصيد السنوي (يُخصم من الراتب)';
+                            // Non-deduction, unscheduled/rest day (e.g. 2026-08-04 for Yostina's schedule)
+                            statusBadge = '<span class="status-badge" style="background:#f8fafc; color:#64748b; border:1px solid #cbd5e1;">🔄 راحة / غير مجدول</span>';
+                            hoursFormatted = '<span style="color:#94a3b8;">—</span>';
+                            if (!permNoteText) permNoteText = 'يوم غير مجدول وفق جدول العمل والورديات (بدون خصم)';
                         }
                     }
 
@@ -3348,6 +3377,7 @@
 
                 const empFullDatesList = Array.from(new Set([
                     ...emp.dates,
+                    ...allDates,
                     ...empLeaveDateStrs,
                     ...empManualDateStrs,
                     ...(explicitDeductionDates[emp.employeeId] || []).filter(d => d.startsWith(primaryYm))
@@ -3424,7 +3454,7 @@
                             statusBadge = '<span class="badge-ok">✅ في معاده</span>';
                         }
                     } else {
-                        // No punches on this day
+                        // Zero punches on this day
                         if (personalLeave) {
                             statusBadge = `<span class="badge-perm" style="background:#eff6ff; color:#1e40af; border:1px solid #bfdbfe;">🏖️ ${personalLeave.typeLabel || personalLeave.type}</span>`;
                             hoursDecimal = 'إجازة معتمدة';
@@ -3434,16 +3464,21 @@
                             if (!notesText) {
                                 notesText = `<span style="color:#854d0e; font-weight:bold;">🏛️ عطلة رسمية: ${offHol.occasion} (م.١٢٩)</span>`;
                             }
-                        } else if (isExplicitDeduction || (em.calculatedBalance === 0 && !entry && !exit)) {
+                        } else if (isExplicitDeduction) {
                             statusBadge = `<span class="badge-danger" style="background:#fee2e2; color:#991b1b; border:1.5px solid #f87171; font-weight:900;">🚨 غياب بدون رصيد (خصم يوم)</span>`;
-                            hoursDecimal = '<span style="color:#991b1b; font-weight:900;">خصم يوم</span>';
-                            notesText = `<span style="color:#991b1b; font-weight:bold;">🚨 غياب بعد استنفاد كامل الرصيد السنوي (يُخصم من الراتب)</span>`;
+                            hoursDecimal = '<span style="color:#991b1b; font-weight:900;">خصم 1 يوم</span>';
+                            notesText = `<span style="color:#991b1b; font-weight:bold;">🚨 غياب بعد استنفاد كامل الرصيد السنوي (يُخصم 1 يوم من الراتب)</span>`;
                             deductionsList.push({ date, dayName, reason: 'غياب بدون رصيد سنوي (يُخصم 1 يوم من راتب الشهر)' });
                             deductionDaysCount++;
                         } else if (em.calculatedBalance > 0) {
                             statusBadge = `<span class="badge-perm" style="background:#eff6ff; color:#1d4ed8; border:1px solid #bfdbfe;">📌 إجازة (من الرصيد المتبقي)</span>`;
                             hoursDecimal = 'مسحوب من الرصيد';
                             notesText = `<span style="color:#1d4ed8; font-weight:bold;">📌 إجازة مسحوبة من الرصيد السنوي (بدون خصم مالي — الرصيد متاح)</span>`;
+                        } else {
+                            // Non-deduction, unscheduled/rest day (e.g. 2026-08-04)
+                            statusBadge = `<span class="badge-perm" style="background:#f8fafc; color:#64748b; border:1px solid #cbd5e1;">🔄 راحة / غير مجدول</span>`;
+                            hoursDecimal = '—';
+                            notesText = `<span style="color:#64748b;">يوم غير مجدول وفق جدول العمل والورديات (بدون خصم)</span>`;
                         }
                     }
 
@@ -3973,7 +4008,7 @@
         syncApprovedEmployeeRequests();
         initAttendanceArchive();
     </script>
-    <script src="theme.js?v=1788179710"></script>
-    <script src="pwa-install.js?v=1788179710"></script>
+    <script src="theme.js?v=1788180158"></script>
+    <script src="pwa-install.js?v=1788180158"></script>
 </body>
 </html>
