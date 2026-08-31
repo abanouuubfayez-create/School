@@ -637,6 +637,12 @@
             </div>
         </div>
         <div class="nav-actions">
+            <button class="btn-action" onclick="importJsonFileDialog()" style="background:linear-gradient(135deg, #6366f1, #4f46e5); color:#fff; padding: 6px 12px; font-size: 0.82rem; font-weight:800; border:none; border-radius:8px; cursor:pointer;" title="استيراد وتكملة بيانات من ملف JSON">
+                📥 استيراد JSON
+            </button>
+            <button class="btn-action" onclick="exportAttendanceJsonBackup()" style="background:linear-gradient(135deg, #059669, #047857); color:#fff; padding: 6px 12px; font-size: 0.82rem; font-weight:800; border:none; border-radius:8px; cursor:pointer;" title="تصدير نسخة احتياطية JSON">
+                📤 تصدير JSON
+            </button>
             <button class="btn-action btn-ghost" onclick="openWorkSettingsModal()" title="إعدادات مواعيد وسماح الدوام">
                 ⚙️ إعدادات الدوام
             </button>
@@ -667,6 +673,12 @@
             </span>
         </div>
         <div style="display: flex; align-items: center; gap: 8px; flex-wrap: wrap;">
+            <button class="btn-action" onclick="importJsonFileDialog()" style="background:linear-gradient(135deg, #6366f1, #4f46e5); color:#fff; border:none; padding: 6px 12px; font-size: 0.82rem; font-weight:800; border-radius:8px; cursor:pointer;" title="استيراد وتكملة الحركات والأذونات والإجازات من ملف JSON">
+                📥 استيراد / تكملة JSON
+            </button>
+            <button class="btn-action" onclick="exportAttendanceJsonBackup()" style="background:linear-gradient(135deg, #059669, #047857); color:#fff; border:none; padding: 6px 12px; font-size: 0.82rem; font-weight:800; border-radius:8px; cursor:pointer;" title="تصدير قاعدة بيانات الحضور والأذونات والأرشيف بالكامل كملف JSON">
+                📤 تصدير JSON
+            </button>
             <button class="btn-action btn-ghost" onclick="saveCurrentMonthToArchive(true)" id="btnSaveArchive" style="padding: 6px 12px; font-size: 0.82rem;" title="حفظ بيانات الشهر الحالية في الأرشيف الدائم">
                 💾 حفظ الشهر في الأرشيف
             </button>
@@ -3440,7 +3452,7 @@
         updatePolicyLabels();
         initAttendanceArchive();
     </script>
-    <script src="theme.js?v=1788168277"></script>
-    <script src="pwa-install.js?v=1788168277"></script>
+    <script src="theme.js?v=1788168803"></script>
+    <script src="pwa-install.js?v=1788168803"></script>
 </body>
 </html>
