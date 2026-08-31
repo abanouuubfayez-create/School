@@ -1980,7 +1980,7 @@
                     let statusBadge = '';
                     let hoursFormatted = '—';
                     let permNoteText = '';
-                    if (dayPerm) permNoteText += `🎫 ${perm.note || perm.type} `;
+                    if (perm) permNoteText += `🎫 ${perm.note || perm.type} `;
                     if (personalLeave) permNoteText += `🏖️ ${personalLeave.typeLabel || personalLeave.type} `;
 
                     if (!entry && exit) {
@@ -2432,20 +2432,52 @@
                 let empLeavesList = [...meta.leaves];
                 if (dynamicLeavesStore[emp.employeeId]) {
                     const yrData = dynamicLeavesStore[emp.employeeId][pYear] || {};
-                    (yrData.annual || []).forEach(l => empLeavesList.push({ type: `📱 [طلب موظف معتمد] إجازة سنوية (${l.days||1} يوم)`, date: `${l.date || l.fromDate} - ${l.reason || 'معتمد على السيستم'}` }));
-                    (yrData.casual || []).forEach(l => empLeavesList.push({ type: `📱 [طلب موظف معتمد] إجازة عارضة (${l.days||1} يوم)`, date: `${l.date || l.fromDate} - ${l.reason || 'معتمد على السيستم'}` }));
+                    (yrData.annual || []).forEach(l => {
+                        const lDate = l.date || l.fromDate || l.startDate || '';
+                        const lReason = l.reason || l.note || 'معتمد على السيستم';
+                        if (lDate && String(lDate) !== 'undefined') {
+                            const dateTxt = `${lDate}${l.toDate && l.toDate !== lDate ? ' ← ' + l.toDate : ''} (${l.days||1}ي) - ${lReason}`;
+                            if (!empLeavesList.some(ex => ex.date && ex.date.includes(String(lDate)))) {
+                                empLeavesList.push({ type: `📱 [طلب موظف معتمد] إجازة سنوية (${l.days||1} يوم)`, date: dateTxt });
+                            }
+                        }
+                    });
+                    (yrData.casual || []).forEach(l => {
+                        const lDate = l.date || l.fromDate || l.startDate || '';
+                        const lReason = l.reason || l.note || 'معتمد على السيستم';
+                        if (lDate && String(lDate) !== 'undefined') {
+                            const dateTxt = `${lDate}${l.toDate && l.toDate !== lDate ? ' ← ' + l.toDate : ''} (${l.days||1}ي) - ${lReason}`;
+                            if (!empLeavesList.some(ex => ex.date && ex.date.includes(String(lDate)))) {
+                                empLeavesList.push({ type: `📱 [طلب موظف معتمد] إجازة عارضة (${l.days||1} يوم)`, date: dateTxt });
+                            }
+                        }
+                    });
                 }
 
                 // Merge manual leaves registered on the system
                 const manualEmpLeaves = (employeeManualLeaves[emp.employeeId] || []).filter(l => {
                     const lDate = l.date || l.fromDate;
-                    return (lDate.startsWith(primaryYm) || (lDate >= minDate && lDate <= maxDate));
+                    return lDate && (lDate.startsWith(primaryYm) || (lDate >= minDate && lDate <= maxDate));
                 });
                 manualEmpLeaves.forEach(l => {
+                    const lDate = l.fromDate || l.date || '';
+                    const lDateTxt = (l.fromDate && l.toDate && l.fromDate !== l.toDate)
+                        ? `${l.fromDate} ← ${l.toDate}`
+                        : lDate;
+                    const noteTxt = l.note ? ` - ${l.note}` : '';
                     empLeavesList.push({
                         type: `✍️ [تسجيل يدوي] ${l.typeLabel || 'إجازة'} (${l.days||1} يوم)`,
-                        date: `${l.fromDate || l.date}${l.toDate && l.toDate !== l.fromDate ? ' ← ' + l.toDate : ''} (${l.days||1}ي) - ${l.note || 'تسجيل يدوي'}`
+                        date: `${lDateTxt} (${l.days||1}ي)${noteTxt}`
                     });
+                });
+
+                // Clean and remove any undefined or invalid entries
+                empLeavesList = empLeavesList.filter(l => {
+                    if (!l || !l.type || !l.date) return false;
+                    const sType = String(l.type);
+                    const sDate = String(l.date);
+                    if (sType.includes('undefined') || sDate.includes('undefined')) return false;
+                    return true;
                 });
 
                 let totalUsedLeaves = (meta.used || 0);
@@ -3196,7 +3228,7 @@
         updatePolicyLabels();
         initAttendanceArchive();
     </script>
-    <script src="theme.js?v=1788166921"></script>
-    <script src="pwa-install.js?v=1788166921"></script>
+    <script src="theme.js?v=1788167999"></script>
+    <script src="pwa-install.js?v=1788167999"></script>
 </body>
 </html>
