@@ -640,7 +640,7 @@
             <button class="btn-action btn-ghost" onclick="openWorkSettingsModal()" title="إعدادات مواعيد وسماح الدوام">
                 ⚙️ إعدادات الدوام
             </button>
-            <button class="btn-action btn-pdf-action" id="exportPdfBtn" title="تصدير كشف رسمي A4">
+            <button class="btn-action btn-pdf-action" id="exportPdfBtn" onclick="buildOfficialPrintReport()" title="تصدير كشف رسمي A4">
                 🖨️ طباعة / تصدير PDF
             </button>
             <button class="btn-action btn-ghost" onclick="toggleTheme()" id="themeBtn" title="تبديل المظهر">
@@ -2751,6 +2751,10 @@
                 ? ((sumOk / (sumOk + sumLate + sumEarly)) * 100).toFixed(1) 
                 : '100.0';
 
+            const avgDailyHours = (totalEmployees * (uniqueDates || 1)) > 0
+                ? (sumHours / (totalEmployees * (uniqueDates || 1))).toFixed(2)
+                : '0.00';
+
             const topPunctual = [...employeeMetrics].sort((a,b) => b.punctualityRate - a.punctualityRate).slice(0, 3);
             const needsAttention = [...employeeMetrics].filter(e => e.late > 0).sort((a,b) => b.late - a.late);
 
@@ -3436,7 +3440,7 @@
         updatePolicyLabels();
         initAttendanceArchive();
     </script>
-    <script src="theme.js?v=1788168134"></script>
-    <script src="pwa-install.js?v=1788168134"></script>
+    <script src="theme.js?v=1788168277"></script>
+    <script src="pwa-install.js?v=1788168277"></script>
 </body>
 </html>
