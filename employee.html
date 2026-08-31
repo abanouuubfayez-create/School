@@ -67,7 +67,7 @@
     <link
         href="https://fonts.googleapis.com/css2?family=Alexandria:wght@300;400;500;600;700;800;900&family=Cairo:wght@400;600;700;800;900&family=Tajawal:wght@400;500;700;800&family=Inter:wght@400;500;600;700&display=swap"
         rel="stylesheet">
-    <link rel="stylesheet" href="styles.css?v=1788176681">
+    <link rel="stylesheet" href="styles.css?v=1788180585">
     <link rel="manifest" href="manifest.json">
     <link rel="icon" type="image/png" sizes="192x192" href="icon-192.png">
     <link rel="apple-touch-icon" href="icon-192.png">
@@ -75,10 +75,10 @@
     <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-auth-compat.js"></script>
     <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore-compat.js"></script>
     <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-storage-compat.js"></script>
-    <script src="firebase-config.js?v=1788176681"></script>
-    <script src="auth.js?v=1788176681"></script>
-    <script src="app.js?v=1788176681"></script>
-    <script src="formsend.js?v=1788176681"></script>
+    <script src="firebase-config.js?v=1788180585"></script>
+    <script src="auth.js?v=1788180585"></script>
+    <script src="app.js?v=1788180585"></script>
+    <script src="formsend.js?v=1788180585"></script>
     <script>
         (function () {
             const theme = localStorage.getItem('tg-theme') || 'light';
@@ -2421,7 +2421,7 @@
                 'basel':   { empId: '7',  entitlement: 15, usedAnnual: 4, usedCasual: 1, usedOfficial: 0, aliases: ['basel', 'bassil', 'باسل', '7'] },
                 'abanob':  { empId: '4',  entitlement: 15, usedAnnual: 0, usedCasual: 0, usedOfficial: 0, aliases: ['abanob', 'abanoub', 'أبانوب', 'ابانوب', 'فايز', '4'] },
                 'ibrahim': { empId: '5',  entitlement: 15, usedAnnual: 1, usedCasual: 2, usedOfficial: 0, aliases: ['ibrahim', 'إبراهيم', 'ابراهيم', 'hema', '5'] },
-                'yostina': { empId: '6',  entitlement: 15, usedAnnual: 6, usedCasual: 4, usedOfficial: 0, aliases: ['yostina', 'yustina', 'يوستينا', 'يوسطينا', '6'] },
+                'yostina': { empId: '6',  entitlement: 15, usedAnnual: 10, usedCasual: 5, usedOfficial: 0, aliases: ['yostina', 'yustina', 'يوستينا', 'يوسطينا', '6'] },
                 'kirlos':  { empId: '10', entitlement: 15, usedAnnual: 0, usedCasual: 0, usedOfficial: 0, aliases: ['kirlos', 'kyrollos', 'كيرلس', 'كيرلوس', '10'] }
             };
 
@@ -2542,6 +2542,7 @@
 
             if (val === 'leave') {
                 var lStats = tgGetEmployeeLeaveData();
+                var isZeroBalance = (lStats.remainAnnual === 0);
                 h += '<div style="background:var(--bg2); border:1px solid var(--bd); border-radius:12px; padding:14px 18px; margin-bottom:14px;">';
                 h += '  <div style="display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:10px; margin-bottom:10px;">';
                 h += '    <div style="font-size:13px; font-weight:800; color:var(--tx); display:flex; align-items:center; gap:6px;">📊 رصيد الإجازات السنوية لعام ' + new Date().getFullYear() + ' (م.١٢٤)</div>';
@@ -2550,9 +2551,16 @@
                 h += '  <div style="display:grid; grid-template-columns:repeat(auto-fit, minmax(130px, 1fr)); gap:8px; text-align:center;">';
                 h += '    <div style="background:var(--bg); padding:8px 10px; border-radius:10px; border:1px solid var(--bd);"><div style="font-size:11px; color:var(--tx2);">إجمالي الاستحقاق</div><div style="font-size:16px; font-weight:900; color:#0284c7;">' + lStats.entitlement + ' يوم</div></div>';
                 h += '    <div style="background:var(--bg); padding:8px 10px; border-radius:10px; border:1px solid var(--bd);"><div style="font-size:11px; color:var(--tx2);">المستهلك (سنوي + عارض)</div><div style="font-size:16px; font-weight:900; color:#d97706;">' + lStats.totalUsed + ' يوم</div></div>';
-                h += '    <div style="background:var(--bg); padding:8px 10px; border-radius:10px; border:1px solid var(--bd);"><div style="font-size:11px; color:var(--tx2);">الرصيد المتبقي الفعلي</div><div style="font-size:16px; font-weight:900; color:#10b981;" id="tgLeaveRemDisplay">' + lStats.remainAnnual + ' يوم</div></div>';
-                h += '    <div style="background:var(--bg); padding:8px 10px; border-radius:10px; border:1px solid var(--bd);"><div style="font-size:11px; color:var(--tx2);">الرصيد بعد هذا الطلب</div><div style="font-size:16px; font-weight:900; color:#8b5cf6;" id="tgLeaveAfterDisplay">' + lStats.remainAnnual + ' يوم</div></div>';
+                h += '    <div style="background:var(--bg); padding:8px 10px; border-radius:10px; border:1px solid var(--bd);"><div style="font-size:11px; color:var(--tx2);">الرصيد المتبقي الفعلي</div><div style="font-size:16px; font-weight:900; color:' + (isZeroBalance ? '#ef4444' : '#10b981') + ';" id="tgLeaveRemDisplay">' + lStats.remainAnnual + ' يوم</div></div>';
+                h += '    <div style="background:var(--bg); padding:8px 10px; border-radius:10px; border:1px solid var(--bd);"><div style="font-size:11px; color:var(--tx2);">الرصيد بعد هذا الطلب</div><div style="font-size:16px; font-weight:900; color:' + (isZeroBalance ? '#ef4444' : '#8b5cf6') + ';" id="tgLeaveAfterDisplay">' + lStats.remainAnnual + ' يوم</div></div>';
                 h += '  </div>';
+                if (isZeroBalance) {
+                    h += '<div style="margin-top:12px; padding:12px 16px; background:rgba(239,68,68,0.1); border:1.5px solid #ef4444; border-radius:10px; font-size:12.5px; color:#b91c1c; line-height:1.6; text-align:right;">' +
+                         '<div style="font-weight:900; font-size:13.5px; margin-bottom:4px;">🚨 تنبيه رسمي بشأن رصيد الإجازات السنوية:</div>' +
+                         'لقد تم <strong>استنفاد كامل رصيد الإجازات السنوية لعام 2026 بالكامل (15/15 يوم)</strong>. لا يوجد رصيد متبقي براتب لهذا العام.<br>' +
+                         '📌 أي طلب إجازة يتم تقديمه أو اعتماده في الفترة الحالية سيُسجل كـ <strong>(إجازة بدون راتب / خصم من الراتب)</strong> طبقاً للمادة 124 من لائحة العمل، لحين إعادة تجديد الرصيد السنوي الكامل (21 يوم) مع بداية العام القادم 2027.' +
+                         '</div>';
+                }
                 h += '  <div id="tgLeaveWarnBox" style="display:none; margin-top:10px; padding:10px 14px; background:rgba(239,68,68,0.12); border:1px solid #ef4444; border-radius:8px; font-size:12px; color:#ef4444; font-weight:bold; text-align:center;"></div>';
                 h += '</div>';
             }
@@ -3523,8 +3531,8 @@
         تطوير وتصميم: أبانوب فايز</div>
     <script src="https://cdn.jsdelivr.net/npm/canvas-confetti@1.6.0/dist/confetti.browser.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
-    <script src="theme.js?v=1788176681"></script>
-    <script src="pwa-install.js?v=1788176681"></script>
+    <script src="theme.js?v=1788180585"></script>
+    <script src="pwa-install.js?v=1788180585"></script>
 
 
     <!-- Incoming Meeting Call Modal -->
