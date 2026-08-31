@@ -1524,8 +1524,8 @@
             return list.find(p => p.date === dateStr) || null;
         }
 
-        function getLeaveForDate(empId, dateStr) {
-            // 1. Manual leaves registered on the system
+        function getPersonalLeaveForDate(empId, dateStr) {
+            // 1. Manual leaves registered specifically for this employee
             const manualList = employeeManualLeaves[empId] || [];
             const m = manualList.find(l => {
                 if (l.date === dateStr) return true;
@@ -1534,7 +1534,7 @@
             });
             if (m) return m;
 
-            // 2. Dynamic leaves in localStorage
+            // 2. Dynamic leaves in localStorage for this employee
             try {
                 const raw = localStorage.getItem('attendance_sys_techgo_employee_leaves') || localStorage.getItem('techgo_employee_leaves');
                 if (raw) {
@@ -1565,12 +1565,20 @@
                 if (b) return { type: 'meta', typeLabel: b.type, note: b.date };
             }
 
-            // 4. Automatic Official Public Holidays (م.١٢٩ من قانون العمل المصري)
+            return null;
+        }
+
+        function getLeaveForDate(empId, dateStr) {
+            // First check personal employee leave
+            const personal = getPersonalLeaveForDate(empId, dateStr);
+            if (personal) return personal;
+
+            // Second check official public holiday
             const offHol = getOfficialHoliday(dateStr);
             if (offHol) {
                 return {
                     type: 'official',
-                    typeLabel: `🏛️ إجازة رسمية: ${offHol.occasion}`,
+                    typeLabel: `🏛️ عطلة رسمية: ${offHol.occasion}`,
                     note: (offHol.occasion || 'عطلة رسمية') + (offHol.details ? ` (${offHol.details})` : '') + ' - م.١٢٩'
                 };
             }
@@ -1931,9 +1939,14 @@
                     const exit  = emp.exits.find(e => e.date === date);
                     const p = getDayPunctuality(emp.employeeId, date, entry ? entry.time : null, exit ? exit.time : null);
                     const perm = getPermissionForDate(emp.employeeId, date);
+                    const personalLeave = getPersonalLeaveForDate(emp.employeeId, date);
+                    const offHol = getOfficialHoliday(date);
 
                     let statusBadge = '';
                     let hoursFormatted = '—';
+                    let permNoteText = '';
+                    if (dayPerm) permNoteText += `🎫 ${perm.note || perm.type} `;
+                    if (personalLeave) permNoteText += `🏖️ ${personalLeave.typeLabel || personalLeave.type} `;
 
                     if (!entry && exit) {
                         statusBadge = '<span class="status-badge badge-danger">⚠️ خروج فقط (دخول مفقود)</span>';
@@ -1958,7 +1971,19 @@
                             }
                         } else {
                             okCount++;
-                            statusBadge = '<span class="status-badge badge-ok">✅ في معاده</span>';
+                            statusBadge = '<span class="badge-ok">✅ في معاده</span>';
+                        }
+                    } else {
+                        if (personalLeave) {
+                            statusBadge = `<span class="status-badge badge-perm" style="background:#eff6ff; color:#1e40af; border:1px solid #bfdbfe;">🏖️ ${personalLeave.typeLabel || personalLeave.type}</span>`;
+                            hoursFormatted = `<span style="color:#1e40af; font-weight:700;">إجازة معتمدة</span>`;
+                        } else if (offHol) {
+                            statusBadge = `<span class="status-badge badge-perm" style="background:#fefce8; color:#854d0e; border:1px solid #fef08a;">🏛️ ${offHol.occasion}</span>`;
+                            hoursFormatted = `<span style="color:#854d0e; font-weight:700;">عطلة رسمية</span>`;
+                            if (!permNoteText) permNoteText = `🏛️ عطلة رسمية: ${offHol.occasion} (م.١٢٩)`;
+                        } else {
+                            statusBadge = '<span class="status-badge badge-danger">⚠️ غياب</span>';
+                            hoursFormatted = '—';
                         }
                     }
 
@@ -1968,7 +1993,7 @@
                         <td style="color:var(--success-light); font-weight:600;">${entry ? entry.time : '—'}</td>
                         <td style="color:var(--danger-light); font-weight:600;">${exit ? exit.time : '—'}</td>
                         <td>${hoursFormatted}</td>
-                        <td style="font-size:0.8rem; color:var(--text-muted);">${perm ? '🎫 ' + (perm.note || perm.type) : '—'}</td>
+                        <td style="font-size:0.8rem; color:var(--text-muted);">${permNoteText || (entry && exit ? 'حركة مكتملة' : '—')}</td>
                     </tr>`;
                 }).join('');
 
@@ -2492,7 +2517,8 @@
                     const exit  = emp.exits.find(e => e.date === date);
                     const p = getDayPunctuality(emp.employeeId, date, entry ? entry.time : null, exit ? exit.time : null);
                     const dayPerm = getPermissionForDate(emp.employeeId, date);
-                    const dayLeave = getLeaveForDate(emp.employeeId, date);
+                    const personalLeave = getPersonalLeaveForDate(emp.employeeId, date);
+                    const offHol = getOfficialHoliday(date);
 
                     let statusBadge = '';
                     let hoursDecimal = '—';
@@ -2503,13 +2529,13 @@
                         dayName = _DAY_NAMES_AR[dObj.getDay()] || '';
                     } catch(e){}
 
-                    // Format permission notes if any
+                    // Format permission and personal leave notes
                     if (dayPerm) {
                         const pTypeTxt = dayPerm.type === 'late' ? 'إذن تأخير' : (dayPerm.type === 'early' ? 'إذن انصراف' : 'إذن خروج');
                         notesText = `<span style="color:#0284c7; font-weight:bold;">🎫 ${pTypeTxt}${dayPerm.note ? ': ' + dayPerm.note : ''}</span>`;
                     }
-                    if (dayLeave) {
-                        notesText += (notesText ? ' | ' : '') + `<span style="color:#1e40af; font-weight:bold;">🏖️ ${dayLeave.typeLabel || dayLeave.type}${dayLeave.note ? ': ' + dayLeave.note : ''}</span>`;
+                    if (personalLeave) {
+                        notesText += (notesText ? ' | ' : '') + `<span style="color:#1e40af; font-weight:bold;">🏖️ ${personalLeave.typeLabel || personalLeave.type}${personalLeave.note ? ': ' + personalLeave.note : ''}</span>`;
                     }
 
                     if (!entry && exit) {
@@ -2554,9 +2580,19 @@
                             statusBadge = '<span class="badge-ok">✅ في معاده</span>';
                         }
                     } else {
-                        if (dayLeave) {
-                            statusBadge = `<span class="badge-perm" style="background:#eff6ff; color:#1e40af; border:1px solid #bfdbfe;">🏖️ ${dayLeave.typeLabel || dayLeave.type}</span>`;
-                            hoursDecimal = 'إجازة';
+                        // No punches at all on this day
+                        if (personalLeave) {
+                            statusBadge = `<span class="badge-perm" style="background:#eff6ff; color:#1e40af; border:1px solid #bfdbfe;">🏖️ ${personalLeave.typeLabel || personalLeave.type}</span>`;
+                            hoursDecimal = 'إجازة معتمدة';
+                        } else if (offHol) {
+                            statusBadge = `<span class="badge-perm" style="background:#fefce8; color:#854d0e; border:1px solid #fef08a;">🏛️ ${offHol.occasion}</span>`;
+                            hoursDecimal = 'عطلة رسمية';
+                            if (!notesText) {
+                                notesText = `<span style="color:#854d0e; font-weight:bold;">🏛️ عطلة رسمية: ${offHol.occasion} (م.١٢٩)</span>`;
+                            }
+                        } else {
+                            statusBadge = `<span class="badge-danger">⚠️ غياب</span>`;
+                            hoursDecimal = '—';
                         }
                     }
 
@@ -3046,7 +3082,7 @@
         updatePolicyLabels();
         initAttendanceArchive();
     </script>
-    <script src="theme.js?v=1788165540"></script>
-    <script src="pwa-install.js?v=1788165540"></script>
+    <script src="theme.js?v=1788165629"></script>
+    <script src="pwa-install.js?v=1788165629"></script>
 </body>
 </html>
