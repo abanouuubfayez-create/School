@@ -843,19 +843,19 @@
                     <input type="text" class="search-box" id="overviewSearch" placeholder="🔍 بحث عن موظف..." oninput="filterOverviewTable()">
                 </div>
                 <div style="overflow-x: auto;">
-                    <table class="admin-table" id="overviewTable">
+                    <table class="admin-table" id="overviewTable" style="min-width: 950px; width: 100%;">
                         <thead>
                             <tr>
-                                <th style="width: 4%; text-align:center;">#</th>
-                                <th style="width: 20%;">اسم الموظف</th>
-                                <th style="width: 6%; text-align:center;">الكود</th>
-                                <th style="width: 14%; text-align:center;">✅ في الميعاد</th>
-                                <th style="width: 13%; text-align:center;">⏰ تأخير بدون إذن</th>
-                                <th style="width: 13%; text-align:center;">🎫 تأخير بإذن</th>
-                                <th style="width: 10%; text-align:center;">🚨 خصومات الغياب</th>
-                                <th style="width: 8%; text-align:center;">🎫 الأذونات</th>
-                                <th style="width: 12%; text-align:center;">⏱ ساعات العمل الفعلية</th>
-                                <th class="col-action" style="width: 0%; text-align:center;">إجراء</th>
+                                <th style="width: 4%; text-align:center; white-space:nowrap;">#</th>
+                                <th style="width: 18%; text-align:right; white-space:nowrap;">اسم الموظف</th>
+                                <th style="width: 6%; text-align:center; white-space:nowrap;">الكود</th>
+                                <th style="width: 12%; text-align:center; white-space:nowrap;">✅ في الميعاد</th>
+                                <th style="width: 13%; text-align:center; white-space:nowrap;">⏰ تأخير بدون إذن</th>
+                                <th style="width: 12%; text-align:center; white-space:nowrap;">🎫 تأخير بإذن</th>
+                                <th style="width: 12%; text-align:center; white-space:nowrap;">🚨 خصومات الغياب</th>
+                                <th style="width: 8%; text-align:center; white-space:nowrap;">🎫 الأذونات</th>
+                                <th style="width: 10%; text-align:center; white-space:nowrap;">⏱️ ساعات العمل</th>
+                                <th class="col-action" style="width: 5%; text-align:center; white-space:nowrap;">إجراء</th>
                             </tr>
                         </thead>
                         <tbody id="overviewTableBody"></tbody>
@@ -2460,16 +2460,16 @@
 
                 const tr = document.createElement('tr');
                 tr.innerHTML = `
-                    <td style="font-weight:bold; color:var(--text-muted); text-align:center;">${idx + 1}</td>
-                    <td style="font-weight:bold; color:var(--text);">${name}</td>
-                    <td style="color:var(--perm-light); font-weight:bold; text-align:center;">${emp.employeeId}</td>
-                    <td style="text-align:center;"><span class="status-badge badge-ok">✅ ${ok} يوم</span></td>
-                    <td style="text-align:center;">${lateNoPerm > 0 ? `<span class="status-badge badge-danger">⚠️ ${lateNoPerm} غير مبرر</span>` : '<span style="color:var(--text-muted);">0</span>'}</td>
-                    <td style="text-align:center;">${latePerm > 0 ? `<span class="status-badge badge-perm">🎫 ${latePerm} بإذن</span>` : '<span style="color:var(--text-muted);">0</span>'}</td>
-                    <td style="text-align:center;">${deductionBadge}</td>
-                    <td style="text-align:center;"><span class="status-badge badge-perm">${permsCount} إذن</span></td>
-                    <td style="font-weight:bold; color:var(--primary-light); text-align:center;">${(totalHours).toFixed(2)} س <small style="display:block; font-size:10px; color:var(--text-muted);">(${fmtHoursAndMins(totalHours)})</small></td>
-                    <td class="col-action" style="text-align:center;">
+                    <td style="font-weight:bold; color:var(--text-muted); text-align:center; white-space:nowrap;">${idx + 1}</td>
+                    <td style="font-weight:bold; color:var(--text); white-space:nowrap;">${name}</td>
+                    <td style="color:var(--perm-light); font-weight:bold; text-align:center; white-space:nowrap;">#${emp.employeeId}</td>
+                    <td style="text-align:center; white-space:nowrap;"><span class="status-badge badge-ok">✅ ${ok} يوم</span></td>
+                    <td style="text-align:center; white-space:nowrap;">${lateNoPerm > 0 ? `<span class="status-badge badge-danger">⚠️ ${lateNoPerm} غير مبرر</span>` : '<span style="color:var(--text-muted);">0</span>'}</td>
+                    <td style="text-align:center; white-space:nowrap;">${latePerm > 0 ? `<span class="status-badge badge-perm">🎫 ${latePerm} بإذن</span>` : '<span style="color:var(--text-muted);">0</span>'}</td>
+                    <td style="text-align:center; white-space:nowrap;">${deductionBadge}</td>
+                    <td style="text-align:center; white-space:nowrap;"><span class="status-badge badge-perm">${permsCount} إذن</span></td>
+                    <td style="font-weight:bold; color:var(--primary-light); text-align:center; white-space:nowrap;">${(totalHours).toFixed(2)} س <small style="display:block; font-size:10px; color:var(--text-muted);">(${fmtHoursAndMins(totalHours)})</small></td>
+                    <td class="col-action" style="text-align:center; white-space:nowrap;">
                         <button class="btn-action btn-perm-action" onclick="openNewPermForEmp('${emp.employeeId}')" style="padding:2px 8px;font-size:0.75rem;">+ إذن</button>
                     </td>
                 `;
@@ -4169,7 +4169,7 @@
         syncApprovedEmployeeRequests();
         initAttendanceArchive();
     </script>
-    <script src="theme.js?v=1788183550"></script>
-    <script src="pwa-install.js?v=1788183550"></script>
+    <script src="theme.js?v=1788183916"></script>
+    <script src="pwa-install.js?v=1788183916"></script>
 </body>
 </html>
