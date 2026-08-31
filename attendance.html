@@ -2872,11 +2872,34 @@
         };
 
         function buildOfficialPrintReport() {
-            syncApprovedEmployeeRequests();
+            // 1. If stats is not loaded, attempt to load latest or active month from archive
             if (!stats || !stats.employeeDetails || !stats.employeeDetails.length) {
-                alert('يرجى رفع ملف البصمة أولاً');
+                try {
+                    const keys = Object.keys(attendanceArchive || {});
+                    if (keys.length > 0) {
+                        const targetKey = currentLoadedMonthKey || keys.sort().reverse()[0];
+                        if (targetKey && attendanceArchive[targetKey]) {
+                            loadMonthDataFromArchive(targetKey);
+                        }
+                    }
+                } catch(e){}
+            }
+
+            if (!stats || !stats.employeeDetails || !stats.employeeDetails.length) {
+                alert('⚠️ يرجى اختيار شهر من قائمة الأرشيف أو رفع ملف البصمة أولاً لتوليد التقرير المعتمد.');
                 return;
             }
+
+            // 2. Open print window immediately to guarantee zero popup-blocker issues
+            let printWin = null;
+            try {
+                printWin = window.open('', '_blank');
+                if (printWin) {
+                    printWin.document.write('<div style="font-family:sans-serif; text-align:center; padding:60px 20px; font-size:18px; color:#0f766e; direction:rtl;">⏳ جارٍ تجهيز واستخراج التقرير الرسمي المعتمد لشهر أغسطس 2026...</div>');
+                }
+            } catch(e){}
+
+            syncApprovedEmployeeRequests();
 
             const activeEmpDetails = stats.employeeDetails.filter(e => !inactiveEmployees.includes(String(e.employeeId)));
             const allDates = Array.from(new Set(activeEmpDetails.flatMap(e => e.dates))).sort();
@@ -3903,10 +3926,9 @@
 </html>
             `;
 
-            // Foolproof Direct Print Window (Auto-Prints & Includes Floating Bar)
+            // Write htmlContent to synchronously opened printWin or fallback smoothly
             try {
-                const printWin = window.open('', '_blank');
-                if (printWin) {
+                if (printWin && !printWin.closed) {
                     printWin.document.open();
                     printWin.document.write(htmlContent);
                     printWin.document.close();
@@ -3917,16 +3939,24 @@
                         } catch(e){}
                     }, 400);
                 } else {
-                    // Fallback to in-page print container if popup was blocked
-                    let printContainer = document.getElementById('_techgo_inpage_print');
-                    if (!printContainer) {
-                        printContainer = document.createElement('div');
-                        printContainer.id = '_techgo_inpage_print';
-                        printContainer.style.display = 'none';
-                        document.body.appendChild(printContainer);
+                    const win = window.open('', '_blank');
+                    if (win) {
+                        win.document.open();
+                        win.document.write(htmlContent);
+                        win.document.close();
+                        setTimeout(() => {
+                            try { win.focus(); win.print(); } catch(e){}
+                        }, 400);
+                    } else {
+                        let printContainer = document.getElementById('_techgo_inpage_print');
+                        if (!printContainer) {
+                            printContainer = document.createElement('div');
+                            printContainer.id = '_techgo_inpage_print';
+                            document.body.appendChild(printContainer);
+                        }
+                        printContainer.innerHTML = htmlContent;
+                        window.print();
                     }
-                    printContainer.innerHTML = htmlContent;
-                    window.print();
                 }
             } catch(e) {
                 console.error('Print generation error:', e);
@@ -3943,7 +3973,7 @@
         syncApprovedEmployeeRequests();
         initAttendanceArchive();
     </script>
-    <script src="theme.js?v=1788179347"></script>
-    <script src="pwa-install.js?v=1788179347"></script>
+    <script src="theme.js?v=1788179539"></script>
+    <script src="pwa-install.js?v=1788179539"></script>
 </body>
 </html>
