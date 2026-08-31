@@ -2739,13 +2739,33 @@
                     return arr.findIndex(x => x.type === l.type && x.date === l.date) === i;
                 });
 
+                // Calculate month-specific leave days consumed
+                let monthUsedLeavesCount = 0;
+                empLeavesList.forEach(l => {
+                    const match = String(l.type + ' ' + l.date).match(/(\d+)\s*ي/);
+                    monthUsedLeavesCount += match ? parseInt(match[1], 10) : 1;
+                });
+
+                // Calculate full-year leave days consumed (طوال السنة)
                 let totalUsedLeaves = (meta.used || 0);
                 let totalCasualLeaves = (meta.casual || 0);
+
+                if (dynamicLeavesStore[emp.employeeId]) {
+                    const yrData = dynamicLeavesStore[emp.employeeId][pYear] || {};
+                    (yrData.annual || []).forEach(l => { totalUsedLeaves += (parseInt(l.days, 10) || 1); });
+                    (yrData.casual || []).forEach(l => {
+                        const d = parseInt(l.days, 10) || 1;
+                        totalUsedLeaves += d;
+                        totalCasualLeaves += d;
+                    });
+                }
+
                 (employeeManualLeaves[emp.employeeId] || []).forEach(l => {
                     const d = parseInt(l.days, 10) || 1;
                     totalUsedLeaves += d;
                     if (l.type === 'casual') totalCasualLeaves += d;
                 });
+
                 const calculatedBalance = Math.max(0, meta.total - totalUsedLeaves);
 
                 let ok = 0, late = 0, early = 0, empHours = 0;
@@ -2787,6 +2807,7 @@
                     calculatedBalance,
                     totalUsedLeaves,
                     totalCasualLeaves,
+                    monthUsedLeavesCount,
                     allEmpPerms,
                     empLeavesList,
                     ok,
@@ -2812,10 +2833,9 @@
             // Build Executive Overview Table Rows
             let overviewRows = '';
             employeeMetrics.forEach(em => {
-                const leavesCount = em.totalUsedLeaves > 0 ? `${em.totalUsedLeaves}ي` : '—';
+                const monthLeavesStr = em.monthUsedLeavesCount > 0 ? `<span style="color:#0284c7; font-weight:800;">${em.monthUsedLeavesCount}ي</span>` : '—';
                 const permsStr = em.allEmpPerms.length > 0 ? `<span style="color:#0284c7; font-weight:800;">${em.allEmpPerms.length} إذن</span>` : '0';
                 const wfhStr = em.meta.wfh > 0 ? `${em.meta.wfh}ي` : '—';
-                const balStr = `<strong>${em.calculatedBalance}</strong> / ${em.meta.total} <small style="color:#64748b; font-size:6.5pt;">(عارضة ${em.totalCasualLeaves}/7)</small>`;
                 const rateColor = em.punctualityRate >= 95 ? '#15803d' : (em.punctualityRate >= 85 ? '#0369a1' : '#b91c1c');
 
                 overviewRows += `
@@ -2827,11 +2847,15 @@
                         <td style="text-align:center; font-weight:700; color:${em.late > 0 ? '#b91c1c' : '#64748b'};">${em.late > 0 ? em.late : '0'}</td>
                         <td style="text-align:center; color:#64748b;">${em.early > 0 ? em.early : '0'}</td>
                         <td style="text-align:center; font-weight:700;">${permsStr}</td>
-                        <td style="text-align:center; font-weight:600; color:#0369a1;">${leavesCount}</td>
+                        <td style="text-align:center; font-weight:700;">${monthLeavesStr}</td>
                         <td style="text-align:center; font-weight:600; color:#0f766e;">${wfhStr}</td>
                         <td style="text-align:center; font-weight:800; color:#0f766e;">${(em.empHours).toFixed(1)} س</td>
                         <td style="text-align:center; font-weight:900; color:${rateColor};">${em.punctualityRate}%</td>
-                        <td style="text-align:center; font-weight:700; font-size:7pt;">${balStr}</td>
+                        <td style="text-align:center; padding:2px 3px;">
+                            <div style="font-weight:900; color:#0f766e; font-size:7.5pt;">${em.calculatedBalance} / 15 يوم متبقي</div>
+                            <div style="font-size:6pt; color:#475569;">مستهلك العام: <strong>${em.totalUsedLeaves}ي</strong> (عارضة ${em.totalCasualLeaves}/7)</div>
+                            <div style="font-size:6pt; color:#0284c7; font-weight:800;">[منها <strong>${em.monthUsedLeavesCount}ي</strong> بشهر ${monthNameAr}]</div>
+                        </td>
                     </tr>
                 `;
             });
@@ -3083,19 +3107,22 @@
                         </table>
 
                         <div style="display:grid; grid-template-columns: 1fr 1fr; gap:6px; margin-top:2px;">
-                            <div style="background:#f8fafc; border:1px solid #cbd5e1; border-radius:6px; padding:5px 8px;">
-                                <div style="display:flex; justify-content:space-between; align-items:center;">
-                                    <span style="font-size:7.5pt; font-weight:800; color:#334155;">📑 رصيد الإجازة السنوية (مادة 124)</span>
-                                    <span style="font-size:10pt; font-weight:900; color:#0f766e;">${meta.balance} <small style="font-size:6.5pt;">يوم متبقي</small></span>
+                            <div style="background:#f8fafc; border:1.5px solid #cbd5e1; border-radius:6px; padding:5px 8px;">
+                                <div style="display:flex; justify-content:space-between; align-items:center; border-bottom:1px solid #e2e8f0; padding-bottom:3px; margin-bottom:3px;">
+                                    <span style="font-size:7.8pt; font-weight:900; color:#0f172a;">📑 رصيد الإجازة السنوية (مادة 124)</span>
+                                    <span style="font-size:10.5pt; font-weight:900; color:#0f766e;">${em.calculatedBalance} <small style="font-size:6.8pt; color:#475569;">يوم متبقي</small></span>
                                 </div>
-                                <div style="font-size:6.5pt; color:#64748b; margin-top:1px;">الاستحقاق: ${meta.total} يوم | مستهلك: <strong>${meta.used} يوم</strong> (عارضة: ${meta.casual}/7)</div>
+                                <div style="background:#f1f5f9; border-radius:4px; padding:4px 6px; font-size:6.8pt; line-height:1.45; color:#334155; margin-bottom:4px;">
+                                    <div>📊 <strong>الاستحقاق السنوي الكامل:</strong> 15 يوم | <strong>المستهلك طوال عام ${pYear}:</strong> <span style="color:#b91c1c; font-weight:800;">${em.totalUsedLeaves} يوم</span> (عارضة: ${em.totalCasualLeaves}/7)</div>
+                                    <div>🗓️ <strong>المستهلك خلال شهر ${monthNameAr} ${pYear} تحديداً:</strong> <span style="color:#0284c7; font-weight:800;">${em.monthUsedLeavesCount > 0 ? em.monthUsedLeavesCount + ' يوم' : '0 (لا توجد إجازات هذا الشهر)'}</span></div>
+                                </div>
                                 <div style="margin-top:4px;">
-                                    <div style="font-size:7pt; font-weight:800; color:#1e40af; margin-bottom:2px;">🏖️ الإجازات المسجلة على السيستم:</div>
+                                    <div style="font-size:7pt; font-weight:800; color:#1e40af; margin-bottom:2px;">🏖️ تفاصيل إجازات شهر ${monthNameAr} ${pYear}:</div>
                                     ${leavesBoxesHtml}
                                 </div>
                             </div>
-                            <div style="background:#f8fafc; border:1px solid #cbd5e1; border-radius:6px; padding:5px 8px;">
-                                <div style="font-size:7.5pt; font-weight:800; color:#0369a1; margin-bottom:3px;">🎫 سجل أذونات الحضور والانصراف المعتمدة:</div>
+                            <div style="background:#f8fafc; border:1.5px solid #cbd5e1; border-radius:6px; padding:5px 8px;">
+                                <div style="font-size:7.8pt; font-weight:900; color:#0369a1; margin-bottom:3px; border-bottom:1px solid #e2e8f0; padding-bottom:3px;">🎫 سجل أذونات الحضور والانصراف المعتمدة:</div>
                                 ${permsBoxHtml}
                                 ${wfhBoxHtml}
                             </div>
@@ -3491,7 +3518,7 @@
         updatePolicyLabels();
         initAttendanceArchive();
     </script>
-    <script src="theme.js?v=1788168974"></script>
-    <script src="pwa-install.js?v=1788168974"></script>
+    <script src="theme.js?v=1788169310"></script>
+    <script src="pwa-install.js?v=1788169310"></script>
 </body>
 </html>
