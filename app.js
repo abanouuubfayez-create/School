@@ -2096,7 +2096,11 @@ function loadTasksMgmt(){
     if(!assigneeSel||!listBox)return;
     db.collection('users').where('role','==','employee').get().then(function(snap){
         var employees=[];
-        snap.forEach(function(doc){employees.push(Object.assign({uid:doc.id},doc.data()));});
+        snap.forEach(function(doc){
+            var data = doc.data() || {};
+            if (data.disabled === true || data.status === 'disabled' || data.active === false) return;
+            employees.push(Object.assign({uid:doc.id}, data));
+        });
         employees.sort(function(a,b){return (a.name||a.email||'').localeCompare((b.name||b.email||''),'ar');});
         if(!employees.length){
             assigneeSel.innerHTML='<option value="">لا يوجد موظفون مسجّلون بعد</option>';

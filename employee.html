@@ -67,7 +67,7 @@
     <link
         href="https://fonts.googleapis.com/css2?family=Alexandria:wght@300;400;500;600;700;800;900&family=Cairo:wght@400;600;700;800;900&family=Tajawal:wght@400;500;700;800&family=Inter:wght@400;500;600;700&display=swap"
         rel="stylesheet">
-    <link rel="stylesheet" href="styles.css?v=181818">
+    <link rel="stylesheet" href="styles.css?v=1788176681">
     <link rel="manifest" href="manifest.json">
     <link rel="icon" type="image/png" sizes="192x192" href="icon-192.png">
     <link rel="apple-touch-icon" href="icon-192.png">
@@ -75,10 +75,10 @@
     <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-auth-compat.js"></script>
     <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore-compat.js"></script>
     <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-storage-compat.js"></script>
-    <script src="firebase-config.js?v=181818"></script>
-    <script src="auth.js?v=181818"></script>
-    <script src="app.js?v=181818"></script>
-    <script src="formsend.js?v=181818"></script>
+    <script src="firebase-config.js?v=1788176681"></script>
+    <script src="auth.js?v=1788176681"></script>
+    <script src="app.js?v=1788176681"></script>
+    <script src="formsend.js?v=1788176681"></script>
     <script>
         (function () {
             const theme = localStorage.getItem('tg-theme') || 'light';
@@ -1920,13 +1920,16 @@
         var _tasksUnsub = null;
         var _teammatesCache = null;
         function loadTeammates(cb) {
-            // جلب جميع الموظفين والمديرين لضمان وصول الإشعارات للجميع وربط الأسماء بشكل صحيح
+            // جلب الموظفين والمسؤولين المفعلين فقط
             db.collection('users').get().then(function (snap) {
                 _teammatesCache = [];
                 snap.forEach(function (d) {
-                    var u = d.data();
-                    _teammatesCache.push({ id: d.id, name: u.name, role: u.role });
+                    var u = d.data() || {};
+                    // استبعاد الحسابات المعطلة تماماً
+                    if (u.disabled === true || u.status === 'disabled' || u.active === false) return;
+                    _teammatesCache.push({ id: d.id, name: u.name || u.email, role: u.role });
                 });
+                _teammatesCache.sort(function (a, b) { return (a.name || '').localeCompare(b.name || '', 'ar'); });
                 if (cb) cb();
             }).catch(function (err) { console.error("Error loading teammates:", err); if (cb) cb(); });
         }
@@ -2059,7 +2062,7 @@
                     '<div style="margin-top:12px;padding-top:12px;border-top:1px dashed var(--bd)">' +
                     '<div style="font-size:11px;font-weight:700;color:var(--nv);margin-bottom:6px">🔄 إرسال المهمة لزميل</div>' +
                     '<div class="fg" style="margin-bottom:8px"><label>اختر الزميل</label><select id="tkfwd_' + t.id + '"><option value="">-- اختر الزميل --</option>' +
-                    (_teammatesCache || []).map(function (emp) { return '<option value="' + emp.id + '">' + esc(emp.name) + '</option>'; }).join('') +
+                    (_teammatesCache || []).filter(function (emp) { return emp.id !== (window.TG_USER ? TG_USER.uid : ''); }).map(function (emp) { return '<option value="' + emp.id + '">' + esc(emp.name) + '</option>'; }).join('') +
                     '</select></div>' +
                     '<div class="fg" style="margin-bottom:8px"><label>ماذا أنجزت؟ (ملاحظة للأدمن والزميل)</label><textarea id="tkfwd_note_' + t.id + '" rows="2" placeholder="اكتب ما أنجزته أو سبب الإرسال..."></textarea></div>' +
                     '<button class="bt bt-o" onclick="forwardTask(\'' + t.id + '\')">📩 إرسال المهمة للزميل</button>' +
@@ -3520,8 +3523,8 @@
         تطوير وتصميم: أبانوب فايز</div>
     <script src="https://cdn.jsdelivr.net/npm/canvas-confetti@1.6.0/dist/confetti.browser.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
-    <script src="theme.js?v=181818"></script>
-    <script src="pwa-install.js?v=181818"></script>
+    <script src="theme.js?v=1788176681"></script>
+    <script src="pwa-install.js?v=1788176681"></script>
 
 
     <!-- Incoming Meeting Call Modal -->
