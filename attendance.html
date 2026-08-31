@@ -3903,33 +3903,30 @@
 </html>
             `;
 
-            // Instant Blob URL Print Architecture (Zero-Freeze, Instant Render)
+            // Foolproof Direct Print Window (Auto-Prints & Includes Floating Bar)
             try {
-                const blob = new Blob([htmlContent], { type: 'text/html;charset=utf-8' });
-                const blobUrl = URL.createObjectURL(blob);
-                const printWin = window.open(blobUrl, '_blank');
+                const printWin = window.open('', '_blank');
                 if (printWin) {
-                    printWin.focus();
-                } else {
-                    // Fallback to hidden iframe if popups are completely blocked
-                    let oldIframe = document.getElementById('_techgo_print_iframe');
-                    if (oldIframe) oldIframe.remove();
-                    const iframe = document.createElement('iframe');
-                    iframe.id = '_techgo_print_iframe';
-                    iframe.src = blobUrl;
-                    iframe.style.position = 'fixed';
-                    iframe.style.right = '0';
-                    iframe.style.bottom = '0';
-                    iframe.style.width = '0';
-                    iframe.style.height = '0';
-                    iframe.style.border = 'none';
-                    document.body.appendChild(iframe);
-                    iframe.onload = function() {
+                    printWin.document.open();
+                    printWin.document.write(htmlContent);
+                    printWin.document.close();
+                    setTimeout(() => {
                         try {
-                            iframe.contentWindow.focus();
-                            iframe.contentWindow.print();
+                            printWin.focus();
+                            printWin.print();
                         } catch(e){}
-                    };
+                    }, 400);
+                } else {
+                    // Fallback to in-page print container if popup was blocked
+                    let printContainer = document.getElementById('_techgo_inpage_print');
+                    if (!printContainer) {
+                        printContainer = document.createElement('div');
+                        printContainer.id = '_techgo_inpage_print';
+                        printContainer.style.display = 'none';
+                        document.body.appendChild(printContainer);
+                    }
+                    printContainer.innerHTML = htmlContent;
+                    window.print();
                 }
             } catch(e) {
                 console.error('Print generation error:', e);
@@ -3946,7 +3943,7 @@
         syncApprovedEmployeeRequests();
         initAttendanceArchive();
     </script>
-    <script src="theme.js?v=1788179169"></script>
-    <script src="pwa-install.js?v=1788179169"></script>
+    <script src="theme.js?v=1788179347"></script>
+    <script src="pwa-install.js?v=1788179347"></script>
 </body>
 </html>
