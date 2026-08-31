@@ -3060,15 +3060,6 @@
                 return;
             }
 
-            // 2. Open print window immediately to guarantee zero popup-blocker issues
-            let printWin = null;
-            try {
-                printWin = window.open('', '_blank');
-                if (printWin) {
-                    printWin.document.write('<div style="font-family:sans-serif; text-align:center; padding:60px 20px; font-size:18px; color:#0f766e; direction:rtl;">⏳ جارٍ تجهيز واستخراج التقرير الرسمي المعتمد لشهر أغسطس 2026...</div>');
-                }
-            } catch(e){}
-
             syncApprovedEmployeeRequests();
 
             const activeEmpDetails = stats.employeeDetails.filter(e => !inactiveEmployees.includes(String(e.employeeId)));
@@ -4121,38 +4112,35 @@
 </html>
             `;
 
-            // Write htmlContent to synchronously opened printWin or fallback smoothly
+            // Trigger 100% Reliable Print via Hidden Isolated IFrame (Zero Popup Blocker, Zero CSS Conflicts)
             try {
-                if (printWin && !printWin.closed) {
-                    printWin.document.open();
-                    printWin.document.write(htmlContent);
-                    printWin.document.close();
-                    setTimeout(() => {
-                        try {
-                            printWin.focus();
-                            printWin.print();
-                        } catch(e){}
-                    }, 400);
-                } else {
-                    const win = window.open('', '_blank');
-                    if (win) {
-                        win.document.open();
-                        win.document.write(htmlContent);
-                        win.document.close();
-                        setTimeout(() => {
-                            try { win.focus(); win.print(); } catch(e){}
-                        }, 400);
-                    } else {
-                        let printContainer = document.getElementById('_techgo_inpage_print');
-                        if (!printContainer) {
-                            printContainer = document.createElement('div');
-                            printContainer.id = '_techgo_inpage_print';
-                            document.body.appendChild(printContainer);
-                        }
-                        printContainer.innerHTML = htmlContent;
-                        window.print();
+                let iframe = document.getElementById('_techgo_print_frame');
+                if (iframe && iframe.parentNode) iframe.parentNode.removeChild(iframe);
+                
+                iframe = document.createElement('iframe');
+                iframe.id = '_techgo_print_frame';
+                iframe.style.position = 'fixed';
+                iframe.style.right = '0';
+                iframe.style.bottom = '0';
+                iframe.style.width = '0';
+                iframe.style.height = '0';
+                iframe.style.border = 'none';
+                iframe.style.visibility = 'hidden';
+                document.body.appendChild(iframe);
+
+                const doc = iframe.contentWindow.document;
+                doc.open();
+                doc.write(htmlContent);
+                doc.close();
+
+                setTimeout(() => {
+                    try {
+                        iframe.contentWindow.focus();
+                        iframe.contentWindow.print();
+                    } catch(err) {
+                        console.error('Iframe print error:', err);
                     }
-                }
+                }, 350);
             } catch(e) {
                 console.error('Print generation error:', e);
                 alert('حدث خطأ أثناء فتح شاشة الطباعة: ' + e.message);
