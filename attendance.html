@@ -421,6 +421,54 @@
 
         .hidden { display: none !important; }
 
+        /* ── Modern Floating Toast Notifications ── */
+        .techgo-toast-container {
+            position: fixed;
+            top: 24px;
+            left: 50%;
+            transform: translateX(-50%);
+            z-index: 999999;
+            display: flex;
+            flex-direction: column;
+            gap: 10px;
+            pointer-events: none;
+        }
+        .techgo-toast {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            background: linear-gradient(135deg, #059669 0%, #047857 100%);
+            color: #ffffff;
+            padding: 12px 24px;
+            border-radius: 12px;
+            box-shadow: 0 10px 25px rgba(0,0,0,0.3), 0 0 20px rgba(16, 185, 129, 0.4);
+            font-size: 0.95rem;
+            font-weight: 800;
+            pointer-events: auto;
+            animation: toastSlideDown 0.35s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+            border: 1px solid rgba(255, 255, 255, 0.25);
+            backdrop-filter: blur(10px);
+        }
+        .techgo-toast.info {
+            background: linear-gradient(135deg, #1e40af 0%, #1d4ed8 100%);
+            box-shadow: 0 10px 25px rgba(0,0,0,0.3), 0 0 20px rgba(59, 130, 246, 0.4);
+        }
+        .techgo-toast.danger {
+            background: linear-gradient(135deg, #991b1b 0%, #b91c1c 100%);
+            box-shadow: 0 10px 25px rgba(0,0,0,0.3), 0 0 20px rgba(239, 68, 68, 0.4);
+        }
+        .techgo-toast.hide {
+            animation: toastFadeOut 0.3s forwards ease-in;
+        }
+        @keyframes toastSlideDown {
+            from { opacity: 0; transform: translateY(-30px) scale(0.95); }
+            to { opacity: 1; transform: translateY(0) scale(1); }
+        }
+        @keyframes toastFadeOut {
+            from { opacity: 1; transform: translateY(0) scale(1); }
+            to { opacity: 0; transform: translateY(-20px) scale(0.95); }
+        }
+
         /* ── Mobile Responsive Optimizations ── */
         @media (max-width: 768px) {
             body { padding: 0.75rem 0.5rem; }
@@ -1079,6 +1127,32 @@
         let stats = null;
 
         // ══════════════════════════════════════════
+        //  TOAST NOTIFICATION ENGINE
+        // ══════════════════════════════════════════
+        function showNotification(msg, type = 'success', duration = 3500) {
+            let container = document.getElementById('techgoToastContainer');
+            if (!container) {
+                container = document.createElement('div');
+                container.id = 'techgoToastContainer';
+                container.className = 'techgo-toast-container';
+                document.body.appendChild(container);
+            }
+            const toast = document.createElement('div');
+            toast.className = 'techgo-toast ' + type;
+            const icon = type === 'success' ? '✅' : (type === 'danger' ? '⚠️' : 'ℹ️');
+            toast.innerHTML = `<span style="font-size: 1.25rem;">${icon}</span> <span>${msg}</span>`;
+            container.appendChild(toast);
+
+            setTimeout(() => {
+                toast.classList.add('hide');
+                setTimeout(() => {
+                    if (toast && toast.parentNode) toast.parentNode.removeChild(toast);
+                    else if (toast && typeof toast.remove === 'function') toast.remove();
+                }, 300);
+            }, duration);
+        }
+
+        // ══════════════════════════════════════════
         //  MONTHLY ARCHIVE & RETENTION SYSTEM
         // ══════════════════════════════════════════
         let attendanceArchive = {};
@@ -1321,7 +1395,7 @@
             saveMonthDataToArchive(key, name, currentRawContent, currentRecords, stats, employeePermissions);
 
             if (manualNotice) {
-                alert(`✓ تم حفظ وأرشفة بيانات شهر (${name}) بنجاح في الأرشيف الدائم!`);
+                showNotification(`💾 تم حفظ وأرشفة بيانات شهر (${name}) بنجاح في الأرشيف الدائم!`, 'success');
             }
         }
 
@@ -1434,7 +1508,7 @@
                 renderTimesheets();
             }
 
-            alert('✓ تم حفظ وتطبيق مواعيد وسياسات الدوام بنجاح!');
+            showNotification('✓ تم حفظ وتطبيق مواعيد وسياسات الدوام بنجاح!', 'success');
         }
 
         function saveWorkSettings() {
@@ -1457,7 +1531,7 @@
                 renderTimesheets();
             }
 
-            alert('✓ تم حفظ وتطبيق مواعيد وسياسات الدوام بنجاح!');
+            showNotification('✓ تم حفظ وتطبيق مواعيد وسياسات الدوام بنجاح!', 'success');
         }
 
         function savePermissionsToStorage() {
@@ -2796,9 +2870,11 @@
                 renderTimesheets();
                 renderPermissionsTable();
             }
-            if (empId === 'all') {
-                alert('✓ تم تطبيق وحفظ استثناء التأخير الجماعي لجميع الموظفين بتاريخ ' + date + ' بنجاح!');
-            }
+
+            const pMsg = empId === 'all'
+                ? `✓ تم تطبيق وحفظ استثناء التأخير الجماعي لجميع الموظفين بتاريخ ${date} بنجاح!`
+                : `✓ تم حفظ الإذن / الاستثناء للموظف بنجاح وتحديث السجلات فوراً!`;
+            showNotification(pMsg, 'success');
         }
 
         function deletePerm(empId, idx) {
@@ -2814,6 +2890,7 @@
                 renderTimesheets();
                 renderPermissionsTable();
             }
+            showNotification('🗑️ تم حذف الإذن وتحديث السجلات بنجاح', 'info');
         }
 
         // ══════════════════════════════════════════
@@ -2885,7 +2962,7 @@
                 renderTimesheets();
                 renderPermissionsTable();
             }
-            alert('✓ تم تسجيل الإجازة اليدوية وتحديث أرصدة وسجلات الموظف بنجاح!');
+            showNotification('✓ تم تسجيل الإجازة وتحديث أرصدة وسجلات الموظف بنجاح!', 'success');
         }
 
         function deleteManualLeave(empId, idx) {
@@ -2897,6 +2974,7 @@
                 renderTimesheets();
                 renderPermissionsTable();
             }
+            showNotification('🗑️ تم حذف الإجازة وتحديث السجلات بنجاح', 'info');
         }
 
         function filterOverviewTable() {
@@ -4091,7 +4169,7 @@
         syncApprovedEmployeeRequests();
         initAttendanceArchive();
     </script>
-    <script src="theme.js?v=1788183058"></script>
-    <script src="pwa-install.js?v=1788183058"></script>
+    <script src="theme.js?v=1788183550"></script>
+    <script src="pwa-install.js?v=1788183550"></script>
 </body>
 </html>
