@@ -2487,22 +2487,27 @@
                         const remaining = (meta.balance !== undefined ? meta.balance : (meta.total - (meta.used || 0)));
 
                         if (personalLeave) {
-                            statusBadge = `<span class="status-badge badge-perm" style="background:#eff6ff; color:#1e40af; border:1px solid #bfdbfe;">🏖️ ${personalLeave.typeLabel || personalLeave.type}</span>`;
-                            hoursFormatted = `<span style="color:#1e40af; font-weight:700;">إجازة معتمدة</span>`;
-                            if (!permNoteText) permNoteText = `🏖️ إجازة معتمدة (${personalLeave.typeLabel || personalLeave.type})`;
+                            if (remaining > 0) {
+                                statusBadge = `<span class="status-badge badge-perm" style="background:#eff6ff; color:#1e40af; border:1px solid #bfdbfe;">🏖️ ${personalLeave.typeLabel || personalLeave.type}</span>`;
+                                hoursFormatted = `<span style="color:#1e40af; font-weight:700;">إجازة معتمدة</span>`;
+                                if (!permNoteText) permNoteText = `🏖️ إجازة معتمدة (${personalLeave.typeLabel || personalLeave.type})`;
+                            } else {
+                                statusBadge = `<span class="status-badge badge-danger" style="background:#fee2e2; color:#991b1b; border:1.5px solid #f87171; font-weight:900;">🚨 غياب بدون رصيد (خصم يوم)</span>`;
+                                hoursFormatted = `<span style="color:#991b1b; font-weight:900;">خصم 1 يوم</span>`;
+                                if (!permNoteText) permNoteText = `🚨 غياب بعد استنفاد كامل الرصيد السنوي (يُخصم 1 يوم من الراتب)`;
+                            }
                         } else if (offHol) {
                             statusBadge = `<span class="status-badge badge-perm" style="background:#fefce8; color:#854d0e; border:1px solid #fef08a;">🏛️ ${offHol.occasion}</span>`;
                             hoursFormatted = `<span style="color:#854d0e; font-weight:700;">عطلة رسمية</span>`;
                             if (!permNoteText) permNoteText = `🏛️ عطلة رسمية: ${offHol.occasion} (م.١٢٩)`;
-                        } else if (isExplicitDeduction) {
+                        } else if (isExplicitDeduction || remaining === 0) {
                             statusBadge = `<span class="status-badge badge-danger" style="background:#fee2e2; color:#991b1b; border:1.5px solid #f87171; font-weight:900;">🚨 غياب بدون رصيد (خصم يوم)</span>`;
                             hoursFormatted = `<span style="color:#991b1b; font-weight:900;">خصم 1 يوم</span>`;
                             if (!permNoteText) permNoteText = `🚨 غياب بعد استنفاد كامل الرصيد السنوي (يُخصم 1 يوم من الراتب)`;
-                        } else {
-                            // Non-deduction, unscheduled/rest day (e.g. 2026-08-24 for Abanoub or 2026-08-04 for Yostina)
-                            statusBadge = '<span class="status-badge" style="background:#f8fafc; color:#64748b; border:1px solid #cbd5e1;">🔄 راحة / غير مسجل</span>';
-                            hoursFormatted = '<span style="color:#94a3b8;">—</span>';
-                            if (!permNoteText) permNoteText = 'يوم غير مسجل / راحة وفق جدول العمل والورديات (بدون خصم)';
+                        } else if (remaining > 0) {
+                            statusBadge = '<span class="status-badge badge-perm" style="background:#eff6ff; color:#1d4ed8; border:1px solid #bfdbfe;">📌 إجازة (مسحوبة من الرصيد)</span>';
+                            hoursFormatted = '<span style="color:#1d4ed8; font-weight:600;">مسحوب من الرصيد</span>';
+                            if (!permNoteText) permNoteText = '📌 إجازة مسحوبة من الرصيد السنوي لعدم تسجيل البصمة';
                         }
                     }
 
@@ -3353,16 +3358,14 @@
                 const name = em.name;
                 const meta = em.meta;
                 const allEmpPerms = em.allEmpPerms;
-                const empLeavesList = em.empLeavesList;
                 let okCount = 0, lateCount = 0, earlyCount = 0, totalWorkHrs = 0, deductionDaysCount = 0;
-                const deductionsList = [];
 
                 // Gather dates specifically for this employee (punches, explicit leaves, and designated absence deduction days)
                 const explicitDeductionDates = {
                     '6': ['2026-08-20', '2026-08-23']
                 };
 
-                const empLeaveDateStrs = (empLeavesList || []).map(l => {
+                const empLeaveDateStrs = (em.empLeavesList || []).map(l => {
                     const m = String(l.date || '').match(/\d{4}-\d{2}-\d{2}/g);
                     return m ? m[0] : '';
                 }).filter(Boolean);
@@ -3379,6 +3382,11 @@
                     ...empManualDateStrs,
                     ...(explicitDeductionDates[emp.employeeId] || []).filter(d => d.startsWith(primaryYm))
                 ])).filter(d => d && d.startsWith(primaryYm)).sort();
+
+                // Starting balance before this month
+                let runningBalance = Math.max(0, em.baseTotal - (pYear === '2026' ? (meta.used || 0) : 0));
+                const dynamicMonthLeaves = [];
+                const dynamicDeductions = [];
 
                 let dailyRows = '';
                 empFullDatesList.forEach(date => {
@@ -3453,25 +3461,36 @@
                     } else {
                         // Zero punches on this day
                         if (personalLeave) {
-                            statusBadge = `<span class="badge-perm" style="background:#eff6ff; color:#1e40af; border:1px solid #bfdbfe;">🏖️ ${personalLeave.typeLabel || personalLeave.type}</span>`;
-                            hoursDecimal = 'إجازة معتمدة';
+                            if (runningBalance > 0) {
+                                runningBalance--;
+                                dynamicMonthLeaves.push({ type: `🏖️ إجازة معتمدة (${personalLeave.typeLabel || personalLeave.type})`, date: `${date} (${dayName})`, days: 1, note: personalLeave.note || 'معتمد' });
+                                statusBadge = `<span class="badge-perm" style="background:#eff6ff; color:#1e40af; border:1px solid #bfdbfe;">🏖️ ${personalLeave.typeLabel || personalLeave.type}</span>`;
+                                hoursDecimal = 'إجازة معتمدة';
+                            } else {
+                                dynamicDeductions.push({ date, dayName, reason: `غياب بعد استنفاد الرصيد (${personalLeave.typeLabel || personalLeave.type}) - خصم من الراتب` });
+                                deductionDaysCount++;
+                                statusBadge = `<span class="badge-danger" style="background:#fee2e2; color:#991b1b; border:1.5px solid #f87171; font-weight:900;">🚨 غياب بدون رصيد (خصم يوم)</span>`;
+                                hoursDecimal = '<span style="color:#991b1b; font-weight:900;">خصم 1 يوم</span>';
+                            }
                         } else if (offHol) {
                             statusBadge = `<span class="badge-perm" style="background:#fefce8; color:#854d0e; border:1px solid #fef08a;">🏛️ ${offHol.occasion}</span>`;
                             hoursDecimal = 'عطلة رسمية';
                             if (!notesText) {
                                 notesText = `<span style="color:#854d0e; font-weight:bold;">🏛️ عطلة رسمية: ${offHol.occasion} (م.١٢٩)</span>`;
                             }
-                        } else if (isExplicitDeduction) {
+                        } else if (isExplicitDeduction || runningBalance === 0) {
+                            dynamicDeductions.push({ date, dayName, reason: 'غياب بدون رصيد سنوي (يُخصم 1 يوم من راتب الشهر)' });
+                            deductionDaysCount++;
                             statusBadge = `<span class="badge-danger" style="background:#fee2e2; color:#991b1b; border:1.5px solid #f87171; font-weight:900;">🚨 غياب بدون رصيد (خصم يوم)</span>`;
                             hoursDecimal = '<span style="color:#991b1b; font-weight:900;">خصم 1 يوم</span>';
                             notesText = `<span style="color:#991b1b; font-weight:bold;">🚨 غياب بعد استنفاد كامل الرصيد السنوي (يُخصم 1 يوم من الراتب)</span>`;
-                            deductionsList.push({ date, dayName, reason: 'غياب بدون رصيد سنوي (يُخصم 1 يوم من راتب الشهر)' });
-                            deductionDaysCount++;
-                        } else {
-                            // Non-deduction, unscheduled/rest day (e.g. 2026-08-24 for Abanoub or 2026-08-04 for Yostina)
-                            statusBadge = `<span class="badge-perm" style="background:#f8fafc; color:#64748b; border:1px solid #cbd5e1;">🔄 راحة / غير مسجل</span>`;
-                            hoursDecimal = '—';
-                            notesText = `<span style="color:#64748b;">يوم غير مسجل / راحة وفق جدول العمل والورديات (بدون خصم)</span>`;
+                        } else if (runningBalance > 0) {
+                            // Automatically absorbed as Leave because balance is available!
+                            runningBalance--;
+                            dynamicMonthLeaves.push({ type: '📌 إجازة سنوية (مسحوبة لعدم تسجيل البصمة)', date: `${date} (${dayName})`, days: 1, note: 'مسحوبة تلقائياً من الرصيد لعدم تسجيل البصمة' });
+                            statusBadge = `<span class="badge-perm" style="background:#eff6ff; color:#1d4ed8; border:1px solid #bfdbfe;">📌 إجازة (مسحوبة من الرصيد)</span>`;
+                            hoursDecimal = 'مسحوب من الرصيد';
+                            notesText = `<span style="color:#1d4ed8; font-weight:bold;">📌 إجازة مسحوبة من الرصيد السنوي لعدم تسجيل البصمة</span>`;
                         }
                     }
 
@@ -3514,9 +3533,13 @@
                 }
 
                 // Leaves HTML Box
-                let leavesBoxesHtml = empLeavesList.length ? empLeavesList.map(l => `
+                const monthLeavesCount = dynamicMonthLeaves.reduce((s, l) => s + (l.days || 1), 0);
+                const remainingLeaves = runningBalance;
+                const totalYearUsed = (em.baseTotal - remainingLeaves);
+
+                let leavesBoxesHtml = dynamicMonthLeaves.length ? dynamicMonthLeaves.map(l => `
                     <div style="background:#eff6ff; border:1px solid #bfdbfe; border-radius:4px; padding:3px 6px; margin-bottom:2px; font-size:7pt; color:#1e40af;">
-                        📌 <strong>${l.type}:</strong> ${l.date}
+                        📌 <strong>${l.type}:</strong> ${l.date} ${l.note ? `(${l.note})` : ''}
                     </div>
                 `).join('') : '<div style="font-size:7pt; color:#64748b;">لا توجد إجازات مستهلكة هذا الشهر</div>';
 
@@ -3528,15 +3551,15 @@
 
                 // Deductions HTML Box (if employee has absence deductions)
                 let deductionsBoxHtml = '';
-                if (deductionDaysCount > 0) {
+                if (dynamicDeductions.length > 0) {
                     deductionsBoxHtml = `
                         <div style="background:#fef2f2; border:1.5px solid #f87171; border-radius:6px; padding:6px 10px; margin-top:5px;">
                             <div style="display:flex; justify-content:space-between; align-items:center; border-bottom:1px solid #fca5a5; padding-bottom:3px; margin-bottom:4px;">
                                 <span style="font-size:8pt; font-weight:900; color:#991b1b;">🚨 كشف الغيابات والخصومات المالية لشهر ${monthNameAr} ${pYear}:</span>
-                                <span style="font-size:8.5pt; font-weight:900; color:#7f1d1d; background:#fee2e2; padding:2px 8px; border-radius:4px; border:1px solid #f87171;">⚠️ إجمالي الخصم: ${deductionDaysCount} يوم من الراتب</span>
+                                <span style="font-size:8.5pt; font-weight:900; color:#7f1d1d; background:#fee2e2; padding:2px 8px; border-radius:4px; border:1px solid #f87171;">⚠️ إجمالي الخصم: ${dynamicDeductions.length} يوم من الراتب</span>
                             </div>
                             <div style="display:flex; flex-direction:column; gap:2px; font-size:7pt;">
-                                ${deductionsList.map(d => `
+                                ${dynamicDeductions.map(d => `
                                     <div style="background:#ffffff; border:1px solid #fecaca; border-radius:4px; padding:3px 6px; display:flex; justify-content:space-between; align-items:center;">
                                         <span style="color:#7f1d1d;">📌 <strong>${d.dayName} ${d.date}:</strong> ${d.reason}</span>
                                         <span style="color:#b91c1c; font-weight:900; background:#fef2f2; padding:1px 6px; border-radius:3px;">خصم 1 يوم</span>
@@ -3566,20 +3589,20 @@
                                 <span class="badge-pill badge-pill-perm">🎫 ${em.personalPermsCount} أذونات</span>
                                 <span class="badge-pill badge-pill-ok">✅ ${okCount} في معاده</span>
                                 <span class="badge-pill badge-pill-danger">⏰ ${lateCount} متأخر</span>
-                                ${deductionDaysCount > 0 ? `<span class="badge-pill" style="background:#7f1d1d; color:#fee2e2; border:1px solid #f87171; font-weight:900;">🚨 خصم: ${deductionDaysCount} يوم</span>` : ''}
+                                ${dynamicDeductions.length > 0 ? `<span class="badge-pill" style="background:#7f1d1d; color:#fee2e2; border:1px solid #f87171; font-weight:900;">🚨 خصم: ${dynamicDeductions.length} يوم</span>` : ''}
                             </div>
                         </div>
 
                         <table class="print-table" style="margin-bottom:4px;">
                             <thead>
                                 <tr>
-                                    <th style="width:12%;">اليوم</th>
-                                    <th style="width:16%;">التاريخ</th>
+                                    <th style="width:11%;">اليوم</th>
+                                    <th style="width:14%;">التاريخ</th>
                                     <th style="width:24%;">حالة الانضباط</th>
                                     <th style="width:13%;">وقت الدخول</th>
                                     <th style="width:13%;">وقت الخروج</th>
                                     <th style="width:11%;">ساعات العمل</th>
-                                    <th style="width:11%;">الأذونات والملاحظات</th>
+                                    <th style="width:14%;">الأذونات والملاحظات</th>
                                 </tr>
                             </thead>
                             <tbody>
@@ -3591,11 +3614,11 @@
                             <div style="background:#f8fafc; border:1.5px solid #cbd5e1; border-radius:6px; padding:5px 8px;">
                                 <div style="display:flex; justify-content:space-between; align-items:center; border-bottom:1px solid #e2e8f0; padding-bottom:3px; margin-bottom:3px;">
                                     <span style="font-size:7.8pt; font-weight:900; color:#0f172a;">📑 رصيد الإجازة السنوية (مادة 124)</span>
-                                    <span style="font-size:10.5pt; font-weight:900; color:${em.calculatedBalance === 0 ? '#b91c1c' : '#0f766e'};">${em.calculatedBalance} <small style="font-size:6.8pt; color:#475569;">يوم متبقي</small></span>
+                                    <span style="font-size:10.5pt; font-weight:900; color:${remainingLeaves === 0 ? '#b91c1c' : '#0f766e'};">${remainingLeaves} <small style="font-size:6.8pt; color:#475569;">يوم متبقي</small></span>
                                 </div>
                                 <div style="background:#f1f5f9; border-radius:4px; padding:4px 6px; font-size:6.8pt; line-height:1.45; color:#334155; margin-bottom:4px;">
-                                    <div>📊 <strong>الاستحقاق السنوي الكامل:</strong> ${em.baseTotal} يوم (السنة ${currentYearNum >= 2027 ? 'الثانية - م.١٢٤' : 'الأولى'}) | <strong>المستهلك طوال عام ${pYear}:</strong> <span style="color:#b91c1c; font-weight:800;">${em.totalUsedLeaves} يوم</span> (عارضة: ${em.totalCasualLeaves}/7)</div>
-                                    <div>🗓️ <strong>المستهلك خلال شهر ${monthNameAr} ${pYear} تحديداً:</strong> <span style="color:#0284c7; font-weight:800;">${em.monthUsedLeavesCount > 0 ? em.monthUsedLeavesCount + ' يوم' : '0 (لا توجد إجازات هذا الشهر)'}</span></div>
+                                    <div>📊 <strong>الاستحقاق السنوي الكامل:</strong> ${em.baseTotal} يوم (السنة ${currentYearNum >= 2027 ? 'الثانية - م.١٢٤' : 'الأولى'}) | <strong>المستهلك طوال عام ${pYear}:</strong> <span style="color:#b91c1c; font-weight:800;">${totalYearUsed} يوم</span></div>
+                                    <div>🗓️ <strong>المستهلك خلال شهر ${monthNameAr} ${pYear} تحديداً:</strong> <span style="color:#0284c7; font-weight:800;">${monthLeavesCount > 0 ? monthLeavesCount + ' يوم' : '0 (لا توجد إجازات هذا الشهر)'}</span></div>
                                 </div>
                                 <div style="margin-top:4px;">
                                     <div style="font-size:7pt; font-weight:800; color:#1e40af; margin-bottom:2px;">🏖️ تفاصيل إجازات شهر ${monthNameAr} ${pYear}:</div>
@@ -4001,7 +4024,7 @@
         syncApprovedEmployeeRequests();
         initAttendanceArchive();
     </script>
-    <script src="theme.js?v=1788181323"></script>
-    <script src="pwa-install.js?v=1788181323"></script>
+    <script src="theme.js?v=1788181479"></script>
+    <script src="pwa-install.js?v=1788181479"></script>
 </body>
 </html>
