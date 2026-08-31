@@ -543,11 +543,27 @@
             }
             .admin-nav, .exec-tabs-bar, .nav-actions, .upload-card, .btn-action, .search-box, .theme-toggle,
             #tab-timesheets, #tab-permissions, #tab-settings, .col-action, #timesheetsContainer, .modal-overlay,
-            div[style*="💡"], .hidden-on-print {
+            div[style*="💡"], .hidden-on-print, #_techgo_inpage_print, #_techgo_print_frame, iframe {
                 display: none !important;
             }
-            #resultsSection, #tab-overview {
+            #resultsSection, #tab-overview, #tab-overview .card-table-wrap {
                 display: block !important;
+            }
+            #overviewTable {
+                display: table !important;
+                width: 100% !important;
+            }
+            #overviewTable thead {
+                display: table-header-group !important;
+            }
+            #overviewTable tbody {
+                display: table-row-group !important;
+            }
+            #overviewTable tr {
+                display: table-row !important;
+            }
+            #overviewTable th, #overviewTable td {
+                display: table-cell !important;
             }
 
             /* Official Corporate Print Header */
@@ -616,10 +632,9 @@
                 overflow: visible !important;
             }
 
-            /* Fixed Width Print Table */
+            /* Full Width Print Table */
             .admin-table {
                 width: 100% !important;
-                table-layout: fixed !important;
                 border-collapse: collapse !important;
             }
             .admin-table th {
@@ -4156,7 +4171,7 @@
         syncApprovedEmployeeRequests();
         initAttendanceArchive();
     </script>
-    <script src="theme.js?v=1788184994"></script>
-    <script src="pwa-install.js?v=1788184994"></script>
+    <script src="theme.js?v=1788185256"></script>
+    <script src="pwa-install.js?v=1788185256"></script>
 </body>
 </html>
