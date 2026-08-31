@@ -1577,6 +1577,12 @@
             };
         }
 
+        function normalizeDigits(str) {
+            if (!str) return '';
+            const ar = '0123456789';
+            return String(str).replace(/[٠-٩]/g, d => '٠١٢٣٤٥٦٧٨٩'.indexOf(d));
+        }
+
         function getPersonalLeaveForDate(empId, dateStr) {
             // 1. Manual leaves registered specifically for this employee
             const manualList = employeeManualLeaves[empId] || [];
@@ -1684,9 +1690,23 @@
             if (Array.isArray(json)) {
                 importedRecords = json;
             } else if (typeof json === 'object' && json !== null) {
-                if (Array.isArray(json.records)) {
-                    importedRecords = json.records;
+                const candidates = ['records', 'data', 'logs', 'punches', 'attendance', 'rows', 'attlog', 'items', 'حركات', 'حركات_البصمة', 'بيانات', 'السجلات', 'الحضور'];
+                for (const key of candidates) {
+                    if (Array.isArray(json[key])) {
+                        importedRecords = json[key];
+                        break;
+                    }
                 }
+
+                if (!importedRecords.length) {
+                    for (const k in json) {
+                        if (Array.isArray(json[k]) && json[k].length > 0 && typeof json[k][0] === 'object') {
+                            importedRecords = json[k];
+                            break;
+                        }
+                    }
+                }
+
                 if (json.attendanceArchive && typeof json.attendanceArchive === 'object') {
                     Object.keys(json.attendanceArchive).forEach(mKey => {
                         const mData = json.attendanceArchive[mKey];
@@ -1749,17 +1769,62 @@
 
             const normalizedRecs = [];
             importedRecords.forEach((r, idx) => {
-                const empId = String(r.employeeId || r.empId || r.userId || r.id || '').trim();
-                const date = String(r.date || (r.datetime ? String(r.datetime).slice(0,10) : '')).trim();
-                let time = String(r.time || (r.datetime ? String(r.datetime).slice(11,19) : '')).trim();
-                if (time.length === 5) time += ':00';
-                if (empId && date && time && !inactiveEmployees.includes(empId)) {
+                if (!r || typeof r !== 'object') return;
+
+                let rawId = r.employeeId || r.empId || r.userId || r.user_id || r.pin || r.PIN || r.id || r.ID ||
+                            r['كود'] || r['كود الموظف'] || r['الرقم الوظيفي'] || r['رقم الموظف'] || r['الموظف'] || r['user'] || '';
+                rawId = normalizeDigits(String(rawId).trim());
+                if (/^\d+$/.test(rawId)) rawId = String(parseInt(rawId, 10));
+
+                let rawDate = '', rawTime = '';
+                const rawDt = r.datetime || r.dateTime || r.DateTime || r.timestamp || r.check_time || r.punch_time || r['تاريخ ووقت'] || r['وقت البصمة'] || '';
+                
+                if (rawDt) {
+                    const normDt = normalizeDigits(String(rawDt).trim().replace('T', ' '));
+                    const match = normDt.match(/(\d{4}[-/]\d{1,2}[-/]\d{1,2}|\d{1,2}[-/]\d{1,2}[-/]\d{4})\s*([\d:]{4,8})?/);
+                    if (match) {
+                        rawDate = match[1];
+                        if (match[2]) rawTime = match[2];
+                    }
+                }
+
+                if (!rawDate) {
+                    rawDate = r.date || r.Date || r['تاريخ'] || r['التاريخ'] || '';
+                    rawDate = normalizeDigits(String(rawDate).trim());
+                }
+
+                if (!rawTime) {
+                    rawTime = r.time || r.Time || r['وقت'] || r['الوقت'] || '';
+                    rawTime = normalizeDigits(String(rawTime).trim());
+                }
+
+                if (rawDate) {
+                    rawDate = rawDate.replace(/\//g, '-');
+                    const dp = rawDate.split('-');
+                    if (dp.length === 3) {
+                        if (dp[0].length === 2 && dp[2].length === 4) {
+                            rawDate = `${dp[2]}-${dp[1].padStart(2, '0')}-${dp[0].padStart(2, '0')}`;
+                        } else if (dp[0].length === 4) {
+                            rawDate = `${dp[0]}-${dp[1].padStart(2, '0')}-${dp[2].padStart(2, '0')}`;
+                        }
+                    }
+                }
+
+                if (rawTime) {
+                    if (rawTime.length === 5) rawTime += ':00';
+                    const tp = rawTime.split(':');
+                    if (tp.length >= 2) {
+                        rawTime = `${tp[0].padStart(2, '0')}:${tp[1].padStart(2, '0')}:${(tp[2] || '00').padStart(2, '0')}`;
+                    }
+                }
+
+                if (rawId && rawDate && rawTime && !inactiveEmployees.includes(rawId)) {
                     normalizedRecs.push({
                         id: idx + 1,
-                        employeeId: empId,
-                        date: date,
-                        time: time,
-                        datetime: new Date(date + 'T' + time),
+                        employeeId: rawId,
+                        date: rawDate,
+                        time: rawTime,
+                        datetime: new Date(rawDate + 'T' + rawTime),
                         type: r.type || ''
                     });
                 }
@@ -1925,81 +1990,55 @@
             }
             var reader = new FileReader();
             reader.onload = function(evt) {
-                var content = evt.target.result;
-                if (!content || !content.trim()) {
+                var content = evt.target.result || '';
+                var cleanContent = content.replace(/^\uFEFF/, '').trim();
+                if (!cleanContent) {
                     alert('⚠️ الملف المرفوع فارغ ولا يحتوي على أي نصوص.');
                     return;
                 }
-                var records = parseAttlogContent(content);
 
+                // Check for JSON file or JSON content (clean detection)
+                const isJson = file.name.toLowerCase().endsWith('.json') || 
+                              (cleanContent.startsWith('{') && cleanContent.endsWith('}')) || 
+                              (cleanContent.startsWith('[') && cleanContent.endsWith(']'));
+                if (isJson) {
+                    try {
+                        const parsedJson = JSON.parse(cleanContent);
+                        handleJsonImport(parsedJson, file.name);
+                        return;
+                    } catch(err) {
+                        console.warn('JSON parse fallback to text', err);
+                    }
+                }
+
+                var records = parseAttlogContent(cleanContent);
                 if (!records.length) {
                     alert('⚠️ لم يتم العثور على سجلات صالحة في الملف المرفوع.\n\nتأكد أن الملف يحتوي على أرقام الموظفين وتاريخ ووقت البصمة، مثل:\n101   2026-08-31 08:30:00');
                     return;
                 }
 
-                currentRawContent = content;
-                currentRecords = records;
-
-                // Group by employee and day
-                var employeeDays = new Map();
-                records.forEach(function(r) {
-                    var k = r.employeeId + '-' + r.date;
-                    if (!employeeDays.has(k)) employeeDays.set(k, []);
-                    employeeDays.get(k).push(r);
-                });
-
-                employeeDays.forEach(function(dayRecords) {
-                    dayRecords.sort(function(a,b){ return a.datetime - b.datetime; });
-                    if (dayRecords.length === 1) {
-                        var h = dayRecords[0].datetime.getHours();
-                        dayRecords[0].type = h < 14 ? 'دخول' : 'خروج';
-                    } else {
-                        dayRecords[0].type = 'دخول';
-                        dayRecords[dayRecords.length - 1].type = 'خروج';
-                        for (var i = 1; i < dayRecords.length - 1; i++) {
-                            dayRecords[i].type = 'حركة';
-                        }
-                    }
-                });
-
-                calculateAndRenderStats(records, true, file.name);
+                processRecordsAndRender(records, cleanContent, file.name);
             };
             reader.readAsText(file);
         }
 
         function processRawAttendanceText(content, fileName) {
             if (!content) return;
-            var records = parseAttlogContent(content);
+            var cleanContent = content.replace(/^\uFEFF/, '').trim();
+            if ((cleanContent.startsWith('{') && cleanContent.endsWith('}')) || (cleanContent.startsWith('[') && cleanContent.endsWith(']'))) {
+                try {
+                    const parsed = JSON.parse(cleanContent);
+                    handleJsonImport(parsed, fileName || 'بيانات JSON');
+                    return;
+                } catch(e){}
+            }
+
+            var records = parseAttlogContent(cleanContent);
             if (!records.length) {
                 alert('⚠️ لم يتم العثور على سجلات صالحة في البيانات المستلمة.');
                 return;
             }
-
-            currentRawContent = content;
-            currentRecords = records;
-
-            var employeeDays = new Map();
-            records.forEach(function(r) {
-                var k = r.employeeId + '-' + r.date;
-                if (!employeeDays.has(k)) employeeDays.set(k, []);
-                employeeDays.get(k).push(r);
-            });
-
-            employeeDays.forEach(function(dayRecords) {
-                dayRecords.sort(function(a,b){ return a.datetime - b.datetime; });
-                if (dayRecords.length === 1) {
-                    var h = dayRecords[0].datetime.getHours();
-                    dayRecords[0].type = h < 14 ? 'دخول' : 'خروج';
-                } else {
-                    dayRecords[0].type = 'دخول';
-                    dayRecords[dayRecords.length - 1].type = 'خروج';
-                    for (var i = 1; i < dayRecords.length - 1; i++) {
-                        dayRecords[i].type = 'حركة';
-                    }
-                }
-            });
-
-            calculateAndRenderStats(records, true, fileName || 'attlog.dat');
+            processRecordsAndRender(records, cleanContent, fileName || 'attlog.dat');
         }
 
         function syncDirectFromADMS() {
@@ -3452,7 +3491,7 @@
         updatePolicyLabels();
         initAttendanceArchive();
     </script>
-    <script src="theme.js?v=1788168803"></script>
-    <script src="pwa-install.js?v=1788168803"></script>
+    <script src="theme.js?v=1788168974"></script>
+    <script src="pwa-install.js?v=1788168974"></script>
 </body>
 </html>
