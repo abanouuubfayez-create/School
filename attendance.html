@@ -2489,6 +2489,7 @@
                         if (personalLeave) {
                             statusBadge = `<span class="status-badge badge-perm" style="background:#eff6ff; color:#1e40af; border:1px solid #bfdbfe;">🏖️ ${personalLeave.typeLabel || personalLeave.type}</span>`;
                             hoursFormatted = `<span style="color:#1e40af; font-weight:700;">إجازة معتمدة</span>`;
+                            if (!permNoteText) permNoteText = `🏖️ إجازة معتمدة (${personalLeave.typeLabel || personalLeave.type})`;
                         } else if (offHol) {
                             statusBadge = `<span class="status-badge badge-perm" style="background:#fefce8; color:#854d0e; border:1px solid #fef08a;">🏛️ ${offHol.occasion}</span>`;
                             hoursFormatted = `<span style="color:#854d0e; font-weight:700;">عطلة رسمية</span>`;
@@ -2497,15 +2498,11 @@
                             statusBadge = `<span class="status-badge badge-danger" style="background:#fee2e2; color:#991b1b; border:1.5px solid #f87171; font-weight:900;">🚨 غياب بدون رصيد (خصم يوم)</span>`;
                             hoursFormatted = `<span style="color:#991b1b; font-weight:900;">خصم 1 يوم</span>`;
                             if (!permNoteText) permNoteText = `🚨 غياب بعد استنفاد كامل الرصيد السنوي (يُخصم 1 يوم من الراتب)`;
-                        } else if (remaining > 0) {
-                            statusBadge = '<span class="status-badge badge-perm" style="background:#eff6ff; color:#1d4ed8; border:1px solid #bfdbfe;">📌 إجازة (من الرصيد المتبقي)</span>';
-                            hoursFormatted = '<span style="color:#1d4ed8; font-weight:600;">مسحوب من الرصيد</span>';
-                            if (!permNoteText) permNoteText = '📌 إجازة مسحوبة من الرصيد السنوي (بدون خصم مالي — الرصيد متاح)';
                         } else {
-                            // Non-deduction, unscheduled/rest day (e.g. 2026-08-04 for Yostina's schedule)
-                            statusBadge = '<span class="status-badge" style="background:#f8fafc; color:#64748b; border:1px solid #cbd5e1;">🔄 راحة / غير مجدول</span>';
+                            // Non-deduction, unscheduled/rest day (e.g. 2026-08-24 for Abanoub or 2026-08-04 for Yostina)
+                            statusBadge = '<span class="status-badge" style="background:#f8fafc; color:#64748b; border:1px solid #cbd5e1;">🔄 راحة / غير مسجل</span>';
                             hoursFormatted = '<span style="color:#94a3b8;">—</span>';
-                            if (!permNoteText) permNoteText = 'يوم غير مجدول وفق جدول العمل والورديات (بدون خصم)';
+                            if (!permNoteText) permNoteText = 'يوم غير مسجل / راحة وفق جدول العمل والورديات (بدون خصم)';
                         }
                     }
 
@@ -3470,15 +3467,11 @@
                             notesText = `<span style="color:#991b1b; font-weight:bold;">🚨 غياب بعد استنفاد كامل الرصيد السنوي (يُخصم 1 يوم من الراتب)</span>`;
                             deductionsList.push({ date, dayName, reason: 'غياب بدون رصيد سنوي (يُخصم 1 يوم من راتب الشهر)' });
                             deductionDaysCount++;
-                        } else if (em.calculatedBalance > 0) {
-                            statusBadge = `<span class="badge-perm" style="background:#eff6ff; color:#1d4ed8; border:1px solid #bfdbfe;">📌 إجازة (من الرصيد المتبقي)</span>`;
-                            hoursDecimal = 'مسحوب من الرصيد';
-                            notesText = `<span style="color:#1d4ed8; font-weight:bold;">📌 إجازة مسحوبة من الرصيد السنوي (بدون خصم مالي — الرصيد متاح)</span>`;
                         } else {
-                            // Non-deduction, unscheduled/rest day (e.g. 2026-08-04)
-                            statusBadge = `<span class="badge-perm" style="background:#f8fafc; color:#64748b; border:1px solid #cbd5e1;">🔄 راحة / غير مجدول</span>`;
+                            // Non-deduction, unscheduled/rest day (e.g. 2026-08-24 for Abanoub or 2026-08-04 for Yostina)
+                            statusBadge = `<span class="badge-perm" style="background:#f8fafc; color:#64748b; border:1px solid #cbd5e1;">🔄 راحة / غير مسجل</span>`;
                             hoursDecimal = '—';
-                            notesText = `<span style="color:#64748b;">يوم غير مجدول وفق جدول العمل والورديات (بدون خصم)</span>`;
+                            notesText = `<span style="color:#64748b;">يوم غير مسجل / راحة وفق جدول العمل والورديات (بدون خصم)</span>`;
                         }
                     }
 
@@ -4008,7 +4001,7 @@
         syncApprovedEmployeeRequests();
         initAttendanceArchive();
     </script>
-    <script src="theme.js?v=1788180585"></script>
-    <script src="pwa-install.js?v=1788180585"></script>
+    <script src="theme.js?v=1788181323"></script>
+    <script src="pwa-install.js?v=1788181323"></script>
 </body>
 </html>
