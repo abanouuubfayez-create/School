@@ -2356,7 +2356,7 @@
                     }
                 });
 
-                const permsCount = (employeePermissions[emp.employeeId] || []).length;
+                const permsCount = (employeePermissions[emp.employeeId] || []).filter(p => !p.isAll && p.empId !== 'all').length;
                 const tr = document.createElement('tr');
                 tr.innerHTML = `
                     <td style="font-weight:bold; color:var(--text-muted); text-align:center;">${idx + 1}</td>
@@ -3077,11 +3077,16 @@
 
                 sumOk += ok;
                 sumLate += late;
+                const personalPerms = allEmpPerms.filter(p => !p.isAll && p.empId !== 'all');
+                const groupPerms = allEmpPerms.filter(p => p.isAll || p.empId === 'all');
+
+                sumOk += ok;
+                sumLate += late;
                 sumEarly += early;
                 sumLeaves += totalUsedLeaves;
                 sumWfh += (meta.wfh || 0);
                 sumHours += empHours;
-                sumPerms += allEmpPerms.length;
+                sumPerms += personalPerms.length;
 
                 employeeMetrics.push({
                     idx: idx + 1,
@@ -3093,6 +3098,8 @@
                     totalCasualLeaves,
                     monthUsedLeavesCount,
                     allEmpPerms,
+                    personalPermsCount: personalPerms.length,
+                    groupPermsCount: groupPerms.length,
                     empLeavesList,
                     ok,
                     late,
@@ -3118,7 +3125,7 @@
             let overviewRows = '';
             employeeMetrics.forEach(em => {
                 const monthLeavesStr = em.monthUsedLeavesCount > 0 ? `<span style="color:#0284c7; font-weight:800;">${em.monthUsedLeavesCount}ي</span>` : '—';
-                const permsStr = em.allEmpPerms.length > 0 ? `<span style="color:#0284c7; font-weight:800;">${em.allEmpPerms.length} إذن</span>` : '0';
+                const permsStr = em.personalPermsCount > 0 ? `<span style="color:#0284c7; font-weight:800;">${em.personalPermsCount} إذن</span>` : '0';
                 const wfhStr = em.meta.wfh > 0 ? `${em.meta.wfh}ي` : '—';
                 const rateColor = em.punctualityRate >= 95 ? '#15803d' : (em.punctualityRate >= 85 ? '#0369a1' : '#b91c1c');
 
@@ -3331,11 +3338,25 @@
                 });
 
                 // Permissions HTML Box
-                let permsBoxHtml = allEmpPerms.length ? allEmpPerms.map(p => `
-                    <div style="background:#f0f9ff; border:1px solid #bae6fd; border-radius:4px; padding:3px 6px; margin-bottom:2px; font-size:7pt; color:#0369a1;">
-                        🎫 <strong>${p.type === 'late' ? 'إذن تأخير' : (p.type === 'early' ? 'إذن انصراف' : 'إذن خروج مؤقت')}:</strong> ${p.date} (${p.note || 'معتمد'})
-                    </div>
-                `).join('') : '<div style="font-size:7pt; color:#64748b;">لا توجد أذونات مسجلة هذا الشهر</div>';
+                const pPerms = allEmpPerms.filter(p => !p.isAll && p.empId !== 'all');
+                const gPerms = allEmpPerms.filter(p => p.isAll || p.empId === 'all');
+                let permsBoxHtml = '';
+                if (pPerms.length) {
+                    permsBoxHtml += pPerms.map(p => `
+                        <div style="background:#f0f9ff; border:1px solid #bae6fd; border-radius:4px; padding:3px 6px; margin-bottom:2px; font-size:7pt; color:#0369a1;">
+                            🎫 <strong>${p.type === 'late' ? 'إذن تأخير' : (p.type === 'early' ? 'إذن انصراف' : 'إذن خروج مؤقت')}:</strong> ${p.date} (${p.note || 'معتمد'})
+                        </div>
+                    `).join('');
+                } else {
+                    permsBoxHtml += '<div style="font-size:7pt; color:#64748b;">لا توجد أذونات شخصية مسجلة هذا الشهر</div>';
+                }
+                if (gPerms.length) {
+                    permsBoxHtml += gPerms.map(p => `
+                        <div style="background:#f0fdfa; border:1px solid #99f6e4; border-radius:4px; padding:3px 6px; margin-top:2px; font-size:7pt; color:#0f766e;">
+                            👥 <strong>استثناء تأخير جماعي (إداري):</strong> ${p.date} (${p.note || 'استثناء لكافة الموظفين'})
+                        </div>
+                    `).join('');
+                }
 
                 // Leaves HTML Box
                 let leavesBoxesHtml = empLeavesList.length ? empLeavesList.map(l => `
@@ -3366,7 +3387,7 @@
                             </div>
                             <div style="display:flex; gap:4px; align-items:center;">
                                 <span class="badge-pill badge-pill-rate">🎯 الالتزام: ${empPunctRate}%</span>
-                                <span class="badge-pill badge-pill-perm">🎫 ${allEmpPerms.length} أذونات</span>
+                                <span class="badge-pill badge-pill-perm">🎫 ${em.personalPermsCount} أذونات</span>
                                 <span class="badge-pill badge-pill-ok">✅ ${okCount} في معاده</span>
                                 <span class="badge-pill badge-pill-danger">⏰ ${lateCount} متأخر</span>
                                 <span class="badge-pill badge-pill-early">🚪 ${earlyCount} بدري</span>
@@ -3803,7 +3824,7 @@
         syncApprovedEmployeeRequests();
         initAttendanceArchive();
     </script>
-    <script src="theme.js?v=1788174383"></script>
-    <script src="pwa-install.js?v=1788174383"></script>
+    <script src="theme.js?v=1788175640"></script>
+    <script src="pwa-install.js?v=1788175640"></script>
 </body>
 </html>
