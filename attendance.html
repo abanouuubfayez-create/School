@@ -2607,15 +2607,18 @@
                     const tr = document.createElement('tr');
                     const isManual = (p.source !== 'employee_request');
                     const sourceBadge = isManual
-                        let pBadgeText = '⏰ إذن تأخير';
-                        if (p.type === 'early') pBadgeText = '🚪 انصراف مبكر';
-                        else if (p.type === 'temp') pBadgeText = '🔄 خروج مؤقت';
-                        else if (p.type === 'exempt') pBadgeText = '🌟 استثناء إداري (بدون خصم)';
-                        else if (p.type === 'mission') pBadgeText = '🏢 مأمورية عمل معتمدة';
+                        ? `<span class="status-badge" style="background:#f1f5f9; color:#475569; border:1px solid #cbd5e1; font-size:0.75rem; white-space:nowrap;">✍️ تسجيل يدوي (إدارة)</span>`
+                        : `<span class="status-badge" style="background:#ecfdf5; color:#065f46; border:1px solid #a7f3d0; font-size:0.75rem; white-space:nowrap;">📱 طلب موظف (معتمد)</span>`;
 
-                        const pBadgeStyle = (p.type === 'exempt' || p.type === 'mission')
-                            ? 'background:#f0fdf4; color:#166534; border:1px solid #bbf7d0;'
-                            : '';
+                    let pBadgeText = '⏰ إذن تأخير';
+                    if (p.type === 'early') pBadgeText = '🚪 انصراف مبكر';
+                    else if (p.type === 'temp') pBadgeText = '🔄 خروج مؤقت';
+                    else if (p.type === 'exempt') pBadgeText = '🌟 استثناء إداري (بدون خصم)';
+                    else if (p.type === 'mission') pBadgeText = '🏢 مأمورية عمل معتمدة';
+
+                    const pBadgeStyle = (p.type === 'exempt' || p.type === 'mission')
+                        ? 'background:#f0fdf4; color:#166534; border:1px solid #bbf7d0;'
+                        : '';
 
                         tr.innerHTML = `
                             <td style="font-weight:800; white-space:nowrap;">${name}</td>
@@ -4068,7 +4071,7 @@
         syncApprovedEmployeeRequests();
         initAttendanceArchive();
     </script>
-    <script src="theme.js?v=1788182441"></script>
-    <script src="pwa-install.js?v=1788182441"></script>
+    <script src="theme.js?v=1788182671"></script>
+    <script src="pwa-install.js?v=1788182671"></script>
 </body>
 </html>
