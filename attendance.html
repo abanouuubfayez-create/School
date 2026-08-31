@@ -2462,6 +2462,8 @@
                             statusBadge = '<span class="status-badge badge-ok">✅ في معاده</span>';
                         }
                     } else {
+                        const meta = _EMP_LEAVE_META[emp.employeeId] || { balance: 15, total: 15, used: 0 };
+                        const remaining = (meta.balance !== undefined ? meta.balance : (meta.total - (meta.used || 0)));
                         if (personalLeave) {
                             statusBadge = `<span class="status-badge badge-perm" style="background:#eff6ff; color:#1e40af; border:1px solid #bfdbfe;">🏖️ ${personalLeave.typeLabel || personalLeave.type}</span>`;
                             hoursFormatted = `<span style="color:#1e40af; font-weight:700;">إجازة معتمدة</span>`;
@@ -2469,9 +2471,14 @@
                             statusBadge = `<span class="status-badge badge-perm" style="background:#fefce8; color:#854d0e; border:1px solid #fef08a;">🏛️ ${offHol.occasion}</span>`;
                             hoursFormatted = `<span style="color:#854d0e; font-weight:700;">عطلة رسمية</span>`;
                             if (!permNoteText) permNoteText = `🏛️ عطلة رسمية: ${offHol.occasion} (م.١٢٩)`;
+                        } else if (remaining > 0) {
+                            statusBadge = '<span class="status-badge badge-perm" style="background:#eff6ff; color:#1d4ed8; border:1px solid #bfdbfe;">📌 إجازة (من الرصيد المتبقي)</span>';
+                            hoursFormatted = '<span style="color:#1d4ed8; font-weight:600;">مسحوب من الرصيد</span>';
+                            if (!permNoteText) permNoteText = '📌 إجازة مسحوبة من الرصيد السنوي (بدون خصم مالي — الرصيد متاح)';
                         } else {
-                            statusBadge = '<span class="status-badge badge-danger">⚠️ غياب</span>';
-                            hoursFormatted = '—';
+                            statusBadge = '<span class="status-badge badge-danger" style="background:#fef2f2; color:#b91c1c; border:1px solid #fecaca;">🚨 غياب بدون رصيد (خصم)</span>';
+                            hoursFormatted = '<span style="color:#b91c1c; font-weight:700;">خصم يوم</span>';
+                            if (!permNoteText) permNoteText = '🚨 غياب بعد استنفاد كامل الرصيد السنوي (يُخصم من الراتب)';
                         }
                     }
 
@@ -3357,9 +3364,14 @@
                             if (!notesText) {
                                 notesText = `<span style="color:#854d0e; font-weight:bold;">🏛️ عطلة رسمية: ${offHol.occasion} (م.١٢٩)</span>`;
                             }
+                        } else if (em.calculatedBalance > 0) {
+                            statusBadge = `<span class="badge-perm" style="background:#eff6ff; color:#1d4ed8; border:1px solid #bfdbfe;">📌 إجازة (من الرصيد المتبقي)</span>`;
+                            hoursDecimal = 'مسحوب من الرصيد';
+                            notesText = `<span style="color:#1d4ed8; font-weight:bold;">📌 إجازة مسحوبة من الرصيد السنوي (بدون خصم مالي — الرصيد متاح)</span>`;
                         } else {
-                            statusBadge = `<span class="badge-danger">⚠️ غياب</span>`;
-                            hoursDecimal = '—';
+                            statusBadge = `<span class="badge-danger" style="background:#fef2f2; color:#b91c1c; border:1px solid #fecaca;">🚨 غياب بدون رصيد (خصم)</span>`;
+                            hoursDecimal = 'خصم يوم';
+                            notesText = `<span style="color:#b91c1c; font-weight:bold;">🚨 غياب بعد استنفاد كامل الرصيد السنوي (يُخصم من الراتب)</span>`;
                         }
                     }
 
@@ -3867,7 +3879,7 @@
         syncApprovedEmployeeRequests();
         initAttendanceArchive();
     </script>
-    <script src="theme.js?v=1788176129"></script>
-    <script src="pwa-install.js?v=1788176129"></script>
+    <script src="theme.js?v=1788177339"></script>
+    <script src="pwa-install.js?v=1788177339"></script>
 </body>
 </html>
