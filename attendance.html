@@ -977,12 +977,14 @@
                         <option value="late">⏰ إذن تأخير في الحضور</option>
                         <option value="early">🚪 إذن انصراف مبكر</option>
                         <option value="temp">🔄 إذن خروج مؤقت</option>
+                        <option value="exempt">🌟 استثناء إداري معتمد (دوام كامل بدون خصم)</option>
+                        <option value="mission">🏢 مأمورية عمل خارجية معتمدة (دوام كامل بدون خصم)</option>
                     </select>
                 </div>
             </div>
             <div style="margin-bottom: 14px;">
                 <label style="font-size: 0.82rem; color: var(--text-muted); display: block; margin-bottom: 4px;">السبب والملاحظات:</label>
-                <input type="text" id="modalPermNote" placeholder="ظرف طارئ، مأمورية عمل..." style="width: 100%; padding: 8px; border-radius: 8px; background: var(--surface-2); color: var(--text); border: 1px solid var(--border);">
+                <input type="text" id="modalPermNote" placeholder="ظرف طارئ، مأمورية عمل، استثناء إدارة..." style="width: 100%; padding: 8px; border-radius: 8px; background: var(--surface-2); color: var(--text); border: 1px solid var(--border);">
             </div>
             <div style="display: flex; justify-content: flex-end; gap: 8px;">
                 <button class="btn-action btn-ghost" onclick="closePermModal()">إلغاء</button>
@@ -1000,14 +1002,15 @@
                 <select id="modalLeaveEmpSel" style="width: 100%; padding: 8px; border-radius: 8px; background: var(--surface-2); color: var(--text); border: 1px solid var(--border);"></select>
             </div>
             <div style="margin-bottom: 10px;">
-                <label style="font-size: 0.82rem; color: var(--text-muted); display: block; margin-bottom: 4px;">نوع الإجازة:</label>
+                <label style="font-size: 0.82rem; color: var(--text-muted); display: block; margin-bottom: 4px;">نوع الإجازة / الاستثناء:</label>
                 <select id="modalLeaveType" style="width: 100%; padding: 8px; border-radius: 8px; background: var(--surface-2); color: var(--text); border: 1px solid var(--border);">
-                    <option value="annual">🏖️ إجازة سنوية اعتيادية (مادة ١٢٤)</option>
-                    <option value="casual">⏳ إجازة عارضة طارئة (مادة ١٢٨)</option>
-                    <option value="sick">🩺 إجازة مرضية</option>
-                    <option value="unpaid">📄 إجازة بدون راتب / خاصة</option>
-                    <option value="official">🏢 مأمورية عمل / إجازة رسمية</option>
+                    <option value="annual">🏖️ إجازة سنوية اعتيادية (تُسحب من الرصيد السنوي)</option>
+                    <option value="casual">⏳ إجازة عارضة طارئة (تُسحب من الرصيد السنوي)</option>
+                    <option value="exempt">🌟 استثناء إداري / عذر رسمي معتمد (بدون خصم رصيد أو راتب)</option>
+                    <option value="mission">🏢 مأمورية عمل خارجية معتمدة (بدون خصم رصيد أو راتب)</option>
+                    <option value="sick">🩺 إجازة مرضية معتمدة (م.١٢٩)</option>
                     <option value="wfh">🏠 عمل من المنزل (WFH)</option>
+                    <option value="unpaid">🚨 غياب / إجازة بدون راتب (خصم من الراتب)</option>
                 </select>
             </div>
             <div style="display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 10px; margin-bottom: 10px;">
@@ -2433,7 +2436,18 @@
                     if (perm) permNoteText += `🎫 ${perm.note || perm.type} `;
                     if (personalLeave) permNoteText += `🏖️ ${personalLeave.typeLabel || personalLeave.type} `;
 
-                    if (!entry && exit) {
+                    const isAdministrativeExempt = (perm && (perm.type === 'exempt' || perm.type === 'mission' || perm.type === 'excuse')) ||
+                        (personalLeave && (personalLeave.type === 'exempt' || personalLeave.type === 'mission' || personalLeave.type === 'official' || personalLeave.type === 'wfh'));
+
+                    if (isAdministrativeExempt) {
+                        okCount++;
+                        const exTitle = (perm && perm.type === 'mission') || (personalLeave && personalLeave.type === 'mission')
+                            ? '🏢 مأمورية عمل معتمدة'
+                            : '🌟 استثناء إداري معتمد';
+                        statusBadge = `<span class="status-badge badge-perm" style="background:#f0fdf4; color:#166534; border:1px solid #bbf7d0; font-weight:800;">${exTitle}</span>`;
+                        hoursFormatted = `<span style="color:#166534; font-weight:700;">دوام كامل معتمد</span>`;
+                        if (!permNoteText) permNoteText = `${exTitle} (بدون خصم من الرصيد أو الراتب)`;
+                    } else if (!entry && exit) {
                         if (perm && (perm.type === 'late' || perm.type === 'temp')) {
                             okCount++;
                             statusBadge = '<span class="status-badge badge-perm" style="background:#eff6ff; color:#1d4ed8; border:1px solid #bfdbfe;">⏰ حضور متأخر (بإذن معتمد)</span>';
@@ -2593,64 +2607,83 @@
                     const tr = document.createElement('tr');
                     const isManual = (p.source !== 'employee_request');
                     const sourceBadge = isManual
-                        ? `<span class="status-badge" style="background:#f1f5f9; color:#475569; border:1px solid #cbd5e1; font-size:0.75rem; white-space:nowrap;">✍️ تسجيل يدوي (إدارة)</span>`
-                        : `<span class="status-badge" style="background:#ecfdf5; color:#065f46; border:1px solid #a7f3d0; font-size:0.75rem; white-space:nowrap;">📱 طلب موظف (معتمد)</span>`;
-                    tr.innerHTML = `
-                        <td style="font-weight:800; white-space:nowrap;">${name}</td>
-                        <td style="color:var(--perm-light); font-weight:800; text-align:center;">#${empId}</td>
-                        <td style="white-space:nowrap; text-align:center; font-weight:700; color:var(--text);"><span style="background:var(--bg); border:1px solid var(--border); padding:3px 8px; border-radius:6px; font-size:0.82rem; display:inline-flex; align-items:center; gap:4px; direction:ltr;">📅 ${p.date}</span></td>
-                        <td style="text-align:center; white-space:nowrap;"><span class="status-badge badge-perm" style="white-space:nowrap;">${p.type === 'late' ? '⏰ إذن تأخير' : (p.type === 'early' ? '🚪 انصراف مبكر' : '🔄 خروج مؤقت')}</span></td>
-                        <td style="text-align:center; white-space:nowrap;">${sourceBadge}</td>
-                        <td style="color:var(--text-muted);">${p.note || '—'}</td>
-                        <td style="text-align:center; white-space:nowrap;">
-                            <button class="btn-action btn-ghost" onclick="deletePerm('${empId}', ${pIdx})" style="color:var(--danger-light); padding:4px 10px; border-radius:6px; font-weight:700; white-space:nowrap; display:inline-flex; align-items:center; gap:4px; font-size:0.78rem;">✕ حذف</button>
-                        </td>
-                    `;
-                    tbody.appendChild(tr);
-                });
-            });
+                        let pBadgeText = '⏰ إذن تأخير';
+                        if (p.type === 'early') pBadgeText = '🚪 انصراف مبكر';
+                        else if (p.type === 'temp') pBadgeText = '🔄 خروج مؤقت';
+                        else if (p.type === 'exempt') pBadgeText = '🌟 استثناء إداري (بدون خصم)';
+                        else if (p.type === 'mission') pBadgeText = '🏢 مأمورية عمل معتمدة';
 
-            if (!hasRecords) {
-                tbody.innerHTML = `<tr><td colspan="7" style="text-align:center;color:var(--text-muted);padding:20px;">لا توجد أذونات مسجلة حتى الآن</td></tr>`;
+                        const pBadgeStyle = (p.type === 'exempt' || p.type === 'mission')
+                            ? 'background:#f0fdf4; color:#166534; border:1px solid #bbf7d0;'
+                            : '';
+
+                        tr.innerHTML = `
+                            <td style="font-weight:800; white-space:nowrap;">${name}</td>
+                            <td style="color:var(--perm-light); font-weight:800; text-align:center;">#${empId}</td>
+                            <td style="white-space:nowrap; text-align:center; font-weight:700; color:var(--text);"><span style="background:var(--bg); border:1px solid var(--border); padding:3px 8px; border-radius:6px; font-size:0.82rem; display:inline-flex; align-items:center; gap:4px; direction:ltr;">📅 ${p.date}</span></td>
+                            <td style="text-align:center; white-space:nowrap;"><span class="status-badge badge-perm" style="white-space:nowrap; ${pBadgeStyle}">${pBadgeText}</span></td>
+                            <td style="text-align:center; white-space:nowrap;">${sourceBadge}</td>
+                            <td style="color:var(--text-muted);">${p.note || '—'}</td>
+                            <td style="text-align:center; white-space:nowrap;">
+                                <button class="btn-action btn-ghost" onclick="deletePerm('${empId}', ${pIdx})" style="color:var(--danger-light); padding:4px 10px; border-radius:6px; font-weight:700; white-space:nowrap; display:inline-flex; align-items:center; gap:4px; font-size:0.78rem;">✕ حذف</button>
+                            </td>
+                        `;
+                        tbody.appendChild(tr);
+                    });
+                });
+
+                if (!hasRecords) {
+                    tbody.innerHTML = `<tr><td colspan="7" style="text-align:center;color:var(--text-muted);padding:20px;">لا توجد أذونات مسجلة حتى الآن</td></tr>`;
+                }
+
+                renderLeavesTable();
             }
 
-            renderLeavesTable();
-        }
+            function renderLeavesTable() {
+                const tbody = document.getElementById('leavesTableBody');
+                if (!tbody) return;
+                tbody.innerHTML = '';
 
-        function renderLeavesTable() {
-            const tbody = document.getElementById('leavesTableBody');
-            if (!tbody) return;
-            tbody.innerHTML = '';
+                let hasRecords = false;
+                Object.keys(employeeManualLeaves).forEach(empId => {
+                    if (inactiveEmployees.includes(empId)) return;
+                    const list = employeeManualLeaves[empId] || [];
+                    const name = getDisplayName(empId);
+                    list.forEach((l, lIdx) => {
+                        hasRecords = true;
+                        const tr = document.createElement('tr');
+                        const dateDisplay = (l.fromDate && l.toDate && l.fromDate !== l.toDate)
+                            ? `${l.fromDate} ← ${l.toDate}`
+                            : (l.date || l.fromDate);
+                        const isManual = (l.source !== 'employee_request');
+                        const sourceBadge = isManual
+                            ? `<span class="status-badge" style="background:#f1f5f9; color:#475569; border:1px solid #cbd5e1; font-size:0.75rem; white-space:nowrap;">✍️ تسجيل يدوي (إدارة)</span>`
+                            : `<span class="status-badge" style="background:#ecfdf5; color:#065f46; border:1px solid #a7f3d0; font-size:0.75rem; white-space:nowrap;">📱 طلب موظف (معتمد)</span>`;
+                        
+                        let leaveLabel = l.typeLabel || l.type;
+                        let lBadgeStyle = 'background:#eff6ff; color:#0369a1; border:1px solid #bae6fd;';
+                        if (l.type === 'exempt' || l.typeLabel?.includes('استثناء')) {
+                            leaveLabel = '🌟 استثناء إداري معتمد';
+                            lBadgeStyle = 'background:#f0fdf4; color:#166534; border:1px solid #bbf7d0;';
+                        } else if (l.type === 'mission' || l.typeLabel?.includes('مأمورية')) {
+                            leaveLabel = '🏢 مأمورية عمل خارجية';
+                            lBadgeStyle = 'background:#f0fdf4; color:#166534; border:1px solid #bbf7d0;';
+                        }
 
-            let hasRecords = false;
-            Object.keys(employeeManualLeaves).forEach(empId => {
-                if (inactiveEmployees.includes(empId)) return;
-                const list = employeeManualLeaves[empId] || [];
-                const name = getDisplayName(empId);
-                list.forEach((l, lIdx) => {
-                    hasRecords = true;
-                    const tr = document.createElement('tr');
-                    const dateDisplay = (l.fromDate && l.toDate && l.fromDate !== l.toDate)
-                        ? `${l.fromDate} ← ${l.toDate}`
-                        : (l.date || l.fromDate);
-                    const isManual = (l.source !== 'employee_request');
-                    const sourceBadge = isManual
-                        ? `<span class="status-badge" style="background:#f1f5f9; color:#475569; border:1px solid #cbd5e1; font-size:0.75rem; white-space:nowrap;">✍️ تسجيل يدوي (إدارة)</span>`
-                        : `<span class="status-badge" style="background:#ecfdf5; color:#065f46; border:1px solid #a7f3d0; font-size:0.75rem; white-space:nowrap;">📱 طلب موظف (معتمد)</span>`;
-                    tr.innerHTML = `
-                        <td style="font-weight:800; white-space:nowrap;">${name}</td>
-                        <td style="color:var(--primary-light); font-weight:800; text-align:center;">#${empId}</td>
-                        <td style="white-space:nowrap; text-align:center; font-weight:700; color:var(--text);"><span style="background:var(--bg); border:1px solid var(--border); padding:3px 8px; border-radius:6px; font-size:0.82rem; display:inline-flex; align-items:center; gap:4px; direction:ltr;">📅 ${dateDisplay}</span></td>
-                        <td style="text-align:center; white-space:nowrap;"><span class="status-badge badge-perm" style="background:#eff6ff; color:#0369a1; border:1px solid #bae6fd; white-space:nowrap;">🏖️ ${l.typeLabel || l.type}</span></td>
-                        <td style="text-align:center; white-space:nowrap;">${sourceBadge}</td>
-                        <td style="color:var(--text-muted);"><strong style="color:var(--primary-light);">${l.days || 1} يوم</strong> ${l.note ? '— ' + l.note : ''}</td>
-                        <td style="text-align:center; white-space:nowrap;">
-                            <button class="btn-action btn-ghost" onclick="deleteManualLeave('${empId}', ${lIdx})" style="color:var(--danger-light); padding:4px 10px; border-radius:6px; font-weight:700; white-space:nowrap; display:inline-flex; align-items:center; gap:4px; font-size:0.78rem;">✕ حذف</button>
-                        </td>
-                    `;
-                    tbody.appendChild(tr);
+                        tr.innerHTML = `
+                            <td style="font-weight:800; white-space:nowrap;">${name}</td>
+                            <td style="color:var(--primary-light); font-weight:800; text-align:center;">#${empId}</td>
+                            <td style="white-space:nowrap; text-align:center; font-weight:700; color:var(--text);"><span style="background:var(--bg); border:1px solid var(--border); padding:3px 8px; border-radius:6px; font-size:0.82rem; display:inline-flex; align-items:center; gap:4px; direction:ltr;">📅 ${dateDisplay}</span></td>
+                            <td style="text-align:center; white-space:nowrap;"><span class="status-badge badge-perm" style="${lBadgeStyle} white-space:nowrap;">${leaveLabel}</span></td>
+                            <td style="text-align:center; white-space:nowrap;">${sourceBadge}</td>
+                            <td style="color:var(--text-muted);"><strong style="color:var(--primary-light);">${l.days || 1} يوم</strong> ${l.note ? '— ' + l.note : ''}</td>
+                            <td style="text-align:center; white-space:nowrap;">
+                                <button class="btn-action btn-ghost" onclick="deleteManualLeave('${empId}', ${lIdx})" style="color:var(--danger-light); padding:4px 10px; border-radius:6px; font-weight:700; white-space:nowrap; display:inline-flex; align-items:center; gap:4px; font-size:0.78rem;">✕ حذف</button>
+                            </td>
+                        `;
+                        tbody.appendChild(tr);
+                    });
                 });
-            });
 
             if (!hasRecords) {
                 tbody.innerHTML = `<tr><td colspan="7" style="text-align:center;color:var(--text-muted);padding:20px;">لا توجد إجازات يدوية مسجلة حتى الآن</td></tr>`;
@@ -3417,7 +3450,18 @@
                         notesText += (notesText ? ' | ' : '') + `<span style="color:#1e40af; font-weight:bold;">🏖️ ${personalLeave.typeLabel || personalLeave.type}${personalLeave.note ? ': ' + personalLeave.note : ''}</span>`;
                     }
 
-                    if (!entry && exit) {
+                    const isAdministrativeExempt = (dayPerm && (dayPerm.type === 'exempt' || dayPerm.type === 'mission' || dayPerm.type === 'excuse')) ||
+                        (personalLeave && (personalLeave.type === 'exempt' || personalLeave.type === 'mission' || personalLeave.type === 'official' || personalLeave.type === 'wfh'));
+
+                    if (isAdministrativeExempt) {
+                        okCount++;
+                        const exTitle = (dayPerm && dayPerm.type === 'mission') || (personalLeave && personalLeave.type === 'mission')
+                            ? '🏢 مأمورية عمل معتمدة'
+                            : '🌟 استثناء إداري معتمد';
+                        statusBadge = `<span class="badge-perm" style="background:#f0fdf4; color:#166534; border:1px solid #bbf7d0; font-weight:800;">${exTitle}</span>`;
+                        hoursDecimal = 'دوام معتمد';
+                        if (!notesText) notesText = `<span style="color:#166534; font-weight:bold;">${exTitle} (بدون خصم من الرصيد أو الراتب)</span>`;
+                    } else if (!entry && exit) {
                         earlyCount++;
                         if (dayPerm && dayPerm.type === 'late') {
                             statusBadge = '<span class="badge-perm">⚠️ خروج فقط (إذن حضور)</span>';
@@ -4024,7 +4068,7 @@
         syncApprovedEmployeeRequests();
         initAttendanceArchive();
     </script>
-    <script src="theme.js?v=1788182176"></script>
-    <script src="pwa-install.js?v=1788182176"></script>
+    <script src="theme.js?v=1788182441"></script>
+    <script src="pwa-install.js?v=1788182441"></script>
 </body>
 </html>
