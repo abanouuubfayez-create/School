@@ -2402,10 +2402,32 @@
                     if (personalLeave) permNoteText += `🏖️ ${personalLeave.typeLabel || personalLeave.type} `;
 
                     if (!entry && exit) {
-                        statusBadge = '<span class="status-badge badge-danger">⚠️ خروج فقط (دخول مفقود)</span>';
+                        if (perm && (perm.type === 'late' || perm.type === 'temp')) {
+                            okCount++;
+                            statusBadge = '<span class="status-badge badge-perm" style="background:#eff6ff; color:#1d4ed8; border:1px solid #bfdbfe;">⏰ حضور متأخر (بإذن معتمد)</span>';
+                        } else {
+                            statusBadge = '<span class="status-badge badge-danger">⚠️ خروج فقط (دخول مفقود)</span>';
+                        }
                         hoursFormatted = '<span style="color:var(--warning-light);">⚠️ غير مكتمل</span>';
                     } else if (entry && !exit) {
-                        statusBadge = '<span class="status-badge badge-danger">⚠️ دخول فقط (خروج مفقود)</span>';
+                        if (perm && (perm.type === 'early' || perm.type === 'temp')) {
+                            okCount++;
+                            statusBadge = '<span class="status-badge badge-perm" style="background:#eff6ff; color:#1d4ed8; border:1px solid #bfdbfe;">🚪 انصراف مبكر (بإذن معتمد)</span>';
+                        } else if (p === 'late') {
+                            const startMins = timeToMins(workConfig.start);
+                            const graceMins = parseInt(workConfig.grace || 30);
+                            const lateMin = timeToMins(entry.time) - (startMins + graceMins);
+                            if (perm && (perm.type === 'late' || perm.type === 'temp')) {
+                                okCount++;
+                                statusBadge = `<span class="status-badge badge-perm" style="background:#eff6ff; color:#1d4ed8; border:1px solid #bfdbfe;">⏰ متأخر +${lateMin > 0 ? lateMin : ''}د (بإذن معتمد)</span>`;
+                            } else {
+                                lateCount++;
+                                statusBadge = `<span class="status-badge badge-danger">⚠️ متأخر +${lateMin > 0 ? lateMin : ''}د (بدون إذن)</span>`;
+                            }
+                        } else {
+                            okCount++;
+                            statusBadge = '<span class="status-badge badge-ok">✅ في معاده (دخول)</span>';
+                        }
                         hoursFormatted = '<span style="color:var(--warning-light);">⚠️ غير مكتمل</span>';
                     } else if (entry && exit) {
                         const hCalc = calcDayWorkHours(entry.time, exit.time);
@@ -2413,18 +2435,19 @@
                         hoursFormatted = `<strong>${(hCalc.hours).toFixed(2)} س</strong> <small style="color:var(--text-muted);">(${hCalc.formatted})</small>`;
 
                         if (p === 'late') {
-                            lateCount++;
                             const startMins = timeToMins(workConfig.start);
                             const graceMins = parseInt(workConfig.grace || 30);
                             const lateMin = timeToMins(entry.time) - (startMins + graceMins);
                             if (perm && (perm.type === 'late' || perm.type === 'temp')) {
-                                statusBadge = `<span class="status-badge badge-perm">⏰ متأخر +${lateMin > 0 ? lateMin : ''}د (بإذن معتمد)</span>`;
+                                okCount++;
+                                statusBadge = `<span class="status-badge badge-perm" style="background:#eff6ff; color:#1d4ed8; border:1px solid #bfdbfe;">⏰ متأخر +${lateMin > 0 ? lateMin : ''}د (بإذن معتمد)</span>`;
                             } else {
+                                lateCount++;
                                 statusBadge = `<span class="status-badge badge-danger">⚠️ متأخر +${lateMin > 0 ? lateMin : ''}د (بدون إذن)</span>`;
                             }
                         } else {
                             okCount++;
-                            statusBadge = '<span class="badge-ok">✅ في معاده</span>';
+                            statusBadge = '<span class="status-badge badge-ok">✅ في معاده</span>';
                         }
                     } else {
                         if (personalLeave) {
@@ -3755,7 +3778,7 @@
         syncApprovedEmployeeRequests();
         initAttendanceArchive();
     </script>
-    <script src="theme.js?v=1788170946"></script>
-    <script src="pwa-install.js?v=1788170946"></script>
+    <script src="theme.js?v=1788172202"></script>
+    <script src="pwa-install.js?v=1788172202"></script>
 </body>
 </html>
