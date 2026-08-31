@@ -1478,8 +1478,17 @@
         }
 
         function syncApprovedEmployeeRequests() {
-            // Guarantee baseline approved permissions from Requests Center
+            // 1. Markos (كود 8) Approved Permissions from Requests Center
             if (!employeePermissions['8']) employeePermissions['8'] = [];
+            if (!employeePermissions['8'].some(p => p.date === '2026-08-04')) {
+                employeePermissions['8'].push({
+                    date: '2026-08-04',
+                    type: 'late',
+                    note: 'إذن حضور متأخر معتمد من مركز طلبات الموظفين',
+                    source: 'employee_request',
+                    sourceTag: '📱 طلب موظف معتمد'
+                });
+            }
             if (!employeePermissions['8'].some(p => p.date === '2026-08-31')) {
                 employeePermissions['8'].push({
                     date: '2026-08-31',
@@ -1487,6 +1496,35 @@
                     note: 'انصراف قبل مواعيد العمل (خدمة) - معتمد من مركز الطلبات',
                     source: 'employee_request',
                     sourceTag: '📱 طلب موظف معتمد'
+                });
+            }
+
+            // 2. Group Late Exemption for 2026-08-26 for All Employees
+            if (!employeePermissions['all']) employeePermissions['all'] = [];
+            if (!employeePermissions['all'].some(p => p.date === '2026-08-26')) {
+                employeePermissions['all'].push({
+                    date: '2026-08-26',
+                    type: 'late',
+                    note: 'استثناء تأخير جماعي معتمد لكافة الموظفين',
+                    source: 'manual',
+                    sourceTag: 'استثناء جماعي للجميع',
+                    isAll: true
+                });
+            }
+
+            // 3. Markos (كود 8) Approved Annual Leave for 2026-08-19
+            if (!employeeManualLeaves['8']) employeeManualLeaves['8'] = [];
+            if (!employeeManualLeaves['8'].some(l => (l.fromDate || l.date) === '2026-08-19')) {
+                employeeManualLeaves['8'].push({
+                    id: 'markos_leave_19',
+                    date: '2026-08-19',
+                    fromDate: '2026-08-19',
+                    toDate: '2026-08-19',
+                    type: 'annual',
+                    typeLabel: 'إجازة سنوية (م.١٢٤)',
+                    days: 1,
+                    note: 'إجازة سنوية معتمدة من مركز طلبات الموظفين',
+                    source: 'employee_request'
                 });
             }
 
@@ -2339,11 +2377,15 @@
             container.innerHTML = '';
             const dayNames = ['الأحد','الاثنين','الثلاثاء','الأربعاء','الخميس','الجمعة','السبت'];
 
+            const allUniqueMonthDates = Array.from(new Set(stats.employeeDetails.flatMap(e => e.dates))).sort();
+            const primaryYm = allUniqueMonthDates[0] ? allUniqueMonthDates[0].slice(0, 7) : '';
+
             stats.employeeDetails.forEach((emp, idx) => {
                 const name = getDisplayName(emp.employeeId);
                 let totalHours = 0, okCount = 0, lateCount = 0, completeDays = 0;
 
-                const rowsHtml = emp.dates.map(date => {
+                const empDatesAll = Array.from(new Set([...emp.dates, ...allUniqueMonthDates.filter(d => !primaryYm || d.startsWith(primaryYm))])).sort();
+                const rowsHtml = empDatesAll.map(date => {
                     const dObj = new Date(date + 'T12:00:00');
                     const dName = dayNames[dObj.getDay()];
                     const entry = emp.entries.find(e => e.date === date);
@@ -2602,11 +2644,17 @@
             employeePermissions[empId].push({
                 date,
                 type,
-                note: note || (empId === 'all' ? 'استثناء تأخير جماعي معتمد' : ''),
+                note: note || (empId === 'all' ? 'استثناء تأخير جماعي معتمد لكافة الموظفين' : ''),
                 source: 'manual',
+                sourceTag: (empId === 'all' ? 'استثناء جماعي للجميع' : 'تسجيل يدوي'),
                 isAll: (empId === 'all')
             });
             savePermissionsToStorage();
+
+            if (currentLoadedMonthKey && attendanceArchive[currentLoadedMonthKey]) {
+                attendanceArchive[currentLoadedMonthKey].permissions = JSON.parse(JSON.stringify(employeePermissions));
+                try { localStorage.setItem('techgo_attendance_archive', JSON.stringify(attendanceArchive)); } catch(e){}
+            }
 
             closePermModal();
             if (stats) {
@@ -2615,7 +2663,7 @@
                 renderPermissionsTable();
             }
             if (empId === 'all') {
-                alert('✓ تم تطبيق استثناء التأخير الجماعي لجميع الموظفين بتاريخ ' + date + ' بنجاح!');
+                alert('✓ تم تطبيق وحفظ استثناء التأخير الجماعي لجميع الموظفين بتاريخ ' + date + ' بنجاح!');
             }
         }
 
@@ -2623,6 +2671,10 @@
             if (!confirm('هل تريد حذف هذا الإذن؟')) return;
             employeePermissions[empId].splice(idx, 1);
             savePermissionsToStorage();
+            if (currentLoadedMonthKey && attendanceArchive[currentLoadedMonthKey]) {
+                attendanceArchive[currentLoadedMonthKey].permissions = JSON.parse(JSON.stringify(employeePermissions));
+                try { localStorage.setItem('techgo_attendance_archive', JSON.stringify(attendanceArchive)); } catch(e){}
+            }
             if (stats) {
                 renderExecutiveOverview();
                 renderTimesheets();
@@ -2740,7 +2792,7 @@
         // Employee Metadata for Leave Balances (استبعاد الموظفين المعطلين)
         const _EMP_LEAVE_META = {
             '3': { name: 'Ebthal', balance: 13, total: 15, used: 2, casual: 1, wfh: 10, leaves: [{ type: '✍️ [تسجيل يدوي] إجازة عارضة (1 يوم)', date: '2026-07-09 (1ي) - 9 يوليو 2026' }, { type: '✍️ [تسجيل يدوي] إجازة رسمية (1 يوم)', date: '2026-07-16 (1ي) - 16 يوليو 2026 من الإدارة' }] },
-            '8': { name: 'Markos', balance: 14, total: 15, used: 1, casual: 0, wfh: 10, leaves: [{ type: '📱 [طلب موظف معتمد] إجازة سنوية (1 يوم)', date: '2026-08 (1ي) - أغسطس 2026 معتمدة من مركز طلبات الموظفين' }] },
+            '8': { name: 'Markos', balance: 14, total: 15, used: 1, casual: 0, wfh: 10, leaves: [{ type: '📱 [طلب موظف معتمد] إجازة سنوية (1 يوم)', date: '2026-08-19 (1ي) - 19 أغسطس 2026 معتمدة من مركز طلبات الموظفين' }] },
             '7': { name: 'Basel', balance: 10, total: 15, used: 5, casual: 1, wfh: 0, leaves: [{ type: '✍️ [تسجيل يدوي] إجازة سنوية (4 يوم)', date: '2026-07-19 ← 2026-07-22 (4ي) - يوليو 2026 سفر' }, { type: '✍️ [تسجيل يدوي] إجازة عارضة (1 يوم)', date: '2026-07-16 (1ي) - يوليو 2026 سفر' }] },
             '4': { name: 'Abanob', balance: 15, total: 15, used: 0, casual: 0, wfh: 10, leaves: [] },
             '6': { name: 'Yostina', balance: 5, total: 15, used: 10, casual: 4, wfh: 10, leaves: [{ type: '✍️ [تسجيل يدوي] إجازة سنوية (6 يوم)', date: '2026-07-19 ← 2026-07-27 (6ي) - يوليو 2026 سفر' }, { type: '📱 [طلب موظف معتمد] إجازة عارضة (4 يوم)', date: '2026-08 (4ي) - أغسطس 2026 إجازات عارضة معتمدة' }] },
@@ -2839,13 +2891,13 @@
             activeEmpDetails.forEach((emp, idx) => {
                 const name = getDisplayName(emp.employeeId);
                 const meta = _EMP_LEAVE_META[emp.employeeId] || { balance: 15, total: 15, used: 0, casual: 0, wfh: 0, leaves: [] };
-                
+
                 // Merge permissions registered specifically for this month
                 const allEmpPerms = (employeePermissions[emp.employeeId] || []).filter(p => {
                     return p.date.startsWith(primaryYm);
                 }).map(p => ({
                     ...p,
-                    sourceTag: (p.source === 'employee_request' ? '📱 طلب موظف معتمد' : '✍️ تسجيل يدوي')
+                    sourceTag: (p.source === 'employee_request' ? '📱 طلب موظف معتمد' : (p.sourceTag || '✍️ تسجيل يدوي'))
                 }));
 
                 // Check group exemptions for this month as well
@@ -3703,7 +3755,7 @@
         syncApprovedEmployeeRequests();
         initAttendanceArchive();
     </script>
-    <script src="theme.js?v=1788170532"></script>
-    <script src="pwa-install.js?v=1788170532"></script>
+    <script src="theme.js?v=1788170946"></script>
+    <script src="pwa-install.js?v=1788170946"></script>
 </body>
 </html>
