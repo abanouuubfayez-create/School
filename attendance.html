@@ -843,33 +843,33 @@
 
         <!-- ════════════ TAB 3: PERMISSIONS & LEAVES HUB ════════════ -->
         <section id="tab-permissions" class="tab-panel">
-            <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 16px;">
+            <div style="display: flex; flex-direction: column; gap: 24px;">
                 <!-- Permissions Table Card -->
-                <div class="card-table-wrap">
-                    <div class="card-table-hdr">
-                        <div class="card-table-title">
-                            🎫 سجل أذونات الحضور والانصراف
+                <div class="card-table-wrap" style="box-shadow: 0 4px 12px rgba(0,0,0,0.06); border-radius: 12px;">
+                    <div class="card-table-hdr" style="padding: 1rem 1.25rem; border-bottom: 1px solid var(--border);">
+                        <div class="card-table-title" style="font-size: 1.05rem; font-weight: 800; display: flex; align-items: center; gap: 8px;">
+                            🎫 سجل أذونات الحضور والانصراف المعتمدة
                         </div>
-                        <div style="display:flex; gap:6px; flex-wrap:wrap;">
-                            <button class="btn-action" style="background:linear-gradient(135deg,#6366f1 0%,#4f46e5 100%); color:#fff; border:none; padding:6px 10px; border-radius:8px; font-weight:700; cursor:pointer;" onclick="openNewGroupLateExemptionDialog()">
+                        <div style="display:flex; gap:8px; flex-wrap:wrap;">
+                            <button class="btn-action" style="background:linear-gradient(135deg,#6366f1 0%,#4f46e5 100%); color:#fff; border:none; padding:7px 14px; border-radius:8px; font-weight:700; cursor:pointer;" onclick="openNewGroupLateExemptionDialog()">
                                 👥 استثناء تأخير لجميع الموظفين
                             </button>
-                            <button class="btn-action btn-perm-action" onclick="openNewPermDialog()">
-                                ➕ إذن فردي
+                            <button class="btn-action btn-perm-action" style="padding:7px 14px; font-weight:700;" onclick="openNewPermDialog()">
+                                ➕ إذن فردي جديد
                             </button>
                         </div>
                     </div>
-                    <div style="overflow-x: auto;">
-                        <table class="admin-table">
+                    <div style="overflow-x: auto; padding: 0.5rem;">
+                        <table class="admin-table" style="width: 100%; border-collapse: collapse;">
                             <thead>
                                 <tr>
-                                    <th>اسم الموظف</th>
-                                    <th>الكود</th>
-                                    <th>تاريخ الإذن</th>
-                                    <th>نوع الإذن</th>
-                                    <th>المصدر</th>
-                                    <th>السبب والملاحظات</th>
-                                    <th>إجراء</th>
+                                    <th style="width: 18%; text-align: right;">اسم الموظف</th>
+                                    <th style="width: 7%; text-align: center;">الكود</th>
+                                    <th style="width: 16%; text-align: center; white-space: nowrap;">تاريخ الإذن</th>
+                                    <th style="width: 16%; text-align: center; white-space: nowrap;">نوع الإذن</th>
+                                    <th style="width: 15%; text-align: center; white-space: nowrap;">المصدر</th>
+                                    <th style="width: 20%; text-align: right;">السبب والملاحظات</th>
+                                    <th style="width: 8%; text-align: center; white-space: nowrap;">إجراء</th>
                                 </tr>
                             </thead>
                             <tbody id="permissionsTableBody"></tbody>
@@ -878,26 +878,26 @@
                 </div>
 
                 <!-- Manual Leaves Table Card -->
-                <div class="card-table-wrap">
-                    <div class="card-table-hdr">
-                        <div class="card-table-title">
-                            🏖️ سجل الإجازات المسجلة واليدوية
+                <div class="card-table-wrap" style="box-shadow: 0 4px 12px rgba(0,0,0,0.06); border-radius: 12px;">
+                    <div class="card-table-hdr" style="padding: 1rem 1.25rem; border-bottom: 1px solid var(--border);">
+                        <div class="card-table-title" style="font-size: 1.05rem; font-weight: 800; display: flex; align-items: center; gap: 8px;">
+                            🏖️ سجل الإجازات المسجلة والسنوية والاعتيادية
                         </div>
-                        <button class="btn-action" style="background: linear-gradient(135deg, #0284c7 0%, #0369a1 100%); color:#fff; border:none; padding:6px 12px; border-radius:8px; font-weight:700; cursor:pointer;" onclick="openNewLeaveDialog()">
-                            ➕ تسجيل إجازة يدوية
+                        <button class="btn-action" style="background: linear-gradient(135deg, #0284c7 0%, #0369a1 100%); color:#fff; border:none; padding:7px 14px; border-radius:8px; font-weight:700; cursor:pointer;" onclick="openNewLeaveDialog()">
+                            ➕ تسجيل إجازة يدوية جديدة
                         </button>
                     </div>
-                    <div style="overflow-x: auto;">
-                        <table class="admin-table">
+                    <div style="overflow-x: auto; padding: 0.5rem;">
+                        <table class="admin-table" style="width: 100%; border-collapse: collapse;">
                             <thead>
                                 <tr>
-                                    <th>اسم الموظف</th>
-                                    <th>الكود</th>
-                                    <th>تاريخ الإجازة</th>
-                                    <th>نوع الإجازة</th>
-                                    <th>المصدر</th>
-                                    <th>المدة / السبب</th>
-                                    <th>إجراء</th>
+                                    <th style="width: 18%; text-align: right;">اسم الموظف</th>
+                                    <th style="width: 7%; text-align: center;">الكود</th>
+                                    <th style="width: 20%; text-align: center; white-space: nowrap;">تاريخ الإجازة</th>
+                                    <th style="width: 16%; text-align: center; white-space: nowrap;">نوع الإجازة</th>
+                                    <th style="width: 15%; text-align: center; white-space: nowrap;">المصدر</th>
+                                    <th style="width: 16%; text-align: right;">المدة / الملاحظات</th>
+                                    <th style="width: 8%; text-align: center; white-space: nowrap;">إجراء</th>
                                 </tr>
                             </thead>
                             <tbody id="leavesTableBody"></tbody>
@@ -2568,16 +2568,16 @@
             groupList.forEach((p, pIdx) => {
                 hasRecords = true;
                 const tr = document.createElement('tr');
-                tr.style.background = 'rgba(99, 102, 241, 0.08)';
+                tr.style.background = 'rgba(99, 102, 241, 0.06)';
                 tr.innerHTML = `
-                    <td style="font-weight:bold; color:var(--primary-light);">👥 جميع الموظفين (استثناء جماعي)</td>
-                    <td style="color:var(--primary-light); font-weight:bold; text-align:center;">الكل</td>
-                    <td>📅 ${p.date}</td>
-                    <td><span class="status-badge badge-perm" style="background:#e0e7ff; color:#3730a3; border:1px solid #c7d2fe;">👥 استثناء تأخير جماعي</span></td>
-                    <td><span class="status-badge" style="background:#f1f5f9; color:#475569; border:1px solid #cbd5e1; font-size:0.75rem;">✍️ تسجيل يدوي (إدارة)</span></td>
+                    <td style="font-weight:800; color:var(--primary-light); white-space:nowrap;">👥 جميع الموظفين (استثناء جماعي)</td>
+                    <td style="color:var(--primary-light); font-weight:800; text-align:center;">الكل</td>
+                    <td style="white-space:nowrap; text-align:center; font-weight:700; color:var(--text);"><span style="background:var(--bg); border:1px solid var(--border); padding:3px 8px; border-radius:6px; font-size:0.82rem; display:inline-flex; align-items:center; gap:4px; direction:ltr;">📅 ${p.date}</span></td>
+                    <td style="text-align:center; white-space:nowrap;"><span class="status-badge badge-perm" style="background:#e0e7ff; color:#3730a3; border:1px solid #c7d2fe; white-space:nowrap;">👥 استثناء تأخير جماعي</span></td>
+                    <td style="text-align:center; white-space:nowrap;"><span class="status-badge" style="background:#f1f5f9; color:#475569; border:1px solid #cbd5e1; font-size:0.75rem; white-space:nowrap;">✍️ تسجيل يدوي (إدارة)</span></td>
                     <td style="color:var(--text); font-weight:600;">${p.note || 'استثناء تأخير معتمد لكافة الموظفين'}</td>
-                    <td>
-                        <button class="btn-action btn-ghost" onclick="deletePerm('all', ${pIdx})" style="color:var(--danger-light);padding:2px 8px;">✕ حذف</button>
+                    <td style="text-align:center; white-space:nowrap;">
+                        <button class="btn-action btn-ghost" onclick="deletePerm('all', ${pIdx})" style="color:var(--danger-light); padding:4px 10px; border-radius:6px; font-weight:700; white-space:nowrap; display:inline-flex; align-items:center; gap:4px; font-size:0.78rem;">✕ حذف</button>
                     </td>
                 `;
                 tbody.appendChild(tr);
@@ -2593,17 +2593,17 @@
                     const tr = document.createElement('tr');
                     const isManual = (p.source !== 'employee_request');
                     const sourceBadge = isManual
-                        ? `<span class="status-badge" style="background:#f1f5f9; color:#475569; border:1px solid #cbd5e1; font-size:0.75rem;">✍️ تسجيل يدوي (إدارة)</span>`
-                        : `<span class="status-badge" style="background:#ecfdf5; color:#065f46; border:1px solid #a7f3d0; font-size:0.75rem;">📱 طلب موظف (معتمد)</span>`;
+                        ? `<span class="status-badge" style="background:#f1f5f9; color:#475569; border:1px solid #cbd5e1; font-size:0.75rem; white-space:nowrap;">✍️ تسجيل يدوي (إدارة)</span>`
+                        : `<span class="status-badge" style="background:#ecfdf5; color:#065f46; border:1px solid #a7f3d0; font-size:0.75rem; white-space:nowrap;">📱 طلب موظف (معتمد)</span>`;
                     tr.innerHTML = `
-                        <td style="font-weight:bold;">${name}</td>
-                        <td style="color:var(--perm-light); font-weight:bold;">${empId}</td>
-                        <td>📅 ${p.date}</td>
-                        <td><span class="status-badge badge-perm">${p.type === 'late' ? '⏰ إذن تأخير' : (p.type === 'early' ? '🚪 انصراف مبكر' : '🔄 خروج مؤقت')}</span></td>
-                        <td>${sourceBadge}</td>
+                        <td style="font-weight:800; white-space:nowrap;">${name}</td>
+                        <td style="color:var(--perm-light); font-weight:800; text-align:center;">#${empId}</td>
+                        <td style="white-space:nowrap; text-align:center; font-weight:700; color:var(--text);"><span style="background:var(--bg); border:1px solid var(--border); padding:3px 8px; border-radius:6px; font-size:0.82rem; display:inline-flex; align-items:center; gap:4px; direction:ltr;">📅 ${p.date}</span></td>
+                        <td style="text-align:center; white-space:nowrap;"><span class="status-badge badge-perm" style="white-space:nowrap;">${p.type === 'late' ? '⏰ إذن تأخير' : (p.type === 'early' ? '🚪 انصراف مبكر' : '🔄 خروج مؤقت')}</span></td>
+                        <td style="text-align:center; white-space:nowrap;">${sourceBadge}</td>
                         <td style="color:var(--text-muted);">${p.note || '—'}</td>
-                        <td>
-                            <button class="btn-action btn-ghost" onclick="deletePerm('${empId}', ${pIdx})" style="color:var(--danger-light);padding:2px 8px;">✕ حذف</button>
+                        <td style="text-align:center; white-space:nowrap;">
+                            <button class="btn-action btn-ghost" onclick="deletePerm('${empId}', ${pIdx})" style="color:var(--danger-light); padding:4px 10px; border-radius:6px; font-weight:700; white-space:nowrap; display:inline-flex; align-items:center; gap:4px; font-size:0.78rem;">✕ حذف</button>
                         </td>
                     `;
                     tbody.appendChild(tr);
@@ -2631,21 +2631,21 @@
                     hasRecords = true;
                     const tr = document.createElement('tr');
                     const dateDisplay = (l.fromDate && l.toDate && l.fromDate !== l.toDate)
-                        ? `📅 ${l.fromDate} ← ${l.toDate}`
-                        : `📅 ${l.date || l.fromDate}`;
+                        ? `${l.fromDate} ← ${l.toDate}`
+                        : (l.date || l.fromDate);
                     const isManual = (l.source !== 'employee_request');
                     const sourceBadge = isManual
-                        ? `<span class="status-badge" style="background:#f1f5f9; color:#475569; border:1px solid #cbd5e1; font-size:0.75rem;">✍️ تسجيل يدوي (إدارة)</span>`
-                        : `<span class="status-badge" style="background:#ecfdf5; color:#065f46; border:1px solid #a7f3d0; font-size:0.75rem;">📱 طلب موظف (معتمد)</span>`;
+                        ? `<span class="status-badge" style="background:#f1f5f9; color:#475569; border:1px solid #cbd5e1; font-size:0.75rem; white-space:nowrap;">✍️ تسجيل يدوي (إدارة)</span>`
+                        : `<span class="status-badge" style="background:#ecfdf5; color:#065f46; border:1px solid #a7f3d0; font-size:0.75rem; white-space:nowrap;">📱 طلب موظف (معتمد)</span>`;
                     tr.innerHTML = `
-                        <td style="font-weight:bold;">${name}</td>
-                        <td style="color:var(--primary-light); font-weight:bold;">${empId}</td>
-                        <td>${dateDisplay}</td>
-                        <td><span class="status-badge badge-perm" style="background:#eff6ff; color:#0369a1; border:1px solid #bae6fd;">🏖️ ${l.typeLabel || l.type}</span></td>
-                        <td>${sourceBadge}</td>
-                        <td style="color:var(--text-muted);"><strong>${l.days || 1} يوم</strong> - ${l.note || '—'}</td>
-                        <td>
-                            <button class="btn-action btn-ghost" onclick="deleteManualLeave('${empId}', ${lIdx})" style="color:var(--danger-light);padding:2px 8px;">✕ حذف</button>
+                        <td style="font-weight:800; white-space:nowrap;">${name}</td>
+                        <td style="color:var(--primary-light); font-weight:800; text-align:center;">#${empId}</td>
+                        <td style="white-space:nowrap; text-align:center; font-weight:700; color:var(--text);"><span style="background:var(--bg); border:1px solid var(--border); padding:3px 8px; border-radius:6px; font-size:0.82rem; display:inline-flex; align-items:center; gap:4px; direction:ltr;">📅 ${dateDisplay}</span></td>
+                        <td style="text-align:center; white-space:nowrap;"><span class="status-badge badge-perm" style="background:#eff6ff; color:#0369a1; border:1px solid #bae6fd; white-space:nowrap;">🏖️ ${l.typeLabel || l.type}</span></td>
+                        <td style="text-align:center; white-space:nowrap;">${sourceBadge}</td>
+                        <td style="color:var(--text-muted);"><strong style="color:var(--primary-light);">${l.days || 1} يوم</strong> ${l.note ? '— ' + l.note : ''}</td>
+                        <td style="text-align:center; white-space:nowrap;">
+                            <button class="btn-action btn-ghost" onclick="deleteManualLeave('${empId}', ${lIdx})" style="color:var(--danger-light); padding:4px 10px; border-radius:6px; font-weight:700; white-space:nowrap; display:inline-flex; align-items:center; gap:4px; font-size:0.78rem;">✕ حذف</button>
                         </td>
                     `;
                     tbody.appendChild(tr);
@@ -4024,7 +4024,7 @@
         syncApprovedEmployeeRequests();
         initAttendanceArchive();
     </script>
-    <script src="theme.js?v=1788181479"></script>
-    <script src="pwa-install.js?v=1788181479"></script>
+    <script src="theme.js?v=1788182176"></script>
+    <script src="pwa-install.js?v=1788182176"></script>
 </body>
 </html>
