@@ -3171,9 +3171,6 @@
                     allEmpPerms,
                     personalPermsCount: personalPerms.length,
                     groupPermsCount: groupPerms.length,
-                    allEmpPerms,
-                    personalPermsCount: personalPerms.length,
-                    groupPermsCount: groupPerms.length,
                     empLeavesList,
                     baseTotal,
                     ok,
@@ -3906,39 +3903,87 @@
 </html>
             `;
 
-            // Print using dedicated hidden iframe (100% bypasses popup blocker)
+            // Ultra-Reliable Non-Blocking Print Handler (Prevents Any UI Freeze)
+            const printBtn = document.getElementById('exportPdfBtn');
+            const origBtnHtml = printBtn ? printBtn.innerHTML : '';
+            if (printBtn) {
+                printBtn.innerHTML = '⏳ جارٍ تجهيز التقرير للطباعة...';
+                printBtn.style.opacity = '0.7';
+                printBtn.style.pointerEvents = 'none';
+            }
+
+            function restoreBtn() {
+                if (printBtn) {
+                    printBtn.innerHTML = origBtnHtml || '🖨️ طباعة التقرير الشهري الرسمي المعتمد (PDF)';
+                    printBtn.style.opacity = '1';
+                    printBtn.style.pointerEvents = 'auto';
+                }
+            }
+
             try {
-                let iframe = document.getElementById('_techgo_print_iframe');
-                if (!iframe) {
-                    iframe = document.createElement('iframe');
-                    iframe.id = '_techgo_print_iframe';
-                    iframe.style.position = 'fixed';
-                    iframe.style.right = '-9999px';
-                    iframe.style.bottom = '-9999px';
-                    iframe.style.width = '0';
-                    iframe.style.height = '0';
-                    iframe.style.border = 'none';
-                    document.body.appendChild(iframe);
+                // Remove any stale print iframes
+                const existingIframes = document.querySelectorAll('iframe[id^="_techgo_print_"]');
+                existingIframes.forEach(el => { try { el.remove(); } catch(e){} });
+
+                const iframe = document.createElement('iframe');
+                iframe.id = '_techgo_print_' + Date.now();
+                iframe.style.position = 'fixed';
+                iframe.style.right = '0';
+                iframe.style.bottom = '0';
+                iframe.style.width = '1px';
+                iframe.style.height = '1px';
+                iframe.style.opacity = '0.01';
+                iframe.style.border = 'none';
+                iframe.style.pointerEvents = 'none';
+                document.body.appendChild(iframe);
+
+                const iWin = iframe.contentWindow;
+                const iDoc = iframe.contentDocument || iWin.document;
+                
+                iDoc.open();
+                iDoc.write(htmlContent);
+                iDoc.close();
+
+                let printed = false;
+                function triggerSafePrint() {
+                    if (printed) return;
+                    printed = true;
+                    restoreBtn();
+                    try {
+                        iWin.focus();
+                        iWin.print();
+                    } catch(err) {
+                        fallbackPrintWindow(htmlContent);
+                    }
                 }
-                const doc = iframe.contentWindow.document;
-                doc.open();
-                doc.write(htmlContent);
-                doc.close();
-                setTimeout(() => {
-                    iframe.contentWindow.focus();
-                    iframe.contentWindow.print();
-                }, 350);
+
+                iframe.onload = function() {
+                    setTimeout(triggerSafePrint, 150);
+                };
+
+                // Fallback timeout in case iframe onload does not fire
+                setTimeout(triggerSafePrint, 600);
+
             } catch(e) {
-                const printWin = window.open('', '_blank');
-                if (printWin) {
-                    printWin.document.open();
-                    printWin.document.write(htmlContent);
-                    printWin.document.close();
-                    setTimeout(() => {
-                        printWin.focus();
-                        printWin.print();
-                    }, 350);
-                }
+                restoreBtn();
+                fallbackPrintWindow(htmlContent);
+            }
+
+            function fallbackPrintWindow(html) {
+                try {
+                    const printWin = window.open('', '_blank', 'width=1100,height=850');
+                    if (printWin) {
+                        printWin.document.open();
+                        printWin.document.write(html);
+                        printWin.document.close();
+                        setTimeout(() => {
+                            try {
+                                printWin.focus();
+                                printWin.print();
+                            } catch(e){}
+                        }, 500);
+                    }
+                } catch(e){}
             }
         }
 
@@ -3953,7 +3998,7 @@
         syncApprovedEmployeeRequests();
         initAttendanceArchive();
     </script>
-    <script src="theme.js?v=1788178388"></script>
-    <script src="pwa-install.js?v=1788178388"></script>
+    <script src="theme.js?v=1788178862"></script>
+    <script src="pwa-install.js?v=1788178862"></script>
 </body>
 </html>
