@@ -851,11 +851,17 @@
                             🎫 سجل أذونات الحضور والانصراف المعتمدة
                         </div>
                         <div style="display:flex; gap:8px; flex-wrap:wrap;">
+                            <button class="btn-action" style="background:linear-gradient(135deg,#059669 0%,#047857 100%); color:#fff; border:none; padding:7px 14px; border-radius:8px; font-weight:700; cursor:pointer;" onclick="openNewExemptionDialog()">
+                                🌟 استثناء إداري معتمد (بدون خصم)
+                            </button>
+                            <button class="btn-action" style="background:linear-gradient(135deg,#0284c7 0%,#0369a1 100%); color:#fff; border:none; padding:7px 14px; border-radius:8px; font-weight:700; cursor:pointer;" onclick="openNewMissionDialog()">
+                                🏢 مأمورية عمل معتمدة
+                            </button>
                             <button class="btn-action" style="background:linear-gradient(135deg,#6366f1 0%,#4f46e5 100%); color:#fff; border:none; padding:7px 14px; border-radius:8px; font-weight:700; cursor:pointer;" onclick="openNewGroupLateExemptionDialog()">
-                                👥 استثناء تأخير لجميع الموظفين
+                                👥 استثناء تأخير جماعي
                             </button>
                             <button class="btn-action btn-perm-action" style="padding:7px 14px; font-weight:700;" onclick="openNewPermDialog()">
-                                ➕ إذن فردي جديد
+                                ➕ إذن حضور / انصراف
                             </button>
                         </div>
                     </div>
@@ -2556,6 +2562,14 @@
                         </div>
                     </div>
                     <div class="emp-sheet-body" id="tsBody-${emp.employeeId}">
+                        <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:10px; flex-wrap:wrap; gap:8px; background:var(--surface-2); padding:8px 12px; border-radius:8px; border:1px solid var(--border);">
+                            <div style="font-size:0.85rem; font-weight:800; color:var(--text);">📋 سجل الحركات اليومية وساعات العمل</div>
+                            <div style="display:flex; gap:6px; flex-wrap:wrap;">
+                                <button class="btn-action" style="font-size:0.75rem; padding:4px 10px; background:#f0fdf4; color:#166534; border:1px solid #bbf7d0; font-weight:700; border-radius:6px;" onclick="openNewExemptionForEmp('${emp.employeeId}')">🌟 استثناء إداري للموظف</button>
+                                <button class="btn-action" style="font-size:0.75rem; padding:4px 10px; background:#eff6ff; color:#0369a1; border:1px solid #bae6fd; font-weight:700; border-radius:6px;" onclick="openNewPermForEmp('${emp.employeeId}')">➕ تسجيل إذن للموظف</button>
+                                <button class="btn-action" style="font-size:0.75rem; padding:4px 10px; background:#f8fafc; color:#334155; border:1px solid #cbd5e1; font-weight:700; border-radius:6px;" onclick="openNewLeaveForEmp('${emp.employeeId}')">🏖️ تسجيل إجازة للموظف</button>
+                            </div>
+                        </div>
                         <table class="admin-table">
                             <thead><tr><th>التاريخ واليوم</th><th>حالة الانضباط</th><th>دخول</th><th>خروج</th><th>الساعات الفعلية</th><th>ملاحظات الأذونات</th></tr></thead>
                             <tbody>${rowsHtml}</tbody>
@@ -2723,6 +2737,18 @@
             document.getElementById('permModal').classList.remove('hidden');
         }
 
+        function openNewExemptionDialog() {
+            openNewPermDialog();
+            document.getElementById('modalPermType').value = 'exempt';
+            document.getElementById('modalPermNote').value = 'استثناء إداري معتمد (بدون خصم من الرصيد أو الراتب)';
+        }
+
+        function openNewMissionDialog() {
+            openNewPermDialog();
+            document.getElementById('modalPermType').value = 'mission';
+            document.getElementById('modalPermNote').value = 'مأمورية عمل خارجية معتمدة (دوام كامل)';
+        }
+
         function openNewGroupLateExemptionDialog() {
             openNewPermDialog();
             document.getElementById('modalPermEmpSel').value = 'all';
@@ -2733,6 +2759,13 @@
         function openNewPermForEmp(empId) {
             openNewPermDialog();
             document.getElementById('modalPermEmpSel').value = empId;
+        }
+
+        function openNewExemptionForEmp(empId) {
+            openNewPermDialog();
+            document.getElementById('modalPermEmpSel').value = empId;
+            document.getElementById('modalPermType').value = 'exempt';
+            document.getElementById('modalPermNote').value = 'استثناء إداري معتمد (بدون خصم من الرصيد أو الراتب)';
         }
 
         function closePermModal() {
@@ -4071,7 +4104,7 @@
         syncApprovedEmployeeRequests();
         initAttendanceArchive();
     </script>
-    <script src="theme.js?v=1788182671"></script>
-    <script src="pwa-install.js?v=1788182671"></script>
+    <script src="theme.js?v=1788182867"></script>
+    <script src="pwa-install.js?v=1788182867"></script>
 </body>
 </html>
